@@ -39,6 +39,8 @@ Monorepo: imposta **Root Directory** vuota (root del repo) cosi' Vercel legge `v
 
 Se invece imposti Root su `artifacts/agency-portal`, allora **Output directory** deve essere **`dist/public`** (non `public`). Su monorepo e' piu' semplice usare la root del repo come sopra.
 
+**Vercel – se compare "No Output Directory named public":** in Project Settings imposta **Framework Preset** su **Other** (cosi' non sovrascrive l'output). Rimuovi override manuali su "Output Directory" che puntano a `public`. Il repo include `vercel.json` in root e opzionale in `artifacts/agency-portal/` con `framework: null` e `outputDirectory` corretto.
+
 Variabili ambiente (Vercel -> Environment Variables):
 
 - `VITE_CLERK_PUBLISHABLE_KEY=pk_...`

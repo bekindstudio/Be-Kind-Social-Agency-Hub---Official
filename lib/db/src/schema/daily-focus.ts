@@ -8,9 +8,11 @@ export const dailyFocusSessionsTable = pgTable("daily_focus_sessions", {
   tasksCompletedJson: jsonb("tasks_completed_json").default([]),
   tasksSkippedJson: jsonb("tasks_skipped_json").default([]),
   tasksDelegatedJson: jsonb("tasks_delegated_json").default([]),
+  tasksPostponedJson: jsonb("tasks_postponed_json").default([]),
   openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   completionRate: real("completion_rate").default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const taskFocusActionsTable = pgTable("task_focus_actions", {

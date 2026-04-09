@@ -6,6 +6,7 @@ import {
   Users, CalendarClock, Clock, Trophy, Target, Sparkles, ArrowRight
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { useToast } from "@/hooks/use-toast";
 
 interface FocusTask {
   id: number;
@@ -21,6 +22,8 @@ interface FocusTask {
   assigneeId: number | null;
   assigneeName: string | null;
   categoria: string | null;
+  checklistJson?: string | null;
+  estimatedHours?: number | null;
   score: number;
   quadrant: number;
   postponedCount: number;
@@ -65,9 +68,9 @@ const TIPS = [
 
 function getGreeting(name: string): string {
   const h = new Date().getHours();
-  if (h < 12) return `Buongiorno, ${name}`;
-  if (h < 17) return `Buon pomeriggio, ${name}`;
-  return `Buonasera, ${name}`;
+  if (h < 12) return `Buongiorno, ${name} ☀️`;
+  if (h < 17) return `Buon pomeriggio, ${name} 👋`;
+  return `Buonasera, ${name} 🌙`;
 }
 
 function formatItalianDate(): string {
@@ -83,12 +86,15 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   onStartTimer?: (task: FocusTask) => void;
 }) {
   const { user } = useUser();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const [tasks, setTasks] = useState<FocusTask[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
+  const [delegated, setDelegated] = useState<Set<number>>(new Set());
+  const [postponed, setPostponed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showDelegate, setShowDelegate] = useState(false);
   const [delegateTarget, setDelegateTarget] = useState<number | null>(null);
@@ -97,6 +103,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   const [memberName, setMemberName] = useState<string | null>(null);
   const lastQ1Index = useRef(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -125,6 +132,8 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
       setCurrentIndex(0);
       setCompleted(new Set());
       setSkipped(new Set());
+      setDelegated(new Set());
+      setPostponed(new Set());
     }
   }, [open, fetchTasks]);
 
@@ -149,11 +158,13 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
           tasksShownJson: tasks.map(t => t.id),
           tasksCompletedJson: Array.from(completed),
           tasksSkippedJson: Array.from(skipped),
+          tasksDelegatedJson: Array.from(delegated),
+          tasksPostponedJson: Array.from(postponed),
           completionRate: tasks.length > 0 ? completed.size / tasks.length : 0,
         }),
       });
     } catch {}
-  }, [tasks, completed, skipped]);
+  }, [tasks, completed, skipped, delegated, postponed]);
 
   const handleClose = useCallback(() => {
     saveSession();
@@ -161,6 +172,8 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   }, [saveSession, onClose]);
 
   const goNext = useCallback(() => {
+    const currentTask = tasks[currentIndex];
+    if (currentTask) logAction(currentTask.id, "viewed");
     if (currentIndex === lastQ1Index.current && !showTip && tasks[currentIndex]?.quadrant === 1) {
       const nextTask = tasks[currentIndex + 1];
       if (nextTask && nextTask.quadrant !== 1) {
@@ -177,7 +190,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
         setShowDelegate(false);
       }, 200);
     }
-  }, [currentIndex, tasks, showTip]);
+  }, [currentIndex, tasks, showTip, logAction]);
 
   const goPrev = useCallback(() => {
     if (showTip) { setShowTip(false); return; }
@@ -192,9 +205,10 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
     if (onStartTimer) {
       onStartTimer(task);
     }
+    toast({ title: `Timer avviato per ${task.title}` });
     handleClose();
     navigate(`/projects`);
-  }, [logAction, onStartTimer, handleClose, navigate]);
+  }, [logAction, onStartTimer, handleClose, navigate, toast]);
 
   const handleSkip = useCallback(() => {
     const task = tasks[currentIndex];
@@ -223,6 +237,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
     const task = tasks[currentIndex];
     if (task) {
       logAction(task.id, "postponed", { note: `Posticipata da ${user?.firstName ?? "utente"}` });
+      setPostponed((p) => new Set(p).add(task.id));
       goNext();
     }
   }, [tasks, currentIndex, logAction, user, goNext]);
@@ -231,6 +246,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
     const task = tasks[currentIndex];
     if (task && delegateTarget) {
       logAction(task.id, "delegated", { newAssigneeId: delegateTarget, note: `Delegata da ${user?.firstName ?? "utente"}` });
+      setDelegated((d) => new Set(d).add(task.id));
       setShowDelegate(false);
       goNext();
     }
@@ -244,6 +260,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
       else if (e.key === "Enter") { const t = tasks[currentIndex]; if (t) handleStartNow(t); }
       else if (e.key === "s") handleSkip();
       else if (e.key === "c") handleComplete();
+      else if (e.key.toLowerCase() === "d") setShowDelegate(true);
       else if (e.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", handler);
@@ -263,6 +280,16 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
         ref={containerRef}
+        onTouchStart={(e) => { touchStartX.current = e.changedTouches[0]?.clientX ?? null; }}
+        onTouchEnd={(e) => {
+          const start = touchStartX.current;
+          const end = e.changedTouches[0]?.clientX ?? null;
+          if (start == null || end == null) return;
+          const delta = end - start;
+          if (delta < -40) goNext();
+          if (delta > 40) goPrev();
+          touchStartX.current = null;
+        }}
         className="relative z-10 w-full max-w-[560px] mx-4 bg-card rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-300"
       >
         {/* Header */}
@@ -378,7 +405,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
               </div>
 
               {/* Title */}
-              <h3 className="text-xl font-bold text-foreground mb-2 leading-tight">{task.title}</h3>
+              <h3 className="text-[20px] font-medium text-foreground mb-2 leading-tight">{task.title}</h3>
 
               {/* Project + category */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
@@ -404,15 +431,15 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
                 <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-xs">
                   <Clock size={14} className="text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-muted-foreground">Priorita</p>
-                    <p className="font-medium text-foreground capitalize">{task.priority}</p>
+                    <p className="text-muted-foreground">Stimato</p>
+                    <p className="font-medium text-foreground">{task.estimatedHours ? `${task.estimatedHours}h` : "—"}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-xs">
                   <Users size={14} className="text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-muted-foreground">Assegnata</p>
-                    <p className="font-medium text-foreground truncate">{task.assigneeName ?? "—"}</p>
+                    <p className="text-muted-foreground">Cliente</p>
+                    <p className="font-medium text-foreground truncate">{task.clientName ?? "—"}</p>
                   </div>
                 </div>
               </div>
@@ -420,7 +447,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
               {/* Score bar */}
               <div className="mb-3">
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Priorita: {task.score}/150</span>
+                  <span className="text-muted-foreground">Priorita: {Math.min(100, Math.round((task.score / 150) * 100))}/100</span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${QUADRANT_BAR[task.quadrant]}`} style={{ width: `${Math.min(100, (task.score / 150) * 100)}%` }} />
@@ -448,6 +475,13 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
                     <button onClick={handleDelegate} disabled={!delegateTarget} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50">Conferma</button>
                     <button onClick={() => setShowDelegate(false)} className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted">Annulla</button>
                   </div>
+                </div>
+              )}
+
+              {task.categoria === "Onboarding Nuovo Cliente" && task.checklistJson && (
+                <div className="mt-3 p-3 rounded-lg border border-border bg-muted/50">
+                  <p className="text-xs font-medium mb-1">Checklist onboarding</p>
+                  <p className="text-xs text-muted-foreground">Vedi checklist completa →</p>
                 </div>
               )}
             </div>

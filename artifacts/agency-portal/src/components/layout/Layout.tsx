@@ -10,27 +10,41 @@ interface LayoutProps {
   children: ReactNode;
 }
 
-const FOCUS_SEEN_KEY = "daily-focus-seen";
-
 export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const startTimer = useTimerStart();
 
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const seen = localStorage.getItem(FOCUS_SEEN_KEY);
-    if (seen !== today) {
-      const timer = setTimeout(() => setFocusOpen(true), 1200);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
+    let mounted = true;
+    const check = async () => {
+      try {
+        const res = await fetch("/api/daily-focus/should-open", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && data?.shouldOpen) {
+          setTimeout(() => setFocusOpen(true), 800);
+        }
+      } catch {}
+    };
+    check();
+    return () => { mounted = false; };
   }, []);
 
   const handleFocusClose = useCallback(() => {
     setFocusOpen(false);
-    const today = new Date().toISOString().slice(0, 10);
-    localStorage.setItem(FOCUS_SEEN_KEY, today);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
+      if (isCmdK) {
+        e.preventDefault();
+        setFocusOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const handleStartTimer = useCallback((task: any) => {

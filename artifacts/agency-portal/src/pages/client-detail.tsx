@@ -128,12 +128,24 @@ const PRIORITY_OPTIONS = [
 
 
 export default function ClientDetail({ id }: Props) {
+  const LOCAL_CLIENTS_KEY = "agency-local-clients";
   const clientId = parseInt(id, 10);
+  const isLocalClient = clientId < 0;
+  const localClient = (() => {
+    if (!isLocalClient) return null;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
+      const list = Array.isArray(parsed) ? parsed : [];
+      return list.find((c: any) => Number(c.id) === clientId) ?? null;
+    } catch {
+      return null;
+    }
+  })();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: client, isLoading } = useGetClient(clientId, {
-    query: { queryKey: getGetClientQueryKey(clientId), enabled: !!clientId },
+    query: { queryKey: getGetClientQueryKey(clientId), enabled: !!clientId && !isLocalClient },
   });
   const { data: projects } = useListProjects(
     { clientId },
@@ -328,32 +340,34 @@ export default function ClientDetail({ id }: Props) {
     inviato: "bg-blue-100 text-blue-700",
   };
 
+  const editableClient: any = isLocalClient ? localClient : client;
+
   const startEditing = () => {
-    if (!client) return;
+    if (!editableClient) return;
     setForm({
-      name: client.name ?? "",
-      email: client.email ?? "",
-      phone: client.phone ?? "",
-      company: client.company ?? "",
-      website: client.website ?? "",
-      logoUrl: client.logoUrl ?? "",
-      color: client.color ?? "#7a8f5c",
-      ragioneSociale: (client as any).ragioneSociale ?? "",
-      piva: (client as any).piva ?? "",
-      codiceFiscale: (client as any).codiceFiscale ?? "",
-      indirizzo: (client as any).indirizzo ?? "",
-      cap: (client as any).cap ?? "",
-      citta: (client as any).citta ?? "",
-      provincia: (client as any).provincia ?? "",
-      paese: (client as any).paese ?? "Italia",
-      notes: (client as any).notes ?? "",
-      instagramHandle: (client as any).instagramHandle ?? "",
-      metaPageId: (client as any).metaPageId ?? "",
-      googleAdsId: (client as any).googleAdsId ?? "",
-      driveUrl: (client as any).driveUrl ?? "",
-      reportRecipientEmail: (client as any).reportRecipientEmail ?? "",
+      name: editableClient.name ?? "",
+      email: editableClient.email ?? "",
+      phone: editableClient.phone ?? "",
+      company: editableClient.company ?? "",
+      website: editableClient.website ?? "",
+      logoUrl: editableClient.logoUrl ?? "",
+      color: editableClient.color ?? "#7a8f5c",
+      ragioneSociale: editableClient.ragioneSociale ?? "",
+      piva: editableClient.piva ?? "",
+      codiceFiscale: editableClient.codiceFiscale ?? "",
+      indirizzo: editableClient.indirizzo ?? "",
+      cap: editableClient.cap ?? "",
+      citta: editableClient.citta ?? "",
+      provincia: editableClient.provincia ?? "",
+      paese: editableClient.paese ?? "Italia",
+      notes: editableClient.notes ?? "",
+      instagramHandle: editableClient.instagramHandle ?? "",
+      metaPageId: editableClient.metaPageId ?? "",
+      googleAdsId: editableClient.googleAdsId ?? "",
+      driveUrl: editableClient.driveUrl ?? "",
+      reportRecipientEmail: editableClient.reportRecipientEmail ?? "",
     });
-    setLogoPreview(client.logoUrl ?? null);
+    setLogoPreview(editableClient.logoUrl ?? null);
     setEditing(true);
   };
 
@@ -458,13 +472,14 @@ export default function ClientDetail({ id }: Props) {
     );
   };
 
-  if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Caricamento...</div></Layout>;
-  if (!client) return <Layout><div className="p-8 text-muted-foreground">Cliente non trovato</div></Layout>;
+  if (!isLocalClient && isLoading) return <Layout><div className="p-8 text-muted-foreground">Caricamento...</div></Layout>;
+  const viewClient: any = isLocalClient ? localClient : client;
+  if (!viewClient) return <Layout><div className="p-8 text-muted-foreground">Cliente non trovato</div></Layout>;
 
   const f = (key: string) => form[key] ?? "";
   const set = (key: string) => (v: string) => setForm((prev) => ({ ...prev, [key]: v }));
 
-  const displayLogo = logoPreview ?? client.logoUrl;
+  const displayLogo = logoPreview ?? viewClient.logoUrl;
 
   return (
     <Layout>
@@ -480,30 +495,35 @@ export default function ClientDetail({ id }: Props) {
           <div className="flex items-center gap-5">
             <div
               className="w-20 h-20 rounded-2xl flex items-center justify-center text-white font-bold text-3xl overflow-hidden shrink-0"
-              style={{ backgroundColor: displayLogo ? "#f0f2ed" : client.color }}
+              style={{ backgroundColor: displayLogo ? "#f0f2ed" : viewClient.color }}
             >
               {displayLogo ? (
-                <img src={displayLogo} alt={client.name} className="w-full h-full object-contain p-1" />
+                <img src={displayLogo} alt={viewClient.name} className="w-full h-full object-contain p-1" />
               ) : (
-                client.name.charAt(0).toUpperCase()
+                String(viewClient.name ?? "C").charAt(0).toUpperCase()
               )}
             </div>
             <div>
-              <h1 className="text-2xl font-bold">{client.name}</h1>
-              {client.company && <p className="text-muted-foreground">{client.company}</p>}
-              {client.website && (
-                <a href={client.website} target="_blank" rel="noreferrer"
+              <h1 className="text-2xl font-bold">{viewClient.name}</h1>
+              {viewClient.company && <p className="text-muted-foreground">{viewClient.company}</p>}
+              {viewClient.website && (
+                <a href={viewClient.website} target="_blank" rel="noreferrer"
                   className="text-sm text-primary hover:underline flex items-center gap-1 mt-0.5">
-                  <Globe size={13} /> {client.website}
+                  <Globe size={13} /> {viewClient.website}
                 </a>
               )}
-              <p className="text-xs text-muted-foreground mt-1">Cliente dal {formatDate(client.createdAt)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Cliente dal {formatDate(viewClient.createdAt)}</p>
               <button
-                onClick={() => openAiDrawer({ type: "client", data: { id: clientId, name: client.name, sector: (client as any).sector, activeProjects: clientProjects.length } })}
+                onClick={() => openAiDrawer({ type: "client", data: { id: clientId, name: viewClient.name, sector: (viewClient as any).sector, activeProjects: clientProjects.length } })}
                 className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 transition-colors border border-violet-200 mt-2"
               >
                 <Sparkles size={12} /> Chiedi all'AI su questo cliente
               </button>
+              {isLocalClient && (
+                <p className="text-[11px] text-amber-700 mt-2">
+                  Cliente salvato in locale (offline). Per sincronizzarlo su database, ricrea il cliente quando l'API è online.
+                </p>
+              )}
             </div>
           </div>
 
@@ -659,50 +679,50 @@ export default function ClientDetail({ id }: Props) {
           <div className="space-y-6 mb-10">
             <Section title="Informazioni Generali" icon={<Building2 size={15} className="text-primary" />}>
               <div className="grid grid-cols-3 gap-4">
-                {FIELD("Email", client.email)}
-                {FIELD("Telefono", client.phone)}
-                {FIELD("Azienda", client.company)}
-                {FIELD("Sito Web", client.website)}
+                {FIELD("Email", viewClient.email)}
+                {FIELD("Telefono", viewClient.phone)}
+                {FIELD("Azienda", viewClient.company)}
+                {FIELD("Sito Web", viewClient.website)}
               </div>
-              {!client.email && !client.phone && !client.company && !client.website && (
+              {!viewClient.email && !viewClient.phone && !viewClient.company && !viewClient.website && (
                 <p className="text-sm text-muted-foreground">Nessuna informazione inserita. <button onClick={startEditing} className="text-primary hover:underline">Aggiungi</button></p>
               )}
             </Section>
 
-            {((client as any).ragioneSociale || (client as any).piva || (client as any).codiceFiscale || (client as any).indirizzo) && (
+            {((viewClient as any).ragioneSociale || (viewClient as any).piva || (viewClient as any).codiceFiscale || (viewClient as any).indirizzo) && (
               <Section title="Dati di Fatturazione" icon={<Receipt size={15} className="text-primary" />}>
                 <div className="grid grid-cols-3 gap-4">
-                  {FIELD("Ragione Sociale", (client as any).ragioneSociale)}
-                  {FIELD("Partita IVA", (client as any).piva)}
-                  {FIELD("Codice Fiscale", (client as any).codiceFiscale)}
-                  {FIELD("Indirizzo", (client as any).indirizzo)}
-                  {FIELD("CAP", (client as any).cap)}
-                  {FIELD("Città", (client as any).citta)}
-                  {FIELD("Provincia", (client as any).provincia)}
-                  {FIELD("Paese", (client as any).paese)}
+                  {FIELD("Ragione Sociale", (viewClient as any).ragioneSociale)}
+                  {FIELD("Partita IVA", (viewClient as any).piva)}
+                  {FIELD("Codice Fiscale", (viewClient as any).codiceFiscale)}
+                  {FIELD("Indirizzo", (viewClient as any).indirizzo)}
+                  {FIELD("CAP", (viewClient as any).cap)}
+                  {FIELD("Città", (viewClient as any).citta)}
+                  {FIELD("Provincia", (viewClient as any).provincia)}
+                  {FIELD("Paese", (viewClient as any).paese)}
                 </div>
               </Section>
             )}
 
-            {((client as any).instagramHandle || (client as any).metaPageId || (client as any).googleAdsId) && (
+            {((viewClient as any).instagramHandle || (viewClient as any).metaPageId || (viewClient as any).googleAdsId) && (
               <Section title="Social & Integrazioni" icon={<Share2 size={15} className="text-primary" />}>
                 <div className="grid grid-cols-3 gap-4">
-                  {(client as any).instagramHandle && (
+                  {(viewClient as any).instagramHandle && (
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Instagram</p>
                       <a
-                        href={`https://instagram.com/${(client as any).instagramHandle.replace("@", "")}`}
+                        href={`https://instagram.com/${(viewClient as any).instagramHandle.replace("@", "")}`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
                       >
                         <ExternalLink size={12} />
-                        {(client as any).instagramHandle.startsWith("@") ? (client as any).instagramHandle : `@${(client as any).instagramHandle}`}
+                        {(viewClient as any).instagramHandle.startsWith("@") ? (viewClient as any).instagramHandle : `@${(viewClient as any).instagramHandle}`}
                       </a>
                     </div>
                   )}
-                  {(client as any).metaPageId && FIELD("Meta Page ID", (client as any).metaPageId)}
-                  {(client as any).googleAdsId && FIELD("Google Ads ID", (client as any).googleAdsId)}
+                  {(viewClient as any).metaPageId && FIELD("Meta Page ID", (viewClient as any).metaPageId)}
+                  {(viewClient as any).googleAdsId && FIELD("Google Ads ID", (viewClient as any).googleAdsId)}
                 </div>
               </Section>
             )}
@@ -871,14 +891,14 @@ export default function ClientDetail({ id }: Props) {
               )}
             </Section>
 
-            {(client as any).notes && (
+            {(viewClient as any).notes && (
               <Section title="Note" icon={<StickyNote size={15} className="text-primary" />}>
-                <p className="text-sm whitespace-pre-wrap">{(client as any).notes}</p>
+                <p className="text-sm whitespace-pre-wrap">{(viewClient as any).notes}</p>
               </Section>
             )}
 
             <Section title="Brief & Strategia" icon={<BookOpen size={15} className="text-primary" />}>
-              <ClientBriefSection clientId={client.id} clientName={client.name} />
+              <ClientBriefSection clientId={viewClient.id} clientName={viewClient.name} />
             </Section>
 
             {/* ── Google Drive ── */}
@@ -886,9 +906,9 @@ export default function ClientDetail({ id }: Props) {
               title="Google Drive"
               icon={<HardDrive size={15} className="text-primary" />}
               action={
-                (client as any).driveUrl ? (
+                (viewClient as any).driveUrl ? (
                   <a
-                    href={(client as any).driveUrl}
+                    href={(viewClient as any).driveUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
@@ -898,14 +918,14 @@ export default function ClientDetail({ id }: Props) {
                 ) : null
               }
             >
-              {(client as any).driveUrl ? (
+              {(viewClient as any).driveUrl ? (
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
                   <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
                     <HardDrive size={18} className="text-blue-500" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Cartella Drive collegata</p>
-                    <p className="text-xs text-muted-foreground truncate">{(client as any).driveUrl}</p>
+                    <p className="text-xs text-muted-foreground truncate">{(viewClient as any).driveUrl}</p>
                   </div>
                 </div>
               ) : (

@@ -7,6 +7,7 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
 const basePath = process.env.BASE_PATH || "/";
+const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8080";
 
 export default defineConfig(async ({ mode }) => {
   // Vite only loads `.env*` into `import.meta.env`, not `process.env`.
@@ -53,6 +54,12 @@ export default defineConfig(async ({ mode }) => {
       port,
       host: "0.0.0.0",
       allowedHosts: true,
+      proxy: {
+        "/api": {
+          target: apiTarget,
+          changeOrigin: true,
+        },
+      },
       fs: {
         strict: true,
         deny: ["**/.*"],

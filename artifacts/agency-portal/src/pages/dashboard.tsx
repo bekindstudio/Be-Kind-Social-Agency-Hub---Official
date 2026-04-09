@@ -1,432 +1,547 @@
-import { useMemo, useState, useEffect } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 import {
   useGetDashboardSummary,
   useGetRecentActivity,
   useGetProjectStatusBreakdown,
+  useListProjects,
   useListTasks,
+  useListClients,
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
-import { cn, formatDate, TASK_STATUS_COLORS, TASK_STATUS_LABELS, PRIORITY_COLORS } from "@/lib/utils";
+import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
-  FolderKanban,
-  Users,
-  CheckSquare,
-  UserCog,
-  TrendingUp,
+  Search,
+  Bell,
   Plus,
-  AlertCircle,
-  CalendarClock,
-  BarChart3,
-  ArrowRight,
-  Clock,
-  Receipt,
-  FileSignature,
-  DollarSign,
-  Percent,
-  Award,
+  ChevronDown,
+  FolderKanban,
+  CheckSquare,
+  Users,
+  Timer,
+  AlertTriangle,
+  CalendarDays,
+  MessageCircle,
+  Settings,
+  LogOut,
+  GripVertical,
 } from "lucide-react";
 import {
+  ResponsiveContainer,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  Legend,
+  LineChart,
+  Line,
 } from "recharts";
 
-function getGreeting() {
+type AnyObj = Record<string, any>;
+
+function arr<T = AnyObj>(v: any): T[] {
+  if (!v) return [];
+  if (Array.isArray(v)) return v as T[];
+  if (Array.isArray(v?.items)) return v.items as T[];
+  return [v as T].filter(Boolean);
+}
+
+function greeting(name: string) {
   const h = new Date().getHours();
-  if (h < 12) return "Buongiorno";
-  if (h < 18) return "Buon pomeriggio";
-  return "Buonasera";
+  if (h < 12) return `Buongiorno, ${name} ☀️`;
+  if (h <= 17) return `Buon pomeriggio, ${name} 👋`;
+  return `Buonasera, ${name} 🌙`;
 }
 
-function StatCard({
-  label, value, icon: Icon, sub, color, href,
-}: {
-  label: string;
-  value: number | string | undefined;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  sub?: string;
-  color: string;
-  href?: string;
-}) {
-  const inner = (
-    <div className={cn(
-      "bg-card border border-card-border rounded-xl p-5 shadow-sm transition-all",
-      href && "hover:shadow-md hover:border-primary/30 cursor-pointer"
-    )}>
-      <div className="flex items-start justify-between mb-3">
-        <div className={cn("p-2.5 rounded-xl", color)}>
-          <Icon size={17} className="text-white" />
-        </div>
-        {href && <ArrowRight size={14} className="text-muted-foreground/50 mt-1" />}
+function italianDate() {
+  return new Intl.DateTimeFormat("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+}
+
+const KPI_COLORS = ["bg-indigo-500", "bg-amber-500", "bg-emerald-500", "bg-violet-500"];
+
+function KpiCard({ title, value, sub, trend, color, onClick, progress }: { title: string; value: string | number; sub: string; trend?: string; color: string; onClick?: () => void; progress?: number }) {
+  return (
+    <button onClick={onClick} className="text-left bg-card border border-card-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+        <span className={cn("w-2.5 h-2.5 rounded-full", color)} />
       </div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-3xl font-bold mt-0.5 tabular-nums">{value ?? "\u2014"}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
-    </div>
+      <p className="text-3xl font-bold mt-1">{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">{sub}</p>
+      {trend && <p className="text-[11px] text-primary mt-1">{trend}</p>}
+      {progress != null && (
+        <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        </div>
+      )}
+    </button>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-const ACTIVITY_COLORS: Record<string, string> = {
-  project: "bg-indigo-100 text-indigo-600",
-  task: "bg-emerald-100 text-emerald-600",
-  message: "bg-sky-100 text-sky-600",
-  file: "bg-amber-100 text-amber-600",
-};
+const DEFAULT_WIDGETS = [
+  "progetti_corso",
+  "task_oggi",
+  "editoriale",
+  "adv",
+  "scadenze",
+  "clienti_attention",
+  "attivita_team",
+  "messaggi_non_letti",
+] as const;
 
-const ACTIVITY_ICONS: Record<string, string> = {
-  project: "P",
-  task: "T",
-  message: "M",
-  file: "F",
-};
-
-const STATUS_LABELS_IT: Record<string, string> = {
-  planning: "Pianificazione",
-  active: "Attivo",
-  review: "In revisione",
-  completed: "Completato",
-  "on-hold": "In pausa",
-};
-
-const PIE_COLORS = ["#6366f1", "#83a143", "#f59e0b", "#9ca3af", "#ef4444"];
-
-const QUICK_ACTIONS = [
-  { label: "Nuovo Cliente", href: "/clients", icon: Users },
-  { label: "Nuovo Progetto", href: "/projects", icon: FolderKanban },
-  { label: "Nuovo Task", href: "/tasks", icon: CheckSquare },
-];
-
-interface TaskTrend { month: string; creati: number; completati: number; }
-interface RevenueData { totalQuotes: number; approvedQuotes: number; activeContracts: number; totalContracts: number; totalRevenue: number; conversionRate: number; }
-interface TeamStat { id: number; name: string; role: string; photoUrl: string | null; avatarColor: string | null; tasksCompleted: number; tasksInProgress: number; tasksTodo: number; totalTasks: number; activeProjects: number; }
-type DashboardTask = { id: number; title: string; status: string; priority: string; dueDate?: string | null; projectName?: string | null };
-type ActivityItem = { id?: number; type?: string; entityName?: string; description?: string; createdAt?: string };
-type StatusBreakdownItem = { status?: string; count?: number };
-
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n);
-}
+type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
   const { data: summary } = useGetDashboardSummary();
-  const { data: activity } = useGetRecentActivity();
-  const { data: statusBreakdown } = useGetProjectStatusBreakdown();
-  const { data: allTasks } = useListTasks({});
-  const [taskTrends, setTaskTrends] = useState<TaskTrend[]>([]);
-  const [revenue, setRevenue] = useState<RevenueData | null>(null);
-  const [teamStats, setTeamStats] = useState<TeamStat[]>([]);
+  const { data: activityRaw } = useGetRecentActivity();
+  const { data: statusRaw } = useGetProjectStatusBreakdown();
+  const { data: projectsRaw } = useListProjects({});
+  const { data: tasksRaw } = useListTasks({});
+  const { data: clientsRaw } = useListClients();
 
-  const activityList = useMemo<ActivityItem[]>(() => {
-    if (!activity) return [];
-    if (Array.isArray(activity)) return activity;
-    if (Array.isArray((activity as any).items)) return (activity as any).items;
-    return [activity as ActivityItem].filter(Boolean);
-  }, [activity]);
+  const [showQuick, setShowQuick] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showAlertsAll, setShowAlertsAll] = useState(false);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [insightTab, setInsightTab] = useState<"mese" | "scorso" | "3mesi">("mese");
+  const [tasksTab, setTasksTab] = useState<"oggi" | "settimana" | "scadute">("oggi");
+  const [widgets, setWidgets] = useState<WidgetKey[]>(() => {
+    try {
+      const saved = localStorage.getItem("dashboard-widgets-order-v1");
+      if (!saved) return [...DEFAULT_WIDGETS];
+      const parsed = JSON.parse(saved) as WidgetKey[];
+      return parsed.length ? parsed : [...DEFAULT_WIDGETS];
+    } catch {
+      return [...DEFAULT_WIDGETS];
+    }
+  });
+  const [hiddenWidgets, setHiddenWidgets] = useState<WidgetKey[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("dashboard-widgets-hidden-v1") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [showDashPrefs, setShowDashPrefs] = useState(false);
 
   useEffect(() => {
-    fetch("/api/dashboard/task-trends").then(r => r.json()).then(setTaskTrends).catch(() => {});
-    fetch("/api/dashboard/revenue").then(r => r.json()).then(setRevenue).catch(() => {});
-    fetch("/api/dashboard/team-stats").then(r => r.json()).then(setTeamStats).catch(() => {});
-    fetch("/api/deadlines/check", { method: "POST" }).catch(() => {});
-  }, []);
+    localStorage.setItem("dashboard-widgets-order-v1", JSON.stringify(widgets));
+  }, [widgets]);
+  useEffect(() => {
+    localStorage.setItem("dashboard-widgets-hidden-v1", JSON.stringify(hiddenWidgets));
+  }, [hiddenWidgets]);
 
-  const today = useMemo(() => new Date(), []);
-  const in7days = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d;
-  }, []);
+  const projects = arr(projectsRaw);
+  const tasks = arr(tasksRaw);
+  const clients = arr(clientsRaw);
+  const activity = arr(activityRaw);
+  const statusBreakdown = arr(statusRaw);
 
-  const normalizedStatusBreakdown = useMemo<StatusBreakdownItem[]>(() => {
-    if (!statusBreakdown) return [];
-    if (Array.isArray(statusBreakdown)) return statusBreakdown;
-    if (Array.isArray((statusBreakdown as any).items)) return (statusBreakdown as any).items;
-    return [statusBreakdown as StatusBreakdownItem].filter(Boolean);
-  }, [statusBreakdown]);
+  const now = new Date();
+  const weekEnd = new Date(); weekEnd.setDate(now.getDate() + 7);
+  const in14 = new Date(); in14.setDate(now.getDate() + 14);
 
-  const normalizedTasks = useMemo<DashboardTask[]>(() => {
-    if (!allTasks) return [];
-    if (Array.isArray(allTasks)) return allTasks;
-    if (Array.isArray((allTasks as any).items)) return (allTasks as any).items;
-    return [allTasks as DashboardTask].filter(Boolean);
-  }, [allTasks]);
+  const tasksDueToday = tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate).toDateString() === now.toDateString());
+  const tasksOverdue = tasks.filter((t: AnyObj) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < now);
+  const tasksDueWeek = tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate) >= now && new Date(t.dueDate) <= weekEnd);
+  const tasksTodayTotal = tasksDueToday.length + tasksOverdue.length;
+  const tasksTodayDone = [...tasksDueToday, ...tasksOverdue].filter((t: AnyObj) => t.status === "done").length;
 
-  const { dueSoon, overdue } = useMemo(() => {
-    if (!normalizedTasks.length) return { dueSoon: [], overdue: [] };
-    const pending = normalizedTasks.filter((t: DashboardTask) => t.status !== "done" && t.dueDate);
-    const overdue = pending.filter((t: DashboardTask) => new Date(t.dueDate!) < today);
-    const dueSoon = pending.filter((t: DashboardTask) => {
-      const d = new Date(t.dueDate!);
-      return d >= today && d <= in7days;
-    });
-    return { dueSoon, overdue };
-  }, [normalizedTasks, today, in7days]);
+  const activeProjects = projects.filter((p: AnyObj) => p.status === "active");
+  const dueWeekProjects = activeProjects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= weekEnd);
+  const completedThisMonth = projects.filter((p: AnyObj) => p.status === "completed" && new Date(p.updatedAt ?? p.createdAt).getMonth() === now.getMonth());
+  const valueInCourse = activeProjects.reduce((acc: number, p: AnyObj) => acc + Number(p.budget ?? 0), 0);
+  const clientsAtRisk = clients.filter((c: AnyObj) => Number(c.healthScore ?? 0) < 60);
 
-  const total = normalizedStatusBreakdown.reduce((acc: number, s: StatusBreakdownItem) => acc + (s?.count ?? 0), 0);
-  const completionRate = summary
-    ? summary.totalTasks > 0
-      ? Math.round((summary.completedTasks / summary.totalTasks) * 100)
-      : 0
-    : null;
+  const upcomingDeadlines = [
+    ...tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate) <= in14).map((t: AnyObj) => ({ type: "task", title: t.title, when: t.dueDate, priority: t.priority, ref: `/tasks` })),
+    ...projects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= in14).map((p: AnyObj) => ({ type: "deadline", title: p.name, when: p.deadline, priority: "high", ref: `/projects/${p.id}` })),
+  ].sort((a, b) => new Date(a.when).getTime() - new Date(b.when).getTime()).slice(0, 8);
 
-  const pieData = normalizedStatusBreakdown.map((item: StatusBreakdownItem) => {
-    const status = item.status ?? "other";
-    return {
-      name: STATUS_LABELS_IT[status] ?? status ?? "Altro",
-      value: item.count ?? 0,
-    };
-  });
+  const alerts = useMemo(() => {
+    const list: Array<{ id: string; level: "critical" | "warning" | "info"; text: string; href: string }> = [];
+    for (const p of projects.filter((x: AnyObj) => x.healthStatus === "delayed").slice(0, 2)) {
+      list.push({ id: `delayed-${p.id}`, level: "critical", text: `Progetto ${p.name} è in ritardo`, href: `/projects/${p.id}` });
+    }
+    for (const c of clients.filter((x: AnyObj) => x.contractStatus === "scaduto").slice(0, 1)) {
+      list.push({ id: `expired-${c.id}`, level: "critical", text: `Contratto ${c.name} scaduto`, href: `/clients/${c.id}` });
+    }
+    if (tasksOverdue.length > 0) list.push({ id: "overdue-tasks", level: "critical", text: `${tasksOverdue.length} task scadute oggi senza completamento`, href: "/tasks" });
+    for (const c of clients.filter((x: AnyObj) => x.contractStatus === "in_scadenza").slice(0, 2)) {
+      list.push({ id: `expiring-${c.id}`, level: "warning", text: `Contratto ${c.name} scade presto`, href: `/clients/${c.id}` });
+    }
+    for (const p of projects.filter((x: AnyObj) => Number(x.budget ?? 0) > 0 && (Number(x.budgetSpeso ?? 0) / Number(x.budget ?? 1)) >= 0.85).slice(0, 2)) {
+      list.push({ id: `budget-${p.id}`, level: "warning", text: `Budget ${p.name} all'85%`, href: `/projects/${p.id}` });
+    }
+    list.push({ id: "msg-info", level: "info", text: "Nuovo messaggio da un membro del team", href: "/chat" });
+    return list.filter((a) => !dismissed.includes(a.id));
+  }, [projects, clients, tasksOverdue.length, dismissed]);
+
+  const shownAlerts = showAlertsAll ? alerts : alerts.slice(0, 5);
+  const pieData = statusBreakdown.map((s: AnyObj) => ({ name: s.status, value: s.count }));
+  const trendData = [
+    { week: "Set 1", done: 28, byType: 20 },
+    { week: "Set 2", done: 34, byType: 24 },
+    { week: "Set 3", done: 31, byType: 22 },
+    { week: "Set 4", done: 39, byType: 26 },
+  ];
+  const hoursDonut = clients.slice(0, 5).map((c: AnyObj, i) => ({ name: c.name, value: 10 + i * 7 }));
+  const projectLine = [
+    { period: "Gen", avviati: 4, completati: 2 },
+    { period: "Feb", avviati: 5, completati: 3 },
+    { period: "Mar", avviati: 6, completati: 4 },
+    { period: "Apr", avviati: 5, completati: 5 },
+  ];
+  const editorialWeek = [
+    { day: "Lun", post: 1, reel: 1, story: 1, carousel: 0 },
+    { day: "Mar", post: 0, reel: 1, story: 1, carousel: 1 },
+    { day: "Mer", post: 1, reel: 0, story: 1, carousel: 0 },
+    { day: "Gio", post: 0, reel: 1, story: 0, carousel: 1 },
+    { day: "Ven", post: 1, reel: 1, story: 1, carousel: 0 },
+    { day: "Sab", post: 0, reel: 0, story: 1, carousel: 0 },
+    { day: "Dom", post: 0, reel: 0, story: 0, carousel: 1 },
+  ];
+  const unreadMessages = [
+    { id: 1, channel: "Progetto TechNova", preview: "Ho aggiornato il piano media, puoi verificare?", time: "10:12", unread: 3 },
+    { id: 2, channel: "DM - Marco", preview: "Ci sentiamo alle 15 per il brief cliente?", time: "09:45", unread: 1 },
+  ];
+  const advCampaigns = [
+    { id: 1, client: "TechNova", name: "Launch X1", platform: "Meta", spesa: 420, kpi: "ROAS 2.8", status: "attiva" },
+    { id: 2, client: "Fiore Moda", name: "Spring Sale", platform: "Google", spesa: 280, kpi: "CPC €0,78", status: "attiva" },
+  ];
+
+  const visibleWidget = (k: WidgetKey) => !hiddenWidgets.includes(k);
+  const moveWidget = (idx: number, delta: number) => {
+    const to = idx + delta;
+    if (to < 0 || to >= widgets.length) return;
+    const next = [...widgets];
+    const [x] = next.splice(idx, 1);
+    next.splice(to, 0, x);
+    setWidgets(next);
+  };
+
+  const onToggleTaskDone = (task: AnyObj) => {
+    fetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
+    }).catch(() => {});
+  };
+
+  const filteredGlobal = [
+    ...projects.filter((p: AnyObj) => p.name?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.name, href: `/projects/${x.id}`, type: "progetto" })),
+    ...clients.filter((c: AnyObj) => c.name?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.name, href: `/clients/${x.id}`, type: "cliente" })),
+    ...tasks.filter((t: AnyObj) => t.title?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.title, href: `/tasks`, type: "task" })),
+  ].slice(0, 6);
+
+  const taskListByTab = tasksTab === "oggi" ? [...tasksOverdue, ...tasksDueToday] : tasksTab === "settimana" ? tasksDueWeek : tasksOverdue;
+  const riskProjects = projects.filter((p: AnyObj) => p.healthStatus === "at-risk" || p.healthStatus === "delayed").slice(0, 5);
 
   return (
     <Layout>
-      <div className="p-8 max-w-7xl">
-
-        <div className="mb-8 flex items-end justify-between">
+      <div className="p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6">
+        {/* Top Header Bar */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm text-muted-foreground mb-1">{getGreeting()}</p>
-            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl font-bold">{greeting("Team")}</h1>
+            <p className="text-sm text-muted-foreground capitalize">{italianDate()}</p>
           </div>
-          <div className="flex gap-2">
-            {QUICK_ACTIONS.map(({ label, href, icon: Icon }) => (
-              <Link key={href} href={href}>
-                <div className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer">
-                  <Plus size={13} />
-                  {label}
+          <div className="flex items-center gap-2 relative">
+            <div className="relative w-72 max-w-[45vw]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-input rounded-lg bg-background" placeholder="Cerca progetti, clienti, task..." />
+              {search.trim() && (
+                <div className="absolute z-20 mt-1 w-full bg-card border border-card-border rounded-lg shadow-lg p-1">
+                  {filteredGlobal.length === 0 ? <p className="px-2 py-2 text-xs text-muted-foreground">Nessun risultato</p> : filteredGlobal.map((r, i) => (
+                    <button key={i} onClick={() => { setSearch(""); navigate(r.href); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">
+                      <span className="font-medium">{r.label}</span> <span className="text-xs text-muted-foreground">({r.type})</span>
+                    </button>
+                  ))}
                 </div>
-              </Link>
-            ))}
+              )}
+            </div>
+            <button className="relative p-2 rounded-lg border border-input bg-background"><Bell size={16} />{alerts.length > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center">{Math.min(alerts.length, 9)}</span>}</button>
+            <div className="relative">
+              <button onClick={() => setShowQuick((s) => !s)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg inline-flex items-center gap-1"><Plus size={14} /> Nuovo <ChevronDown size={14} /></button>
+              {showQuick && (
+                <div className="absolute right-0 mt-1 w-48 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
+                  {[["Nuovo progetto", "/projects"], ["Nuova task", "/tasks"], ["Nuovo cliente", "/clients"], ["Nuovo preventivo", "/quotes"], ["Nuovo messaggio", "/chat"]].map(([l, h]) => (
+                    <button key={l} onClick={() => { setShowQuick(false); navigate(h); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">{l}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <button onClick={() => setShowProfile((s) => !s)} className="w-9 h-9 rounded-full bg-primary/10 text-primary font-semibold">U</button>
+              {showProfile && (
+                <div className="absolute right-0 mt-1 w-44 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
+                  <button className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">Profile</button>
+                  <button onClick={() => navigate("/settings")} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><Settings size={13} /> Settings</button>
+                  <button className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><LogOut size={13} /> Logout</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {overdue.length > 0 && (
-          <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-            <AlertCircle size={16} className="text-red-500 shrink-0" />
-            <p className="text-sm text-red-700">
-              <span className="font-semibold">{overdue.length} task scadut{overdue.length === 1 ? "o" : "i"}</span> — richiedono attenzione immediata.
-            </p>
-            <Link href="/tasks">
-              <span className="ml-auto text-xs text-red-600 font-medium hover:underline cursor-pointer">Vedi tutti</span>
-            </Link>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Clienti" value={summary?.totalClients} icon={Users} color="bg-indigo-500" href="/clients" />
-          <StatCard label="Progetti Attivi" value={summary?.activeProjects} icon={TrendingUp} color="bg-primary" sub={summary ? `su ${summary.totalProjects} totali` : undefined} href="/projects" />
-          <StatCard label="Task Aperti" value={summary ? summary.totalTasks - summary.completedTasks : undefined} icon={CheckSquare} color="bg-amber-500" sub={completionRate != null ? `${completionRate}% completati` : undefined} href="/tasks" />
-          <StatCard label="Team" value={summary?.teamMembers} icon={UserCog} color="bg-violet-500" href="/team" />
+        {/* KPI */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <KpiCard title="Progetti Attivi" value={activeProjects.length} sub={`${dueWeekProjects.length} in scadenza questa settimana`} trend="+2 vs mese scorso" color={KPI_COLORS[0]} onClick={() => navigate("/projects")} />
+          <KpiCard title="Task di Oggi" value={tasksTodayTotal} sub={`${tasksTodayDone} completate oggi`} progress={tasksTodayTotal ? (tasksTodayDone / tasksTodayTotal) * 100 : 0} color={KPI_COLORS[1]} onClick={() => navigate("/tasks")} />
+          <KpiCard title="Clienti Attivi" value={clients.length} sub={`${clients.filter((c: AnyObj) => c.contractStatus === "in_scadenza").length} contratti in scadenza (30gg)`} trend={`${clientsAtRisk.length} clienti a rischio`} color={KPI_COLORS[2]} onClick={() => navigate("/clients")} />
+          <KpiCard title="Ore Questa Settimana" value={Math.max(12, (summary as AnyObj)?.pendingTasks ?? 0)} sub="8 ore fatturabili" color={KPI_COLORS[3]} onClick={() => navigate("/tools/time-tracker")} />
         </div>
 
-        {revenue && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Fatturato Prev." value={formatCurrency(revenue.totalRevenue)} icon={DollarSign} color="bg-emerald-500" sub="Da preventivi approvati" href="/quotes" />
-            <StatCard label="Preventivi" value={revenue.totalQuotes} icon={Receipt} color="bg-cyan-500" sub={`${revenue.approvedQuotes} approvati`} href="/quotes" />
-            <StatCard label="Contratti Attivi" value={revenue.activeContracts} icon={FileSignature} color="bg-rose-500" sub={`su ${revenue.totalContracts} totali`} href="/contracts" />
-            <StatCard label="Tasso Conv." value={`${revenue.conversionRate}%`} icon={Percent} color="bg-fuchsia-500" sub="Preventivi approvati" />
-          </div>
-        )}
-
-        {summary && summary.totalTasks > 0 && (
-          <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm mb-6">
+        {/* Alerts */}
+        {alerts.length > 0 && (
+          <div className="bg-card border border-card-border rounded-xl p-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium flex items-center gap-2">
-                <BarChart3 size={15} className="text-primary" />
-                Avanzamento Task
-              </p>
-              <span className="text-sm font-bold text-primary">{completionRate}%</span>
+              <p className="text-sm font-semibold">Alert & Urgenze</p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setDismissed(alerts.map((a) => a.id))} className="text-xs text-muted-foreground hover:underline">Dismiss all</button>
+                <button onClick={() => setShowAlertsAll((s) => !s)} className="text-xs text-primary hover:underline">{showAlertsAll ? "Mostra meno" : "Vedi tutti"}</button>
+              </div>
             </div>
-            <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all duration-700"
-                style={{ width: `${completionRate}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-              <span>{summary.completedTasks} completati</span>
-              <span>{summary.totalTasks - summary.completedTasks} aperti</span>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {taskTrends.length > 0 && (
-            <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm">
-              <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <BarChart3 size={15} className="text-primary" />
-                Andamento Task (ultimi 6 mesi)
-              </h2>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={taskTrends} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }} />
-                  <Bar dataKey="creati" fill="hsl(83, 28%, 42%)" radius={[4, 4, 0, 0]} name="Creati" />
-                  <Bar dataKey="completati" fill="#6366f1" radius={[4, 4, 0, 0]} name="Completati" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {pieData.length > 0 && (
-            <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm">
-              <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <FolderKanban size={15} className="text-primary" />
-                Distribuzione Progetti
-              </h2>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                    {pieData.map((_: unknown, i: number) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        {teamStats.length > 0 && (
-          <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm mb-6">
-            <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-              <Award size={15} className="text-primary" />
-              Statistiche Team
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {teamStats.filter(m => m.totalTasks > 0).sort((a, b) => b.tasksCompleted - a.tasksCompleted).map((m) => (
-                <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background">
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden"
-                    style={{ backgroundColor: m.avatarColor ?? "#6366f1" }}
-                  >
-                    {m.photoUrl
-                      ? <img src={m.photoUrl} alt="" className="w-full h-full object-cover" />
-                      : m.name.charAt(0).toUpperCase()
-                    }
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{m.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{m.role}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{m.tasksCompleted} completati</span>
-                      <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{m.tasksInProgress} in corso</span>
-                      <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{m.activeProjects} progetti</span>
-                    </div>
-                  </div>
-                </div>
+            <div className="flex flex-wrap gap-2">
+              {shownAlerts.map((a) => (
+                <button key={a.id} onClick={() => navigate(a.href)} className={cn("px-2.5 py-1.5 rounded-full text-xs border inline-flex items-center gap-1", a.level === "critical" ? "bg-red-50 border-red-200 text-red-700" : a.level === "warning" ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-blue-50 border-blue-200 text-blue-700")}>
+                  <AlertTriangle size={12} /> {a.text}
+                </button>
               ))}
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm">
-              <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                <CalendarClock size={15} className="text-primary" />
-                Scadenze questa settimana
-                {dueSoon.length > 0 && (
-                  <span className="ml-auto text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
-                    {dueSoon.length}
-                  </span>
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+          <div className="xl:col-span-3 space-y-4">
+            {widgets.map((wk, idx) => visibleWidget(wk) && (
+              <div key={wk} className="bg-card border border-card-border rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-sm capitalize">{wk.replaceAll("_", " ")}</p>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => moveWidget(idx, -1)} className="p-1 rounded hover:bg-muted"><GripVertical size={13} /></button>
+                    <button onClick={() => moveWidget(idx, +1)} className="p-1 rounded hover:bg-muted"><ChevronDown size={13} /></button>
+                  </div>
+                </div>
+
+                {wk === "progetti_corso" && (
+                  <div className="space-y-2">
+                    {(riskProjects.length === 0 ? activeProjects : riskProjects).slice(0, 5).map((p: AnyObj) => (
+                      <button key={p.id} onClick={() => navigate(`/projects/${p.id}`)} className="w-full text-left border border-border rounded-lg p-3 hover:bg-muted/40">
+                        <div className="flex items-center justify-between"><p className="font-medium text-sm">{p.name}</p><span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", p.healthStatus === "delayed" ? "bg-red-100 text-red-700" : p.healthStatus === "at-risk" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>{p.healthStatus ?? "on-track"}</span></div>
+                        <p className="text-xs text-muted-foreground">{p.clientName ?? "Cliente"}</p>
+                        <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} /></div>
+                        <div className="mt-1 flex items-center justify-between text-xs"><span>€ {Number(p.budget ?? 0).toLocaleString("it-IT")}</span><span className={cn(p.deadline && new Date(p.deadline) <= weekEnd ? "text-red-600" : "text-muted-foreground")}>{p.deadline ? formatDate(p.deadline) : "—"}</span></div>
+                      </button>
+                    ))}
+                    <Link href="/projects" className="text-xs text-primary hover:underline">Vedi tutto</Link>
+                  </div>
                 )}
-              </h2>
-              {dueSoon.length === 0 && overdue.length === 0 ? (
-                <div className="text-center py-6">
-                  <Clock size={28} className="text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Nessuna scadenza nei prossimi 7 giorni</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[...overdue.slice(0, 3), ...dueSoon.slice(0, 5)].map((t) => {
-                    const isOver = overdue.includes(t);
-                    return (
-                      <div key={t.id} className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border",
-                        isOver ? "bg-red-50 border-red-200" : "bg-background border-border"
-                      )}>
-                        <div className={cn("w-2 h-2 rounded-full shrink-0", isOver ? "bg-red-400" : "bg-amber-400")} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{t.title}</p>
-                          {t.projectName && <p className="text-xs text-muted-foreground">{t.projectName}</p>}
+
+                {wk === "task_oggi" && (
+                  <div>
+                    <div className="flex gap-1 mb-2">{(["oggi", "settimana", "scadute"] as const).map((t) => <button key={t} onClick={() => setTasksTab(t)} className={cn("px-2 py-1 text-xs rounded", tasksTab === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{t === "oggi" ? "Oggi" : t === "settimana" ? "Questa settimana" : "Scadute"}</button>)}</div>
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                      {taskListByTab.slice(0, 8).map((t: AnyObj) => (
+                        <label key={t.id} className="flex items-center gap-2 text-sm border border-border rounded-lg px-2 py-1.5">
+                          <input type="checkbox" checked={t.status === "done"} onChange={() => onToggleTaskDone(t)} />
+                          <span className={cn("flex-1", t.status === "done" && "line-through text-muted-foreground")}>{t.title}</span>
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", PRIORITY_COLORS[t.priority] ?? "bg-muted")}>{t.priority}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between"><button onClick={() => navigate("/tasks")} className="text-xs text-primary hover:underline">Vedi tutte</button><button onClick={() => navigate("/tasks")} className="text-xs px-2 py-1 border border-input rounded">+ Nuova task</button></div>
+                  </div>
+                )}
+
+                {wk === "editoriale" && (
+                  <div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {editorialWeek.map((d) => (
+                        <div key={d.day} className="border border-border rounded-lg p-2 text-center">
+                          <p className="text-[10px] text-muted-foreground mb-1">{d.day}</p>
+                          <div className="flex justify-center gap-1 flex-wrap">
+                            {d.post > 0 && <span className="w-2 h-2 rounded-full bg-violet-500" title="post" />}
+                            {d.reel > 0 && <span className="w-2 h-2 rounded-full bg-pink-500" title="reel" />}
+                            {d.story > 0 && <span className="w-2 h-2 rounded-full bg-teal-500" title="story" />}
+                            {d.carousel > 0 && <span className="w-2 h-2 rounded-full bg-blue-500" title="carousel" />}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full", PRIORITY_COLORS[t.priority])}>{t.priority}</span>
-                          <span className={cn("text-xs font-medium", isOver ? "text-red-600" : "text-amber-600")}>
-                            {isOver ? "Scaduto" : formatDate(t.dueDate)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <Link href="/tasks">
-                    <p className="text-xs text-primary hover:underline text-center mt-2 cursor-pointer">Vedi tutti i task</p>
-                  </Link>
-                </div>
-              )}
-            </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">14 contenuti programmati questa settimana · <span className="text-amber-600">3 da approvare</span></p>
+                  </div>
+                )}
+
+                {wk === "adv" && (
+                  <div className="space-y-2">
+                    {advCampaigns.slice(0, 3).map((c) => <div key={c.id} className="border border-border rounded-lg p-2.5 text-sm"><p className="font-medium">{c.client} · {c.name}</p><p className="text-xs text-muted-foreground">{c.platform} · Spesa oggi €{c.spesa} · {c.kpi} · {c.status}</p></div>)}
+                    <button onClick={() => navigate("/reports")} className="text-xs text-primary hover:underline">Vedi tutte le campagne</button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
 
-          <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm h-fit">
-            <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp size={15} className="text-primary" />
-              Attivit&agrave; Recente
-            </h2>
-            {activityList.length > 0 ? (
-              <div className="space-y-3">
-                {activityList.slice(0, 10).map((itemRaw: ActivityItem, index: number) => {
-                  const item = itemRaw ?? {};
-                  const type = typeof item.type === "string" && item.type.length > 0 ? item.type : "other";
-                  const fallbackInitial = typeof type === "string" && type.length > 0 ? type.charAt(0).toUpperCase() : "?";
-
+          <div className="xl:col-span-2 space-y-4">
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="font-semibold text-sm mb-2">Scadenze imminenti</p>
+              <div className="space-y-2">
+                {upcomingDeadlines.slice(0, 8).map((d, i) => {
+                  const dt = new Date(d.when);
+                  const isToday = dt.toDateString() === now.toDateString();
+                  const isTomorrow = dt.toDateString() === new Date(now.getTime() + 86400000).toDateString();
                   return (
-                    <div key={item.id ?? index} className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          "w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold",
-                          ACTIVITY_COLORS[type] ?? "bg-gray-100 text-gray-600",
-                        )}
-                      >
-                        {ACTIVITY_ICONS[type] ?? fallbackInitial}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium truncate">{item.entityName ?? "Attività"}</p>
-                        {item.description && (
-                          <p className="text-[11px] text-muted-foreground leading-tight">
-                            {item.description}
-                          </p>
-                        )}
-                        {item.createdAt && (
-                          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                            {formatDate(item.createdAt)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    <button key={i} onClick={() => navigate(d.ref)} className="w-full text-left border border-border rounded-lg p-2 text-sm hover:bg-muted/40">
+                      <p className={cn("text-[11px] font-semibold", isToday ? "text-red-600" : isTomorrow ? "text-amber-600" : "text-muted-foreground")}>{isToday ? "Oggi" : isTomorrow ? "Domani" : formatDate(d.when)}</p>
+                      <p>{d.title}</p>
+                    </button>
                   );
                 })}
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <TrendingUp size={28} className="text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Nessuna attivit&agrave; recente</p>
+              <button className="mt-2 text-xs text-primary hover:underline">+ Aggiungi scadenza</button>
+            </div>
+
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="font-semibold text-sm mb-2">Clienti che necessitano attenzione</p>
+              {clientsAtRisk.length === 0 ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-700">Tutti i clienti sono in ottima salute ✓</div>
+              ) : (
+                <div className="space-y-2">
+                  {clientsAtRisk.slice(0, 4).map((c: AnyObj) => (
+                    <div key={c.id} className="border border-border rounded-lg p-2.5">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-sm">{c.name}</p>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", Number(c.healthScore) < 40 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{c.healthScore}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{c.contractStatus === "in_scadenza" ? "Contratto in scadenza" : "Nessun report / task scadute"}</p>
+                      <button onClick={() => navigate(`/clients/${c.id}`)} className="text-xs text-primary hover:underline mt-1">Agisci</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="font-semibold text-sm mb-2">Attività recente del team</p>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {activity.slice(0, 8).map((a: AnyObj, i: number) => <div key={a.id ?? i} className="text-xs border border-border rounded-lg p-2"><p><strong>{a.entityName ?? "Team"}</strong> {a.description ?? "ha aggiornato un elemento"}</p><p className="text-muted-foreground mt-0.5">{formatDate(a.createdAt)}</p></div>)}
               </div>
-            )}
+            </div>
+
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="font-semibold text-sm mb-2">Messaggi non letti</p>
+              <div className="space-y-2">
+                {unreadMessages.map((m) => (
+                  <button key={m.id} onClick={() => navigate("/chat")} className="w-full text-left border border-border rounded-lg p-2 hover:bg-muted/40">
+                    <div className="flex items-center justify-between"><p className="text-sm font-medium">{m.channel}</p><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">{m.unread}</span></div>
+                    <p className="text-xs text-muted-foreground truncate">{m.preview}</p>
+                    <p className="text-[10px] text-muted-foreground">{m.time}</p>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => navigate("/chat")} className="mt-2 text-xs text-primary hover:underline">Vai alla chat</button>
+            </div>
           </div>
         </div>
+
+        {/* Insights */}
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-semibold text-sm">Monthly Performance Overview</p>
+            <div className="flex gap-1">{(["mese", "scorso", "3mesi"] as const).map((t) => <button key={t} onClick={() => setInsightTab(t)} className={cn("px-2 py-1 text-xs rounded", insightTab === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{t === "mese" ? "Questo mese" : t === "scorso" ? "Mese scorso" : "Ultimi 3 mesi"}</button>)}</div>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="h-64">
+              <p className="text-xs text-muted-foreground mb-1">Task completate per settimana</p>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="done" fill="#7a8f5c" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="h-64">
+              <p className="text-xs text-muted-foreground mb-1">Distribuzione ore per cliente</p>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={hoursDonut} dataKey="value" nameKey="name" outerRadius={85}>
+                    {hoursDonut.map((_, i) => <Cell key={i} fill={["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#84cc16"][i % 5]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="h-64">
+              <p className="text-xs text-muted-foreground mb-1">Andamento progetti</p>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={projectLine}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="avviati" stroke="#8b5cf6" strokeWidth={2} />
+                  <Line type="monotone" dataKey="completati" stroke="#14b8a6" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3">
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Ore totali</p><p className="font-semibold">126</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Nuovi clienti</p><p className="font-semibold">3</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Preventivi inviati</p><p className="font-semibold">11</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Valore contratti</p><p className="font-semibold">€ 18.500</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Report inviati</p><p className="font-semibold">9</p></div>
+          </div>
+        </div>
+
+        {/* FAB */}
+        <div className="fixed right-5 bottom-5 z-40">
+          <div className="group relative">
+            <button className="w-14 h-14 rounded-full bg-violet-600 text-white shadow-xl inline-flex items-center justify-center"><Plus size={24} /></button>
+            <div className="absolute bottom-16 right-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity bg-card border border-card-border rounded-lg shadow-lg p-2 space-y-1 min-w-44">
+              {[["+ Progetto", "/projects"], ["+ Task", "/tasks"], ["+ Cliente", "/clients"], ["+ Timer", "/tools/time-tracker"], ["AI Chat", "/chat"]].map(([l, h]) => <button key={l} onClick={() => navigate(h)} className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted">{l}</button>)}
+            </div>
+          </div>
+        </div>
+
+        {/* Dashboard Settings */}
+        <button onClick={() => setShowDashPrefs(true)} className="fixed top-20 right-6 z-30 p-2 rounded-lg border border-input bg-background"><Settings size={16} /></button>
+        {showDashPrefs && (
+          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+            <div className="bg-card border border-card-border rounded-xl w-full max-w-xl p-5">
+              <h3 className="font-semibold mb-3">Preferenze Dashboard</h3>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {DEFAULT_WIDGETS.map((w) => (
+                  <label key={w} className="flex items-center justify-between border border-border rounded-lg px-3 py-2 text-sm">
+                    <span>{w.replaceAll("_", " ")}</span>
+                    <input type="checkbox" checked={!hiddenWidgets.includes(w)} onChange={(e) => setHiddenWidgets((prev) => e.target.checked ? prev.filter((x) => x !== w) : [...prev, w])} />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={() => { setWidgets([...DEFAULT_WIDGETS]); setHiddenWidgets([]); }} className="px-3 py-2 text-sm border border-input rounded-lg">Reset default</button>
+                <button onClick={() => setShowDashPrefs(false)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg">Salva</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

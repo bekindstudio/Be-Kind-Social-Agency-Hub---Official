@@ -53,7 +53,7 @@ export function DailyFocusWidget({ onClick }: { onClick: () => void }) {
         <Target size={14} />
       )}
       <span className="hidden sm:inline">
-        Focus: {data.completedTasks}/{data.totalTasks}
+        {allDone ? "Giornata completata ✓" : `Today's Focus: ${data.completedTasks}/${data.totalTasks}`}
       </span>
       <div className="w-12 h-1.5 bg-background rounded-full overflow-hidden hidden sm:block">
         <div

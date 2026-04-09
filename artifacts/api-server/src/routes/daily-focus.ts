@@ -17,6 +17,12 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addDays(base: Date, n: number): string {
+  const d = new Date(base);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 function computeFocusScore(task: typeof tasksTable.$inferSelect): {
   score: number;
   quadrant: number;
@@ -44,7 +50,9 @@ function computeFocusScore(task: typeof tasksTable.$inferSelect): {
     else if (daysUntilDue <= 7) score += 10;
   }
 
-  if (task.projectId) score += 15;
+  if (task.projectId || task.clientId) score += 15;
+  if ((task.estimatedHours ?? 0) > 0 && (task.estimatedHours ?? 0) <= 1) score += 5;
+  if (String(task.description ?? "").toLowerCase().includes("blocca")) score += 10;
 
   let quadrant: number;
   const isUrgent = daysUntilDue <= 1;
@@ -94,6 +102,71 @@ router.get("/daily-focus", async (req, res): Promise<void> => {
       .where(sql`${tasksTable.status} != 'done'`);
   }
 
+  if (tasks.length === 0) {
+    const now = new Date();
+    await db.insert(tasksTable).values([
+      {
+        title: "Consegnare grafiche Spring a Fiore Moda",
+        description: "Dipendenza cliente: materiali finali per calendario editoriale",
+        priority: "alta",
+        dueDate: addDays(now, 0),
+        status: "todo",
+        categoria: "Design",
+        assigneeId: memberId,
+        estimatedHours: 1,
+      },
+      {
+        title: "Attivare campagna Meta TechNova",
+        description: "Task bloccante per l'avvio lead generation",
+        priority: "urgente",
+        dueDate: addDays(now, -1),
+        status: "todo",
+        categoria: "ADV",
+        assigneeId: memberId,
+        estimatedHours: 2,
+      },
+      {
+        title: "Preparare piano editoriale Maggio — Rossi & Partners",
+        priority: "alta",
+        dueDate: addDays(now, 5),
+        status: "todo",
+        categoria: "Piano Editoriale",
+        assigneeId: memberId,
+      },
+      {
+        title: "Scrivere caption 8 post Instagram Fiore Moda",
+        priority: "media",
+        dueDate: addDays(now, 3),
+        status: "todo",
+        categoria: "Copy",
+        assigneeId: memberId,
+      },
+      {
+        title: "Aggiornare spreadsheet ore lavorate",
+        priority: "bassa",
+        dueDate: addDays(now, 1),
+        status: "todo",
+        categoria: "Admin",
+        assigneeId: memberId,
+      },
+      {
+        title: "Riorganizzare cartelle Drive clienti",
+        priority: "bassa",
+        dueDate: addDays(now, 20),
+        status: "todo",
+        categoria: "Organizzazione",
+        assigneeId: memberId,
+      },
+    ]);
+    if (memberId) {
+      tasks = await db.select().from(tasksTable).where(
+        and(eq(tasksTable.assigneeId, memberId), sql`${tasksTable.status} != 'done'`),
+      );
+    } else {
+      tasks = await db.select().from(tasksTable).where(sql`${tasksTable.status} != 'done'`);
+    }
+  }
+
   const [projects, members, clients] = await Promise.all([
     db.select().from(projectsTable),
     db.select().from(teamMembersTable),
@@ -124,6 +197,8 @@ router.get("/daily-focus", async (req, res): Promise<void> => {
         ? `${assignee.name ?? ""} ${assignee.surname ?? ""}`.trim()
         : null,
       categoria: t.categoria,
+      checklistJson: t.checklistJson,
+      estimatedHours: t.estimatedHours,
       pacchettoContenuti: t.pacchettoContenuti,
       score,
       quadrant,
@@ -175,7 +250,7 @@ router.post("/daily-focus/session", async (req, res): Promise<void> => {
     return;
   }
   const today = todayStr();
-  const { tasksShownJson, tasksCompletedJson, tasksSkippedJson, tasksDelegatedJson, completionRate } = req.body;
+  const { tasksShownJson, tasksCompletedJson, tasksSkippedJson, tasksDelegatedJson, tasksPostponedJson, completionRate } = req.body;
 
   const [existing] = await db
     .select()
@@ -196,6 +271,8 @@ router.post("/daily-focus/session", async (req, res): Promise<void> => {
       updates.tasksSkippedJson = tasksSkippedJson;
     if (tasksDelegatedJson !== undefined)
       updates.tasksDelegatedJson = tasksDelegatedJson;
+    if (tasksPostponedJson !== undefined)
+      updates.tasksPostponedJson = tasksPostponedJson;
     if (completionRate !== undefined) updates.completionRate = completionRate;
     updates.closedAt = new Date();
     const [updated] = await db
@@ -214,6 +291,7 @@ router.post("/daily-focus/session", async (req, res): Promise<void> => {
         tasksCompletedJson: tasksCompletedJson ?? [],
         tasksSkippedJson: tasksSkippedJson ?? [],
         tasksDelegatedJson: tasksDelegatedJson ?? [],
+        tasksPostponedJson: tasksPostponedJson ?? [],
         completionRate: completionRate ?? 0,
       })
       .returning();
@@ -258,7 +336,11 @@ router.post("/daily-focus/action", async (req, res): Promise<void> => {
   if (action === "started") {
     await db.update(tasksTable).set({ status: "in-progress" }).where(eq(tasksTable.id, Number(taskId)));
   } else if (action === "completed") {
-    await db.update(tasksTable).set({ status: "done" }).where(eq(tasksTable.id, Number(taskId)));
+    try {
+      await db.update(tasksTable).set({ status: "done", completedFromFocus: true, completedAt: new Date() }).where(eq(tasksTable.id, Number(taskId)));
+    } catch {
+      await db.update(tasksTable).set({ status: "done", completedAt: new Date() }).where(eq(tasksTable.id, Number(taskId)));
+    }
   } else if (action === "postponed") {
     const currentDue = task.dueDate ? new Date(task.dueDate) : new Date();
     currentDue.setDate(currentDue.getDate() + 1);
@@ -286,6 +368,35 @@ router.post("/daily-focus/action", async (req, res): Promise<void> => {
     .returning();
 
   res.status(201).json(logged);
+});
+
+router.get("/daily-focus/should-open", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const today = todayStr();
+  const [session] = await db.select().from(dailyFocusSessionsTable).where(
+    and(eq(dailyFocusSessionsTable.userId, userId), eq(dailyFocusSessionsTable.date, today)),
+  );
+  if (!session) {
+    res.json({ shouldOpen: true, reason: "first_open_today", highlightUrgentOnly: false });
+    return;
+  }
+  const teamMember = await db.select().from(teamMembersTable).where(eq(teamMembersTable.clerkUserId, userId));
+  const memberId = teamMember[0]?.id ?? null;
+  let openTasks = await db.select().from(tasksTable).where(sql`${tasksTable.status} != 'done'`);
+  if (memberId) openTasks = openTasks.filter((t) => t.assigneeId === memberId);
+  const lastSeen = session.closedAt ?? session.openedAt;
+  const newUrgent = openTasks.filter((t) => {
+    const created = t.createdAt ? new Date(t.createdAt) : null;
+    if (!created || !lastSeen) return false;
+    const scored = computeFocusScore(t);
+    return created > lastSeen && scored.quadrant === 1;
+  });
+  if (newUrgent.length > 0) {
+    res.json({ shouldOpen: true, reason: "new_urgent_tasks", highlightUrgentOnly: true, urgentTaskIds: newUrgent.map((t) => t.id) });
+    return;
+  }
+  res.json({ shouldOpen: false, reason: "already_seen_today", highlightUrgentOnly: false });
 });
 
 router.get("/daily-focus/stats", async (req, res): Promise<void> => {

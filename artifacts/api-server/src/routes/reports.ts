@@ -171,6 +171,73 @@ router.get("/reports", async (req, res): Promise<void> => {
     const clientId = req.query.clientId ? parseInt(req.query.clientId as string) : undefined;
     const status = req.query.status as string | undefined;
     const tipo = req.query.tipo as string | undefined;
+    const from = req.query.from ? new Date(String(req.query.from)) : undefined;
+    const to = req.query.to ? new Date(String(req.query.to)) : undefined;
+    const author = req.query.author as string | undefined;
+
+    // Seed demo reports when table is empty
+    const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(clientReportsTable);
+    if ((countRows[0]?.count ?? 0) === 0) {
+      const clients = await db.select().from(clientsTable).limit(3);
+      const now = new Date();
+      const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+      if (clients[0]) {
+        await db.insert(clientReportsTable).values({
+          clientId: clients[0].id,
+          tipo: "mensile",
+          period: `${now.getFullYear()}-${String(now.getMonth() || 12).padStart(2, "0")}`,
+          periodLabel: `Marzo ${now.getFullYear()}`,
+          status: "inviato",
+          titolo: `Report Mensile — ${clients[0].name} — Marzo ${now.getFullYear()}`,
+          riepilogoEsecutivo: "Ottima crescita organica e stabilità delle campagne paid.",
+          analisiInsights: "I reel hanno generato il miglior rapporto reach/engagement.",
+          strategiaProssimoPeriodo: "Incrementare contenuti educational e testare nuove audience lookalike.",
+          noteAggiuntive: "Cliente molto collaborativo sulle approvazioni.",
+          kpiSocialJson: { summary: { followers: 12450, followerGrowth: 312, followerGrowthPct: 2.6, reach: 98500, engagementRate: 4.2, impressions: 180400, profileViews: 4220 } } as any,
+          kpiMetaJson: { summary: { totalSpend: 4200, conversions: 172, roas: 2.7, ctr: 1.9, cpc: 0.62, impressions: 342000, reach: 171000 } } as any,
+          topContenutiJson: [
+            { type: "Post", date: "12/03", caption: "Lookbook primavera", likes: 820, comments: 48, saves: 112, reach: 14400, mediaType: "IMAGE" },
+            { type: "Reel", date: "18/03", caption: "Behind the scenes", likes: 1240, comments: 63, saves: 154, reach: 21200, mediaType: "VIDEO" },
+            { type: "Carousel", date: "25/03", caption: "5 outfit tips", likes: 980, comments: 40, saves: 188, reach: 16800, mediaType: "CAROUSEL_ALBUM" },
+          ] as any,
+          createdBy: "michael.balleroni",
+          sentAt: new Date(),
+          inviatoAt: new Date(),
+        });
+      }
+      if (clients[1]) {
+        await db.insert(clientReportsTable).values({
+          clientId: clients[1].id,
+          tipo: "mensile",
+          period: `${now.getFullYear()}-${String(now.getMonth() || 12).padStart(2, "0")}`,
+          periodLabel: `Marzo ${now.getFullYear()}`,
+          status: "in_revisione",
+          titolo: `Report Mensile — ${clients[1].name} — Marzo ${now.getFullYear()}`,
+          riepilogoEsecutivo: "Buona trazione paid, necessario migliorare CTR creativo.",
+          analisiInsights: "La campagna search brand ha sovraperformato.",
+          strategiaProssimoPeriodo: "Ribilanciare budget su asset ad alto ROAS.",
+          kpiMetaJson: { summary: { totalSpend: 8600, conversions: 210, roas: 1.8, ctr: 1.3, cpc: 1.12 } } as any,
+          createdBy: "team.account",
+        });
+      }
+      if (clients[2]) {
+        await db.insert(clientReportsTable).values({
+          clientId: clients[2].id,
+          tipo: "settimanale",
+          period: `W14-${now.getFullYear()}`,
+          periodLabel: `Settimana 14 ${now.getFullYear()}`,
+          status: "bozza",
+          titolo: `Report Settimanale — ${clients[2].name} — Settimana 14`,
+          riepilogoEsecutivo: "",
+          analisiInsights: "",
+          strategiaProssimoPeriodo: "",
+          noteAggiuntive: "Sezioni da completare.",
+          createdBy: "team.creative",
+          aiFlag: true,
+          aiFlags: ["Sezioni incomplete: riepilogo, insights, strategia"] as any,
+        });
+      }
+    }
 
     let query = db.select({
       report: clientReportsTable,
@@ -186,6 +253,9 @@ router.get("/reports", async (req, res): Promise<void> => {
     if (clientId) conditions.push(eq(clientReportsTable.clientId, clientId));
     if (status) conditions.push(eq(clientReportsTable.status, status));
     if (tipo) conditions.push(eq(clientReportsTable.tipo, tipo));
+    if (author) conditions.push(eq(clientReportsTable.createdBy, author));
+    if (from) conditions.push(sql`${clientReportsTable.createdAt} >= ${from}`);
+    if (to) conditions.push(sql`${clientReportsTable.createdAt} <= ${to}`);
     if (conditions.length > 0) query = query.where(and(...conditions));
 
     const rows = await query;
@@ -450,6 +520,21 @@ router.post("/reports/:id/send", async (req, res): Promise<void> => {
     }
   } catch (err: any) {
     console.error("Send report error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/reports/:id/confirm-client
+router.post("/reports/:id/confirm-client", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    const [updated] = await db.update(clientReportsTable)
+      .set({ status: "confermato_cliente" })
+      .where(eq(clientReportsTable.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Report non trovato" }); return; }
+    res.json(serializeReport(updated));
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });

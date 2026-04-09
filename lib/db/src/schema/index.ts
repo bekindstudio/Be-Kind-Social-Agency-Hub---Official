@@ -24,3 +24,8 @@ export * from "./client-billing";
 export * from "./client-credentials";
 export * from "./client-meetings";
 export * from "./client-activity-log";
+export * from "./project-members";
+export * from "./project-milestones";
+export * from "./project-expenses";
+export * from "./project-templates";
+export * from "./project-activity";

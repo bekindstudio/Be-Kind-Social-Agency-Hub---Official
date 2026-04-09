@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +26,7 @@ export const tasksTable = pgTable("tasks", {
   focusScore: integer("focus_score"),
   lastPostponedAt: timestamp("last_postponed_at", { withTimezone: true }),
   postponedCount: integer("postponed_count").notNull().default(0),
+  completedFromFocus: boolean("completed_from_focus").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

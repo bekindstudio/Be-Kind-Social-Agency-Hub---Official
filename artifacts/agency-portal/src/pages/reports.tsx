@@ -69,13 +69,14 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 const PRIMARY = "#7a8f5c";
 const PRIMARY_LIGHT = "rgba(122,143,92,0.12)";
 
-const TIPO_LABELS: Record<string, string> = { settimanale: "Settimanale", mensile: "Mensile", trimestrale: "Trimestrale" };
-const STATUS_LABELS: Record<string, string> = { bozza: "Bozza", in_revisione: "In revisione", approvato: "Approvato", inviato: "Inviato" };
+const TIPO_LABELS: Record<string, string> = { settimanale: "Settimanale", mensile: "Mensile", trimestrale: "Trimestrale", custom: "Custom" };
+const STATUS_LABELS: Record<string, string> = { bozza: "Bozza", in_revisione: "In revisione", approvato: "Approvato", inviato: "Inviato", confermato_cliente: "Confermato dal cliente" };
 const STATUS_COLORS: Record<string, string> = {
   bozza: "bg-gray-100 text-gray-600",
   in_revisione: "bg-amber-100 text-amber-700",
   approvato: "bg-emerald-100 text-emerald-700",
   inviato: "bg-blue-100 text-blue-700",
+  confermato_cliente: "bg-teal-100 text-teal-700",
 };
 
 const MONTHS_IT = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
@@ -220,6 +221,7 @@ function getPeriodLabel(tipo: string, period: string): string {
 
 export default function Reports() {
   const { data: clients } = useListClients();
+  const clientList = Array.isArray(clients) ? clients : [];
 
   // View state
   const [view, setView] = useState<"list" | "create" | "detail" | "edit">("list");
@@ -241,11 +243,15 @@ export default function Reports() {
   });
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterTipo, setFilterTipo] = useState<string>("");
+  const [filterAuthor, setFilterAuthor] = useState<string>("");
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterTo, setFilterTo] = useState("");
   const [searchText, setSearchText] = useState("");
 
   // Create form
   const [createForm, setCreateForm] = useState({
     clientId: "", tipo: "mensile" as string, period: "",
+    customFrom: "", customTo: "", title: "",
     riepilogoEsecutivo: "", analisiInsights: "", strategiaProssimoPeriodo: "", noteAggiuntive: "",
   });
   const [creating, setCreating] = useState(false);
@@ -271,12 +277,15 @@ export default function Reports() {
       if (filterClient) params.set("clientId", String(filterClient));
       if (filterStatus) params.set("status", filterStatus);
       if (filterTipo) params.set("tipo", filterTipo);
+      if (filterAuthor) params.set("author", filterAuthor);
+      if (filterFrom) params.set("from", filterFrom);
+      if (filterTo) params.set("to", filterTo);
       const res = await fetch(`/api/reports?${params}`);
       const data = await res.json();
       setReports(Array.isArray(data) ? data : []);
     } catch { if (!silent) setReports([]); }
     finally { setLoading(false); }
-  }, [filterClient, filterStatus, filterTipo]);
+  }, [filterClient, filterStatus, filterTipo, filterAuthor, filterFrom, filterTo]);
 
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
@@ -336,14 +345,16 @@ export default function Reports() {
 
   // ── Create report ──
   const handleCreate = async () => {
-    if (!createForm.clientId || !createForm.period) { setCreateError("Seleziona un cliente e un periodo"); return; }
+    if (!createForm.clientId) { setCreateError("Seleziona un cliente"); return; }
+    if (createForm.tipo !== "custom" && !createForm.period) { setCreateError("Seleziona un periodo"); return; }
+    if (createForm.tipo === "custom" && (!createForm.customFrom || !createForm.customTo)) { setCreateError("Seleziona un intervallo date custom"); return; }
     setCreating(true);
     setCreateError("");
     try {
       const tipo = createForm.tipo;
       const period = createForm.period;
       const periodLabel = getPeriodLabel(tipo, period);
-      const dates = getPeriodDates(tipo, period);
+      const dates = tipo === "custom" ? { inizio: createForm.customFrom, fine: createForm.customTo } : getPeriodDates(tipo, period);
 
       const range = tipo === "settimanale" ? "7d" : tipo === "trimestrale" ? "90d" : "30d";
       const insightsParams = new URLSearchParams({ range });
@@ -358,9 +369,10 @@ export default function Reports() {
           clientId: createForm.clientId,
           tipo,
           period,
-          periodLabel,
+          periodLabel: tipo === "custom" ? `${createForm.customFrom} - ${createForm.customTo}` : periodLabel,
           periodoInizio: dates.inizio,
           periodoFine: dates.fine,
+          titolo: createForm.title || undefined,
           metrics: insightsRes ?? null,
           isRealData: insightsRes && !insightsRes.mock,
           riepilogoEsecutivo: createForm.riepilogoEsecutivo || undefined,
@@ -563,6 +575,12 @@ export default function Reports() {
 
   const pendingApproval = filteredReports.filter((r) => r.status === "in_revisione");
   const pendingSend = filteredReports.filter((r) => r.status === "approvato");
+  const reportsSentThisMonth = filteredReports.filter((r) => {
+    const s = r.sentAt || r.inviatoAt;
+    return s ? new Date(s).getMonth() === new Date().getMonth() : false;
+  }).length;
+  const drafts = filteredReports.filter((r) => r.status === "bozza").length;
+  const authors = Array.from(new Set(filteredReports.map((r) => r.createdBy).filter(Boolean)));
 
   // ═════════════════════════════════════════════════════════════════════════════
   // ── LIST VIEW ──
@@ -578,11 +596,18 @@ export default function Reports() {
               <p className="text-muted-foreground text-sm mt-1">Gestione report clienti</p>
             </div>
             <button
-              onClick={() => { setView("create"); setCreateForm({ clientId: "", tipo: "mensile", period: defaultMonth, riepilogoEsecutivo: "", analisiInsights: "", strategiaProssimoPeriodo: "", noteAggiuntive: "" }); setCreateError(""); }}
+              onClick={() => { setView("create"); setCreateForm({ clientId: "", tipo: "mensile", period: defaultMonth, customFrom: "", customTo: "", title: "", riepilogoEsecutivo: "", analisiInsights: "", strategiaProssimoPeriodo: "", noteAggiuntive: "" }); setCreateError(""); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90"
             >
               <Plus size={16} /> Nuovo report
             </button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <KpiCard label="Report totali inviati" value={filteredReports.filter((r) => ["inviato", "confermato_cliente"].includes(r.status)).length} icon={Send} />
+            <KpiCard label="In attesa di approvazione" value={pendingApproval.length} icon={Clock} color="amber" />
+            <KpiCard label="Bozze da completare" value={drafts} icon={FileText} color="indigo" />
+            <KpiCard label="Report inviati questo mese" value={reportsSentThisMonth} icon={Calendar} color="sky" />
           </div>
 
           {/* Quick sections */}
@@ -636,7 +661,7 @@ export default function Reports() {
             <select value={filterClient} onChange={(e) => setFilterClient(e.target.value ? parseInt(e.target.value) : "")}
               className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
               <option value="">Tutti i clienti</option>
-              {(clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
               className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
@@ -648,6 +673,15 @@ export default function Reports() {
               <option value="">Tutti i tipi</option>
               {Object.entries(TIPO_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
+            <select value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)}
+              className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+              <option value="">Tutti gli autori</option>
+              {authors.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)}
+              className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+            <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)}
+              className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
 
           {/* Reports table */}
@@ -668,7 +702,8 @@ export default function Reports() {
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tipo</th>
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Periodo</th>
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stato</th>
-                    <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Creato</th>
+                    <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Autore</th>
+                    <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Data invio</th>
                     <th className="text-right py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Azioni</th>
                   </tr>
                 </thead>
@@ -679,7 +714,8 @@ export default function Reports() {
                       <td className="py-3 px-4"><span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">{TIPO_LABELS[r.tipo] ?? r.tipo}</span></td>
                       <td className="py-3 px-4 text-muted-foreground">{r.periodLabel}</td>
                       <td className="py-3 px-4"><span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[r.status])}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
-                      <td className="py-3 px-4 text-xs text-muted-foreground">{r.createdAt ? new Date(r.createdAt).toLocaleDateString("it-IT") : "—"}</td>
+                      <td className="py-3 px-4 text-xs text-muted-foreground">{r.createdBy ?? "—"}</td>
+                      <td className="py-3 px-4 text-xs text-muted-foreground">{(r.sentAt || r.inviatoAt) ? new Date((r.sentAt || r.inviatoAt) as string).toLocaleDateString("it-IT") : "—"}</td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => openReport(r)} className="p-1.5 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted"><Eye size={14} /></button>
@@ -702,6 +738,12 @@ export default function Reports() {
   // ═════════════════════════════════════════════════════════════════════════════
 
   if (view === "create") {
+    const selectedClient = clientList.find((c: any) => String(c.id) === String(createForm.clientId)) as any;
+    const metaConnected = !!(selectedClient?.metaPageId);
+    const googleConnected = !!(selectedClient?.googleAdsId);
+    const autoTitle = createForm.clientId
+      ? `Report ${TIPO_LABELS[createForm.tipo] ?? "Mensile"} — ${selectedClient?.name ?? "Cliente"} — ${createForm.tipo === "custom" ? `${createForm.customFrom || "..." }/${createForm.customTo || "..."}` : getPeriodLabel(createForm.tipo, createForm.period || defaultMonth)}`
+      : "";
     return (
       <Layout>
         <div className="p-8 max-w-3xl">
@@ -719,7 +761,7 @@ export default function Reports() {
               <select value={createForm.clientId} onChange={(e) => setCreateForm((f) => ({ ...f, clientId: e.target.value }))}
                 className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
                 <option value="">Seleziona un cliente...</option>
-                {(clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
 
@@ -727,11 +769,11 @@ export default function Reports() {
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Tipo report</label>
               <div className="grid grid-cols-3 gap-2">
-                {(["settimanale", "mensile", "trimestrale"] as const).map((t) => (
+                {(["settimanale", "mensile", "trimestrale", "custom"] as const).map((t) => (
                   <button key={t} onClick={() => setCreateForm((f) => ({ ...f, tipo: t, period: t === "mensile" ? defaultMonth : t === "trimestrale" ? defaultQuarter : defaultMonth }))}
                     className={cn("py-2.5 rounded-xl text-sm font-medium border transition-all",
                       createForm.tipo === t ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input hover:border-primary/50")}>
-                    {TIPO_LABELS[t]}
+                  {TIPO_LABELS[t]}
                   </button>
                 ))}
               </div>
@@ -756,7 +798,34 @@ export default function Reports() {
               {createForm.tipo === "settimanale" && (
                 <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">Ultimi 7 giorni (automatico)</p>
               )}
+              {createForm.tipo === "custom" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input type="date" value={createForm.customFrom} onChange={(e) => setCreateForm((f) => ({ ...f, customFrom: e.target.value }))}
+                    className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+                  <input type="date" value={createForm.customTo} onChange={(e) => setCreateForm((f) => ({ ...f, customTo: e.target.value }))}
+                    className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+              )}
             </div>
+
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Titolo report</label>
+              <input value={createForm.title || autoTitle} onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+
+            {!!selectedClient && !metaConnected && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm flex items-center justify-between gap-2">
+                <span>Account Meta non collegato — i dati ads non saranno disponibili</span>
+                <button onClick={() => (window.location.href = `/clients/${selectedClient.id}`)} className="text-xs font-semibold underline">Collega ora →</button>
+              </div>
+            )}
+            {!!selectedClient && !googleConnected && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm flex items-center justify-between gap-2">
+                <span>Account Google Ads non collegato — i dati ads non saranno disponibili</span>
+                <button onClick={() => (window.location.href = `/clients/${selectedClient.id}`)} className="text-xs font-semibold underline">Collega ora →</button>
+              </div>
+            )}
 
             {/* Text sections */}
             <div>
@@ -836,6 +905,7 @@ export default function Reports() {
   const canSubmitReview = r.status === "bozza";
   const canApprove = r.status === "in_revisione";
   const canSend = r.status === "approvato";
+  const canConfirmClient = r.status === "inviato";
   const isLive = !!liveData;
 
   const igSummary = ig?.summary ?? ig ?? {};
@@ -873,6 +943,19 @@ export default function Reports() {
   const hasMeta = meta && (metaSummary.totalSpend || metaSummary.impressions || metaSummary.reach);
   const hasGoogle = google && (google.summary?.spend || google.summary?.impressions);
   const hasNoData = !hasIg && !hasMeta && !hasGoogle;
+  const tocSections = [
+    { id: "cover", label: "1. Copertina" },
+    { id: "exec", label: "2. Riepilogo Esecutivo" },
+    { id: "top-content", label: "3. Top Contenuti del Periodo" },
+    { id: "calendar", label: "4. Calendario Contenuti" },
+    { id: "audience", label: "5. Crescita e Audience" },
+    { id: "organic", label: "6. Performance Organica" },
+    { id: "meta", label: "7. Meta Ads" },
+    { id: "google", label: "8. Google Ads" },
+    { id: "insights", label: "9. Analisi e Insights" },
+    { id: "strategy", label: "10. Strategia Prossimo Periodo" },
+    { id: "notes", label: "11. Note Aggiuntive" },
+  ];
 
   return (
     <Layout>
@@ -932,6 +1015,12 @@ export default function Reports() {
               <button onClick={() => { setSendResult(null); setShowSendModal(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:opacity-90">
                 <Mail size={12} /> Invia al cliente
+              </button>
+            )}
+            {canConfirmClient && (
+              <button onClick={() => doAction("confirm-client")}
+                className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 text-white rounded-lg text-xs font-medium hover:opacity-90">
+                <CheckCircle2 size={12} /> Confermato dal cliente
               </button>
             )}
             <button onClick={handleExportPDF} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium hover:opacity-90">
@@ -1006,11 +1095,24 @@ export default function Reports() {
           )}
         </div>
 
-        {/* Print container */}
-        <div ref={printRef} className="space-y-6 bg-white">
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_280px] gap-4 items-start">
+          <aside className="hidden lg:block sticky top-6 bg-card border border-card-border rounded-xl p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Indice report</p>
+            <div className="space-y-1">
+              {tocSections.map((s) => (
+                <button key={s.id} onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  className="w-full text-left text-xs px-2 py-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground">
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          {/* Print container */}
+          <div ref={printRef} className="space-y-6 bg-white">
 
           {/* ── COPERTINA ── */}
-          <div className="bg-gradient-to-br from-[hsl(83,28%,42%)] to-[hsl(88,28%,26%)] rounded-2xl p-8 text-white text-center print:break-after-page">
+          <div id="cover" className="bg-gradient-to-br from-[hsl(83,28%,42%)] to-[hsl(88,28%,26%)] rounded-2xl p-8 text-white text-center print:break-after-page">
             <img src="/logo-bekind.png" alt="Be Kind" className="h-12 mx-auto mb-4 brightness-0 invert" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
             <h2 className="text-2xl font-bold mb-1">Be Kind Social Agency HUB</h2>
             <p className="text-white/60 text-sm mb-6">Michael Balleroni</p>
@@ -1028,7 +1130,7 @@ export default function Reports() {
           </div>
 
           {/* ── SEZ 1: RIEPILOGO ESECUTIVO ── */}
-          <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+          <section id="exec" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
             <h3 className="text-base font-bold mb-4 flex items-center gap-2"><FileText size={16} className="text-primary" /> Riepilogo Esecutivo</h3>
             {isEditing ? (
               <textarea value={editForm.riepilogoEsecutivo ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, riepilogoEsecutivo: e.target.value }))}
@@ -1075,7 +1177,7 @@ export default function Reports() {
 
           {/* ── SEZ 2: SOCIAL MEDIA ORGANICO ── */}
           {hasIg && (
-            <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
+            <section id="top-content" className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><Share2 size={16} className="text-primary" /> Social Media Organico</h3>
 
               {!hasIg && (
@@ -1186,7 +1288,7 @@ export default function Reports() {
 
           {/* ── SEZ 3: META ADS ── */}
           {hasMeta && (
-            <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
+            <section id="meta" className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><Megaphone size={16} className="text-primary" /> Meta Ads</h3>
 
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
@@ -1253,9 +1355,37 @@ export default function Reports() {
             </section>
           )}
 
+          <section id="calendar" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+            <h3 className="text-base font-bold mb-3">Calendario Contenuti del Periodo</h3>
+            <p className="text-sm text-muted-foreground">
+              Pubblicazioni rilevate: {(topPosts ?? []).length}. Seleziona un contenuto per vedere l’anteprima nel dettaglio del report.
+            </p>
+          </section>
+
+          <section id="audience" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+            <h3 className="text-base font-bold mb-3">Crescita e Audience</h3>
+            {hasIg ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <KpiCard label="Nuovi follower" value={fmt(igSummary.followerGrowth ?? 0)} icon={Users} />
+                <KpiCard label="Reach totale" value={fmt(igSummary.reach ?? 0)} icon={Eye} color="indigo" />
+                <KpiCard label="Engagement medio" value={`${(igSummary.engagementRate ?? 0).toFixed(1)}%`} icon={Heart} color="rose" />
+                <KpiCard label="Visite profilo" value={fmt(igSummary.profileViews ?? 0)} icon={ArrowUpRight} color="sky" />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Connetti Instagram Business per vedere i dati demografici e di audience.</p>
+            )}
+          </section>
+
+          <section id="organic" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+            <h3 className="text-base font-bold mb-3">Performance Organica</h3>
+            <p className="text-sm text-muted-foreground">
+              Confronto periodo corrente/precedente disponibile quando entrambi i periodi hanno dati completi.
+            </p>
+          </section>
+
           {/* ── SEZ 4: GOOGLE ADS ── */}
           {hasGoogle ? (
-            <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
+            <section id="google" className="bg-card border border-card-border rounded-xl p-6 shadow-sm print:break-before-page">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><Globe size={16} className="text-blue-500" /> Google Ads</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 <KpiCard label="Spesa" value={fmtEur(google.summary?.spend ?? 0)} icon={DollarSign} color="amber" />
@@ -1319,7 +1449,7 @@ export default function Reports() {
           )}
 
           {/* ── SEZ 5: ANALISI E INSIGHTS ── */}
-          <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+          <section id="insights" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
             <h3 className="text-base font-bold mb-4 flex items-center gap-2"><BarChart2 size={16} className="text-primary" /> Analisi e Insights</h3>
             {isEditing ? (
               <textarea value={editForm.analisiInsights ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, analisiInsights: e.target.value }))}
@@ -1333,7 +1463,7 @@ export default function Reports() {
           </section>
 
           {/* ── SEZ 6: STRATEGIA PROSSIMO PERIODO ── */}
-          <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+          <section id="strategy" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
             <h3 className="text-base font-bold mb-4 flex items-center gap-2"><Target size={16} className="text-primary" /> Strategia Prossimo Periodo</h3>
             {isEditing ? (
               <textarea value={editForm.strategiaProssimoPeriodo ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, strategiaProssimoPeriodo: e.target.value }))}
@@ -1347,7 +1477,7 @@ export default function Reports() {
           </section>
 
           {/* ── SEZ 7: NOTE AGGIUNTIVE ── */}
-          <section className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
+          <section id="notes" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
             <h3 className="text-base font-bold mb-4 flex items-center gap-2"><FileText size={16} className="text-muted-foreground" /> Note Aggiuntive</h3>
             {isEditing ? (
               <textarea value={editForm.noteAggiuntive ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, noteAggiuntive: e.target.value }))}
@@ -1364,6 +1494,22 @@ export default function Reports() {
           <div className="hidden print:block text-center text-xs text-muted-foreground py-4 border-t border-border">
             Be Kind Social Agency HUB · Michael Balleroni · info@bekind.agency
           </div>
+          </div>
+
+          <aside className="hidden lg:block sticky top-6 bg-card border border-card-border rounded-xl p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Strumenti</p>
+            <div className="space-y-2">
+              <button onClick={handleRefreshLive} disabled={liveLoading} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-secondary rounded-lg text-xs">
+                {liveLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh dati
+              </button>
+              <button onClick={handleExportPDF} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-secondary rounded-lg text-xs">
+                <Download size={12} /> Anteprima/PDF
+              </button>
+              <button onClick={() => canSubmitReview && doAction("submit-review")} disabled={!canSubmitReview || !!actionLoading} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-100 text-amber-800 rounded-lg text-xs disabled:opacity-50">
+                <Send size={12} /> Invia approvazione
+              </button>
+            </div>
+          </aside>
         </div>
 
         {/* ── REJECT MODAL ── */}

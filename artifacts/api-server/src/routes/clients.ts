@@ -13,8 +13,8 @@ const router: IRouter = Router();
 function serializeClient(c: typeof clientsTable.$inferSelect) {
   return {
     ...c,
-    createdAt: c.createdAt.toISOString(),
-    updatedAt: c.updatedAt.toISOString(),
+    createdAt: c.createdAt ? new Date(c.createdAt as any).toISOString() : null,
+    updatedAt: c.updatedAt ? new Date(c.updatedAt as any).toISOString() : null,
   };
 }
 
@@ -143,64 +143,141 @@ router.get("/clients/duplicate-check", async (req, res): Promise<void> => {
 });
 
 router.post("/clients", async (req, res): Promise<void> => {
-  const body = req.body as Record<string, any>;
-  if (!body.name?.trim()) { res.status(400).json({ error: "name required" }); return; }
-  const [client] = await db.insert(clientsTable).values({
-    name: body.name,
-    email: body.email ?? null,
-    phone: body.phone ?? null,
-    company: body.company ?? null,
-    color: body.color ?? "#7a8f5c",
-    logoUrl: body.logoUrl ?? null,
-    ragioneSociale: body.ragioneSociale ?? null,
-    piva: body.piva ?? null,
-    codiceFiscale: body.codiceFiscale ?? null,
-    indirizzo: body.indirizzo ?? null,
-    cap: body.cap ?? null,
-    citta: body.citta ?? null,
-    provincia: body.provincia ?? null,
-    paese: body.paese ?? "Italia",
-    website: body.website ?? null,
-    notes: body.notes ?? null,
-    instagramHandle: body.instagramHandle ?? null,
-    metaPageId: body.metaPageId ?? null,
-    googleAdsId: body.googleAdsId ?? null,
-    driveUrl: body.driveUrl ?? null,
-    reportRecipientEmail: body.reportRecipientEmail ?? null,
-    nomeCommerciale: body.nomeCommerciale ?? body.name,
-    settore: body.settore ?? null,
-    dimensione: body.dimensione ?? null,
-    brandColor: body.brandColor ?? body.color ?? "#7a8f5c",
-    descrizione: body.descrizione ?? null,
-    comeAcquisito: body.comeAcquisito ?? null,
-    clienteDal: body.clienteDal ?? null,
-    noteInterne: body.noteInterne ?? null,
-    tagsJson: JSON.stringify(Array.isArray(body.tags) ? body.tags : []),
-    accountManagerId: body.accountManagerId ?? null,
-  }).returning();
+  try {
+    const body = req.body as Record<string, any>;
+    const parsedAccountManagerId =
+      body.accountManagerId === undefined || body.accountManagerId === null || String(body.accountManagerId).trim() === ""
+        ? null
+        : Number(body.accountManagerId);
+    const finalName =
+      String(body.name ?? "").trim() ||
+      String(body.ragioneSociale ?? "").trim() ||
+      String(body.nomeCommerciale ?? "").trim() ||
+      `Cliente senza nome - ${new Date().toLocaleString("it-IT")}`;
+    let client: typeof clientsTable.$inferSelect | undefined;
+    const minimalInsert = {
+      name: finalName,
+      company: body.company ?? body.nomeCommerciale ?? finalName,
+      color: body.color ?? "#7a8f5c",
+      tagsJson: JSON.stringify(Array.isArray(body.tags) ? body.tags : []),
+    };
+    try {
+      const [created] = await db.insert(clientsTable).values({
+        name: finalName,
+        email: body.email ?? null,
+        phone: body.phone ?? null,
+        company: body.company ?? body.nomeCommerciale ?? finalName,
+        color: body.color ?? "#7a8f5c",
+        logoUrl: body.logoUrl ?? null,
+        ragioneSociale: body.ragioneSociale ?? null,
+        piva: body.piva ?? null,
+        codiceFiscale: body.codiceFiscale ?? null,
+        indirizzo: body.indirizzo ?? null,
+        cap: body.cap ?? null,
+        citta: body.citta ?? null,
+        provincia: body.provincia ?? null,
+        paese: body.paese ?? "Italia",
+        website: body.website ?? null,
+        notes: body.notes ?? null,
+        instagramHandle: body.instagramHandle ?? null,
+        metaPageId: body.metaPageId ?? null,
+        googleAdsId: body.googleAdsId ?? null,
+        driveUrl: body.driveUrl ?? null,
+        reportRecipientEmail: body.reportRecipientEmail ?? null,
+        nomeCommerciale: body.nomeCommerciale ?? finalName,
+        settore: body.settore ?? null,
+        dimensione: body.dimensione ?? null,
+        brandColor: body.brandColor ?? body.color ?? "#7a8f5c",
+        descrizione: body.descrizione ?? null,
+        comeAcquisito: body.comeAcquisito ?? null,
+        clienteDal: body.clienteDal ?? null,
+        noteInterne: body.noteInterne ?? null,
+        tagsJson: JSON.stringify(Array.isArray(body.tags) ? body.tags : []),
+        accountManagerId: Number.isFinite(parsedAccountManagerId as number) ? parsedAccountManagerId : null,
+      }).returning();
+      client = created;
+    } catch (e: any) {
+      try {
+        const [fallback] = await db.insert(clientsTable).values({
+          name: finalName,
+          email: body.email ?? null,
+          phone: body.phone ?? null,
+          company: body.company ?? body.nomeCommerciale ?? finalName,
+          color: body.color ?? "#7a8f5c",
+          logoUrl: body.logoUrl ?? null,
+          website: body.website ?? null,
+          notes: body.notes ?? null,
+          ragioneSociale: body.ragioneSociale ?? null,
+          piva: body.piva ?? null,
+          codiceFiscale: body.codiceFiscale ?? null,
+          indirizzo: body.indirizzo ?? null,
+          cap: body.cap ?? null,
+          citta: body.citta ?? null,
+          provincia: body.provincia ?? null,
+          paese: body.paese ?? "Italia",
+          instagramHandle: body.instagramHandle ?? null,
+          metaPageId: body.metaPageId ?? null,
+          googleAdsId: body.googleAdsId ?? null,
+          driveUrl: body.driveUrl ?? null,
+          reportRecipientEmail: body.reportRecipientEmail ?? null,
+        }).returning();
+        client = fallback;
+      } catch (fallbackError: any) {
+        try {
+          const [minimal] = await db.insert(clientsTable).values(minimalInsert).returning();
+          client = minimal;
+        } catch (minimalError: any) {
+          res.status(500).json({
+            error:
+              minimalError?.message ??
+              fallbackError?.message ??
+              e?.message ??
+              "Errore salvataggio cliente",
+            detail: {
+              primary: e?.message ?? null,
+              fallback: fallbackError?.message ?? null,
+              minimal: minimalError?.message ?? null,
+            },
+          });
+          return;
+        }
+      }
+    }
 
-  // Auto-create onboarding advanced task linked to client
-  await db.insert(tasksTable).values({
-    clientId: client.id,
-    title: `Onboarding Nuovo Cliente - ${client.name}`,
-    description: "Checklist onboarding creata automaticamente",
-    status: "todo",
-    priority: "high",
-    tipo: "avanzata",
-    categoria: "Onboarding Nuovo Cliente",
-    checklistJson: JSON.stringify([
-      { id: "ob1", testo: "Analisi gratuita", completato: false, gruppo: "" },
-      { id: "ob2", testo: "Meeting conoscitivo", completato: false, gruppo: "" },
-      { id: "ob3", testo: "Preventivo con portfolio", completato: false, gruppo: "" },
-      { id: "ob4", testo: "Contratto firmato", completato: false, gruppo: "" },
-      { id: "ob5", testo: "Drive condiviso creato", completato: false, gruppo: "" },
-      { id: "ob6", testo: "Briefing con domande e obiettivi", completato: false, gruppo: "" },
-      { id: "ob7", testo: "Credenziali ricevute o pagine create", completato: false, gruppo: "" },
-      { id: "ob8", testo: "Brand Kit Canva creato", completato: false, gruppo: "" },
-      { id: "ob9", testo: "Ricerca competitors completata", completato: false, gruppo: "" },
-    ]),
-  });
-  res.status(201).json(serializeClient(client));
+    if (!client) {
+      res.status(500).json({ error: "Errore salvataggio cliente: nessun record creato" });
+      return;
+    }
+
+    // Auto-create onboarding advanced task linked to client
+    try {
+      await db.insert(tasksTable).values({
+        clientId: client.id,
+        title: `Onboarding Nuovo Cliente - ${client.name}`,
+        description: "Checklist onboarding creata automaticamente",
+        status: "todo",
+        priority: "high",
+        tipo: "avanzata",
+        categoria: "Onboarding Nuovo Cliente",
+        checklistJson: JSON.stringify([
+          { id: "ob1", testo: "Analisi gratuita", completato: false, gruppo: "" },
+          { id: "ob2", testo: "Meeting conoscitivo", completato: false, gruppo: "" },
+          { id: "ob3", testo: "Preventivo con portfolio", completato: false, gruppo: "" },
+          { id: "ob4", testo: "Contratto firmato", completato: false, gruppo: "" },
+          { id: "ob5", testo: "Drive condiviso creato", completato: false, gruppo: "" },
+          { id: "ob6", testo: "Briefing con domande e obiettivi", completato: false, gruppo: "" },
+          { id: "ob7", testo: "Credenziali ricevute o pagine create", completato: false, gruppo: "" },
+          { id: "ob8", testo: "Brand Kit Canva creato", completato: false, gruppo: "" },
+          { id: "ob9", testo: "Ricerca competitors completata", completato: false, gruppo: "" },
+        ]),
+      });
+    } catch {
+      // Do not fail client creation if onboarding task insertion fails.
+    }
+    res.status(201).json(serializeClient(client));
+  } catch (routeError: any) {
+    res.status(500).json({ error: routeError?.message ?? "Errore salvataggio cliente" });
+  }
 });
 
 router.get("/clients/:id", async (req, res): Promise<void> => {

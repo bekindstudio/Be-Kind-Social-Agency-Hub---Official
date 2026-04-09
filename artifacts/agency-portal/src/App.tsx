@@ -44,6 +44,9 @@ const queryClient = new QueryClient({
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+/** Solo demo / emergenza: niente login. Non usare in produzione con dati sensibili. */
+const authDisabled =
+  import.meta.env.VITE_AUTH_DISABLED === "true" || import.meta.env.VITE_AUTH_DISABLED === "1";
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -104,6 +107,8 @@ function SignInPage() {
 
 // Gate that redirects to /sign-in if the user is not authenticated
 function RequireAuth({ children }: { children: React.ReactNode }) {
+  if (authDisabled) return <>{children}</>;
+
   const { isLoaded, isSignedIn } = useAuth();
 
   if (!isLoaded) {
@@ -130,6 +135,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AuthenticatedAiWidgets() {
+  if (authDisabled) {
+    return (
+      <>
+        <AiFloatingButton />
+        <AiChatPanel mode="drawer" />
+      </>
+    );
+  }
   const { isSignedIn } = useAuth();
   if (!isSignedIn) return null;
   return (
@@ -141,6 +154,7 @@ function AuthenticatedAiWidgets() {
 }
 
 function HomeRoute() {
+  if (authDisabled) return <Redirect to="/dashboard" />;
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return null;
   if (isSignedIn) return <Redirect to="/dashboard" />;
@@ -151,7 +165,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomeRoute} />
-      <Route path="/sign-in/*?" component={SignInPage} />
+      {!authDisabled && <Route path="/sign-in/*?" component={SignInPage} />}
       <Route path="/dashboard">
         <RequireAuth><Dashboard /></RequireAuth>
       </Route>
@@ -235,30 +249,83 @@ function ClerkProviderWithRoutes() {
 }
 
 function MissingClerkConfig() {
+  const mode = import.meta.env.MODE;
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
       <div className="max-w-xl w-full rounded-xl border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Missing Clerk configuration</h1>
+        <h1 className="text-xl font-semibold">Configurazione Clerk mancante</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          This app requires <code className="font-mono">VITE_CLERK_PUBLISHABLE_KEY</code> to run.
+          Nel bundle del sito non c’è <code className="font-mono">VITE_CLERK_PUBLISHABLE_KEY</code>. Di solito non è un errore della chiave in sé: <strong>non è stata letta al momento del build</strong> (Vercel) oppure manca <code className="font-mono">.env.local</code> in locale.
         </p>
-        <div className="mt-4 rounded-lg bg-muted p-4">
-          <pre className="text-xs whitespace-pre-wrap leading-relaxed">{`Create a file: artifacts/agency-portal/.env.local
-
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-# Optional:
-# VITE_CLERK_PROXY_URL=...
-`}</pre>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Build: <code className="font-mono">{mode}</code>
+        </p>
+        <div className="mt-4 rounded-lg bg-muted p-4 space-y-3 text-xs">
+          <p className="font-semibold text-foreground">Checklist Vercel (errori frequenti)</p>
+          <ol className="list-decimal pl-4 space-y-2 text-muted-foreground">
+            <li>
+              Nome <strong>esatto</strong>: <code className="font-mono text-foreground">VITE_CLERK_PUBLISHABLE_KEY</code> — non <code className="font-mono">CLERK_PUBLISHABLE_KEY</code> (quello serve solo su <strong>Render</strong> per l’API).
+            </li>
+            <li>
+              Valore = una sola riga, <strong>senza virgolette</strong>, che inizia con <code className="font-mono">pk_test_</code> o <code className="font-mono">pk_live_</code> (Dashboard Clerk → Configure → <strong>API Keys</strong> → <em>Publishable key</em>).
+            </li>
+            <li>
+              Spunta ambienti: almeno <strong>Production</strong> (se apri il dominio principale). Per URL “preview” serve anche <strong>Preview</strong>.
+            </li>
+            <li>
+              Dopo Salva: <strong>Deployments → Redeploy</strong> (o nuovo commit). Senza un <strong>nuovo build</strong> la chiave non entra nel sito.
+            </li>
+            <li>
+              Opzionale: <strong>Redeploy → spunta “Clear cache”</strong> se sospetti un build vecchio.
+            </li>
+            <li>
+              Repository: l’ultimo deploy deve includere il <code className="font-mono">vite.config.ts</code> che legge <code className="font-mono">process.env</code> (commit recente su <code className="font-mono">main</code>).
+            </li>
+          </ol>
+          <p className="font-medium text-foreground pt-2">In locale</p>
+          <pre className="whitespace-pre-wrap leading-relaxed bg-background/50 p-2 rounded">{`artifacts/agency-portal/.env.local
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`}</pre>
+          <p className="font-medium text-foreground pt-2">Render (backend) — separato</p>
+          <p className="text-muted-foreground">
+            Lì servono <code className="font-mono text-foreground">CLERK_PUBLISHABLE_KEY</code> e <code className="font-mono text-foreground">CLERK_SECRET_KEY</code>. Non sostituiscono <code className="font-mono">VITE_*</code> sul frontend.
+          </p>
+          <p className="font-medium text-foreground pt-2">Solo demo (senza login)</p>
+          <pre className="whitespace-pre-wrap leading-relaxed bg-background/50 p-2 rounded">{`VITE_AUTH_DISABLED=true`}</pre>
+          <p className="text-amber-700">Non per dati sensibili in pubblico.</p>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">
-          After setting it, restart the dev server.
-        </p>
       </div>
     </div>
   );
 }
 
+function AppNoClerkShell() {
+  return (
+    <ErrorBoundary>
+      <WouterRouter base={basePath}>
+        <QueryClientProvider client={queryClient}>
+          <div className="bg-amber-400/90 text-amber-950 text-center text-xs font-medium py-1.5 px-3">
+            Modalità senza autenticazione (demo). Non esporre su internet con dati reali senza Clerk o altro login.
+          </div>
+          <AiChatProvider>
+            <TooltipProvider>
+              <ErrorBoundary>
+                <Router />
+              </ErrorBoundary>
+              <Toaster />
+            </TooltipProvider>
+            <AuthenticatedAiWidgets />
+          </AiChatProvider>
+        </QueryClientProvider>
+      </WouterRouter>
+    </ErrorBoundary>
+  );
+}
+
 function App() {
+  if (authDisabled) {
+    return <AppNoClerkShell />;
+  }
+
   if (!clerkPubKey) {
     return <MissingClerkConfig />;
   }

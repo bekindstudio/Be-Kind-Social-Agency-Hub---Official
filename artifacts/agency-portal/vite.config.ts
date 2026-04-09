@@ -1,32 +1,49 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+/** Paste da dashboard a volte include spazi/newline: normalizza prima che Vite legga le VITE_. */
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("VITE_")) {
+    const v = process.env[key];
+    if (v !== undefined) process.env[key] = v.trim();
+  }
+}
 
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
 const basePath = process.env.BASE_PATH || "/";
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8080";
 
-export default defineConfig(async ({ mode }) => {
-  // loadEnv reads .env* files. CI hosts (e.g. Vercel) inject vars only into process.env.
-  const fileEnv = loadEnv(mode, import.meta.dirname, "");
-  const str = (k: string) =>
-    String(fileEnv[k] ?? process.env[k] ?? "");
+function requireClerkPublishableKeyForCiBuild(): Plugin {
+  return {
+    name: "require-clerk-publishable-key-ci",
+    configResolved(resolved) {
+      if (resolved.command !== "build") return;
+      if (process.env.VITE_AUTH_DISABLED === "true" || process.env.VITE_AUTH_DISABLED === "1") {
+        return;
+      }
+      const key = (process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "").trim();
+      if (key) return;
+      if (process.env.VERCEL === "1" || process.env.CI === "true") {
+        throw new Error(
+          "[agency-portal] VITE_CLERK_PUBLISHABLE_KEY è vuota durante il build. " +
+            "Su Vercel: Project → Settings → Environment Variables, aggiungi VITE_CLERK_PUBLISHABLE_KEY " +
+            "(stesso valore della Publishable key in Clerk), ambienti Production/Preview, poi Redeploy.",
+        );
+      }
+    },
+  };
+}
 
+export default defineConfig(async () => {
   return {
     base: basePath,
-    define: {
-      "import.meta.env.VITE_CLERK_PUBLISHABLE_KEY": JSON.stringify(
-        str("VITE_CLERK_PUBLISHABLE_KEY"),
-      ),
-      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(str("VITE_SUPABASE_URL")),
-      "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(str("VITE_SUPABASE_ANON_KEY")),
-      "import.meta.env.VITE_CLERK_PROXY_URL": JSON.stringify(str("VITE_CLERK_PROXY_URL")),
-      "import.meta.env.VITE_API_PROXY_TARGET": JSON.stringify(str("VITE_API_PROXY_TARGET")),
-    },
+    envDir: path.resolve(import.meta.dirname),
     plugins: [
+      requireClerkPublishableKeyForCiBuild(),
       react(),
       tailwindcss(),
       runtimeErrorOverlay(),

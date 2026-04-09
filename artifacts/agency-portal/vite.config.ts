@@ -10,18 +10,21 @@ const basePath = process.env.BASE_PATH || "/";
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8080";
 
 export default defineConfig(async ({ mode }) => {
-  // Vite only loads `.env*` into `import.meta.env`, not `process.env`.
-  // We need `loadEnv` here because we inject env vars via `define` below.
-  const env = loadEnv(mode, import.meta.dirname, "");
+  // loadEnv reads .env* files. CI hosts (e.g. Vercel) inject vars only into process.env.
+  const fileEnv = loadEnv(mode, import.meta.dirname, "");
+  const str = (k: string) =>
+    String(fileEnv[k] ?? process.env[k] ?? "");
 
   return {
     base: basePath,
     define: {
       "import.meta.env.VITE_CLERK_PUBLISHABLE_KEY": JSON.stringify(
-        env.VITE_CLERK_PUBLISHABLE_KEY ?? "",
+        str("VITE_CLERK_PUBLISHABLE_KEY"),
       ),
-      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(env.VITE_SUPABASE_URL ?? ""),
-      "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(env.VITE_SUPABASE_ANON_KEY ?? ""),
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(str("VITE_SUPABASE_URL")),
+      "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(str("VITE_SUPABASE_ANON_KEY")),
+      "import.meta.env.VITE_CLERK_PROXY_URL": JSON.stringify(str("VITE_CLERK_PROXY_URL")),
+      "import.meta.env.VITE_API_PROXY_TARGET": JSON.stringify(str("VITE_API_PROXY_TARGET")),
     },
     plugins: [
       react(),

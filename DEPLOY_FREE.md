@@ -15,7 +15,7 @@ Questa guida pubblica l'app in produzione con costi zero (con limiti free tier).
 - Crea un nuovo **Web Service** da GitHub.
 - Root directory: `artifacts/api-server`
 - Build command: `pnpm install && pnpm run build`
-- Start command: `pnpm run start`
+- Start command: `pnpm run start` (deve essere **esattamente** questo; se vedi nei log `Running '1'` hai messo `1` nel campo Start invece del comando, oppure il campo Start è vuoto e un valore si è corrotto — correggi e ridistribuisci.)
 
 Variabili ambiente consigliate (Render -> Environment):
 

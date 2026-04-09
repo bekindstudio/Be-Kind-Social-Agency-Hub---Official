@@ -1,0 +1,269 @@
+Add an AI assistant chat inside Agency Hub that every team member 
+can use to get advice, ideas and support directly within the platform.
+Do not modify anything that already exists.
+
+---
+
+OVERVIEW:
+A dedicated AI chat powered by Claude (Anthropic API) accessible 
+from anywhere in the app via a floating button or sidebar item.
+The AI knows the context of the agency — clients, projects, campaigns, 
+deadlines — and gives relevant, actionable advice based on real data.
+
+---
+
+1. ACCESS POINTS
+
+FLOATING BUTTON:
+- Purple circular button fixed in the bottom-right corner of every page
+- Icon: sparkle/star symbol
+- Label on hover: "Ask AI"
+- Click opens the AI chat panel as a slide-in drawer from the right
+- Does not cover the main content (panel is 420px wide, content shifts left)
+
+SIDEBAR ITEM:
+- "AI Assistant" item in the left sidebar navigation
+- Opens the AI chat in full-page mode for longer work sessions
+- Shows conversation history for the current user
+
+CONTEXTUAL TRIGGER:
+- On every project page add a small button: "Ask AI about this project"
+- On every client page: "Ask AI about this client"  
+- On every report page: "Ask AI to help write this section"
+- These buttons open the AI chat with the relevant context pre-loaded
+
+---
+
+2. AI CAPABILITIES
+
+The AI assistant can help the team with:
+
+CONTENT CREATION:
+- "Write 5 Instagram caption ideas for [client] this week"
+- "Suggest hashtags for a fashion brand post about summer collection"
+- "Write a reel script for [client] promoting their new product"
+- "Create 3 variations of this caption for A/B testing"
+- "Translate this caption into English for a paid campaign"
+
+STRATEGY & ADVICE:
+- "Our engagement dropped 20% this month for [client], what should we do?"
+- "What content format works best for a restaurant on Instagram in 2025?"
+- "Suggest a content calendar for [client] for next month"
+- "What's a good posting frequency for a B2B LinkedIn account?"
+- "How can we improve the ROAS on this Meta campaign?"
+
+REPORT WRITING:
+- "Write the executive summary for [client]'s monthly report"
+- "Write the strategic notes section based on these metrics: [paste metrics]"
+- "Summarize this month's performance in 3 bullet points for the client"
+- "Write a professional intro for the quarterly report for [client]"
+
+ADS & CAMPAIGNS:
+- "Write 3 ad copy variations for a Meta campaign targeting 25-40 year olds"
+- "Suggest a targeting strategy for a Google Search campaign for [client]"
+- "What bid strategy should we use for this Meta campaign objective?"
+- "Review this ad copy and suggest improvements"
+
+GENERAL AGENCY TASKS:
+- "Draft a professional email to [client] explaining the delay on deliverables"
+- "Write talking points for the monthly call with [client]"
+- "Suggest a response to this client complaint: [paste text]"
+- "Create a brief for the creative team for next month's photoshoot"
+
+---
+
+3. CONTEXT AWARENESS
+
+When the AI chat is opened from a specific page, automatically inject 
+context into the system prompt:
+
+From a PROJECT page inject:
+- Project name, client name, status, budget, start/end date
+- List of active tasks and their status
+- Last 5 messages from the project channel
+- Current month's published content count
+
+From a CLIENT page inject:
+- Client name, sector, active projects
+- Latest report summary (if available)
+- Current campaign status (Meta/Google)
+- Contract end date
+
+From a REPORT page inject:
+- Client name, report period
+- Available KPI data (follower count, reach, engagement rate, 
+  top post titles, ad spend, ROAS)
+- Ask AI to help write specific sections based on real numbers
+
+Generic context always injected (system prompt):
+"You are an expert digital marketing assistant working inside Agency Hub,
+ a platform used by Michael Balleroni's marketing agency based in Pesaro, Italy.
+ The agency specializes in social media management, content creation, 
+ Meta Ads and Google Ads for Italian SMB clients.
+ Always respond in Italian unless the user writes in another language.
+ Be practical, concise and professional. Give specific actionable advice.
+ When suggesting content ideas, adapt them to the Italian market and culture."
+
+---
+
+4. CHAT UI
+
+PANEL MODE (slide-in drawer):
+- Header: "AI Assistant" + close button + "Open fullscreen" icon
+- Message history scrollable area
+- Input box at bottom with send button
+- Suggested prompts shown when chat is empty (quick-start chips):
+  * "Scrivi una caption per Instagram"
+  * "Analizza le performance di questo mese"  
+  * "Aiutami con il report del cliente"
+  * "Idee per la prossima campagna"
+  * "Scrivi il testo per un'ads Meta"
+
+FULL PAGE MODE:
+- Two-column layout:
+  LEFT: conversation history list (all past sessions, searchable)
+  RIGHT: active conversation
+
+MESSAGE BUBBLES:
+- User messages: right-aligned, purple background
+- AI messages: left-aligned, white card with subtle border
+- AI responses support markdown rendering:
+  * Bold text
+  * Bullet point lists
+  * Numbered lists
+  * Code blocks (for ad scripts, HTML email templates)
+  * Tables (for content calendars, comparison data)
+
+AI MESSAGE ACTIONS (hover on any AI message):
+- Copy to clipboard
+- Insert into current document/report (if opened from report context)
+- Save as note (saves to project notes)
+- Thumbs up / thumbs down (feedback for quality tracking)
+
+---
+
+5. CONVERSATION MANAGEMENT
+
+Each conversation is saved per user in Supabase:
+- conversations: id, user_id, title (auto-generated from first message),
+  context_type (general/project/client/report), context_id, 
+  created_at, updated_at, message_count
+
+- ai_messages: id, conversation_id, role (user/assistant), 
+  content, tokens_used, feedback (positive/negative/null),
+  created_at
+
+Features:
+- Conversations persist across sessions
+- Auto-title: first 50 characters of the first user message
+- User can rename, star or delete conversations
+- Search across all past conversations
+- "New conversation" button always visible
+- Max 50 conversations stored per user (oldest auto-archived)
+
+---
+
+6. ANTHROPIC API INTEGRATION
+
+Model: claude-sonnet-4-20250514
+Max tokens: 2048 per response
+Temperature: 0.7 (balanced between creative and factual)
+
+API call structure (Next.js API route — server side only):
+POST /api/ai/chat
+
+Request body:
+{
+  messages: [...conversationHistory],
+  context: {
+    type: "project" | "client" | "report" | "general",
+    data: { ...relevantContextData }
+  }
+}
+
+System prompt built dynamically:
+- Base agency context (always included)
+- Page-specific context (injected when relevant)
+- Current date and period
+- Client/project data (when opened from those pages)
+
+Streaming response:
+- Use Anthropic streaming API so words appear progressively
+- Show animated typing indicator (three dots) while waiting for first token
+- User can stop generation mid-stream with a "Stop" button
+
+Error handling:
+- If API call fails show: "AI non disponibile al momento. Riprova tra poco."
+- Rate limit handling with retry after delay
+- Never expose API keys to the client side
+
+---
+
+7. USAGE TRACKING
+
+Track in Supabase (ai_usage table):
+- user_id, date, conversations_count, messages_count, tokens_used
+- Admin dashboard widget showing:
+  * Total AI conversations this month
+  * Most active user
+  * Most common topics (based on conversation titles)
+  * Estimated API cost (tokens × price)
+
+---
+
+8. SUGGESTED PROMPTS BY CONTEXT
+
+When opened from a PROJECT channel, show these chips:
+- "Scrivi una caption per [project client]"
+- "Idee per i prossimi 3 contenuti"
+- "Analizza lo stato del progetto"
+- "Scrivi un aggiornamento per il cliente"
+
+When opened from a REPORT page, show:
+- "Scrivi il riepilogo esecutivo"
+- "Scrivi la sezione strategia"
+- "Analizza questi risultati"
+- "Cosa migliorare il prossimo mese?"
+
+When opened from a CLIENT page, show:
+- "Idee di contenuto per questo cliente"
+- "Analizza il settore di questo cliente"
+- "Suggerisci una strategia social"
+- "Scrivi una email professionale"
+
+---
+
+9. ANTHROPIC API KEY SETUP
+
+Add ANTHROPIC_API_KEY to the environment variables.
+Create a settings panel in Admin → Integrations where the admin 
+can input and save the Anthropic API key.
+The key is stored encrypted in Supabase (never exposed client-side).
+Show current usage stats next to the key field.
+
+---
+
+10. DATABASE — new tables:
+
+ai_conversations (
+  id, user_id, title, context_type, context_id,
+  is_starred, created_at, updated_at
+)
+
+ai_messages (
+  id, conversation_id, role, content, 
+  tokens_used, feedback, created_at
+)
+
+ai_usage (
+  id, user_id, date, conversations_count, 
+  messages_count, tokens_used, created_at
+)
+
+---
+
+Use the Anthropic API key from environment variables (ANTHROPIC_API_KEY).
+Never hardcode it. All API calls must be server-side only via Next.js 
+API routes. Show the chat working immediately with a welcome message:
+"Ciao! Sono il tuo assistente AI. Come posso aiutarti oggi?"
+with the suggested prompt chips below.

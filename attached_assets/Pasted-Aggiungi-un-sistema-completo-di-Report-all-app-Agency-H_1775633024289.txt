@@ -1,0 +1,210 @@
+Aggiungi un sistema completo di Report all'app Agency Hub esistente. 
+Non modificare nulla di ciò che esiste già.
+
+---
+
+LOGICA GENERALE:
+- Ogni report è legato a UN cliente specifico
+- I dati sono REALI, collegati alle API di Facebook/Instagram e Google Ads
+- Se le API non sono ancora collegate per quel cliente, il sistema mostra 
+  un avviso chiaro: "Collega l'account Meta / Google Ads per generare 
+  dati reali" con pulsante diretto alle impostazioni di connessione
+- NON usare mai dati fittizi nei report reali. I grafici vuoti sono 
+  preferibili a dati inventati.
+
+---
+
+1. TIPOLOGIE DI REPORT
+Per ogni cliente si possono creare 3 tipi:
+
+- SETTIMANALE: ultimi 7 giorni
+- MENSILE: mese solare selezionabile (es. Marzo 2026)
+- TRIMESTRALE: trimestre selezionabile (es. Q1 2026)
+
+Ogni report ha:
+- Stato: Bozza → In revisione → Approvato → Inviato
+- L'invio al cliente avviene SOLO dopo approvazione manuale del team
+- Data creazione, periodo di riferimento, autore
+
+---
+
+2. GENERAZIONE AUTOMATICA
+- Ogni cliente ha una frequenza preferita: settimanale / mensile / trimestrale
+- Il sistema genera automaticamente una BOZZA del report alla scadenza 
+  del periodo (es. ogni lunedì mattina per i settimanali, ogni 1 del 
+  mese per i mensili)
+- Quando la bozza è pronta appare una notifica interna: 
+  "Report [Cliente] pronto per revisione"
+- Il team riceve la notifica, rivede, approva e poi invia
+
+---
+
+3. STRUTTURA DEL REPORT (sezioni)
+
+COPERTINA:
+- Logo agenzia (Michael Balleroni - Be Kind Social Agency)
+- Nome cliente
+- Periodo di riferimento
+- Data di invio
+
+SEZIONE 1 — RIEPILOGO ESECUTIVO:
+- Testo libero scritto dal team: sintesi del periodo, 
+  highlights principali, tono professionale
+- KPI principali in card: 
+  * Follower totali e variazione % vs periodo precedente
+  * Reach totale
+  * Engagement rate medio
+  * Contenuti pubblicati
+  * Spesa ads totale (se attive)
+  * ROAS (se ads attive)
+
+SEZIONE 2 — SOCIAL MEDIA ORGANICO:
+Dati reali da Facebook/Instagram Graph API:
+- Grafico a linee: crescita follower nel periodo
+- Grafico a barre: reach per post (top 10)
+- Grafico a barre: engagement per contenuto
+- Tabella top 5 contenuti: 
+  * Immagine di anteprima
+  * Tipo (post/reel/story/carosello)
+  * Data pubblicazione
+  * Like, commenti, condivisioni, reach, impression, engagement rate
+- Grafico a ciambella: distribuzione formati pubblicati
+- Confronto con periodo precedente per ogni metrica
+
+SEZIONE 3 — META ADS (se attive):
+Dati reali da Meta Ads API:
+- Card KPI: spesa totale, impression, reach, click, CTR, CPM, CPC, 
+  conversioni, ROAS, frequenza
+- Grafico a linee: spesa giornaliera nel periodo
+- Grafico a barre: performance per campagna
+- Tabella campagne attive con tutte le metriche
+- Confronto con periodo precedente
+
+SEZIONE 4 — GOOGLE ADS (se attive):
+Dati reali da Google Ads API:
+- Card KPI: spesa, impression, click, CTR, CPC medio, conversioni, 
+  costo/conversione, ROAS, Quality Score medio
+- Grafico a linee: click e conversioni nel tempo
+- Tabella campagne con performance
+- Top parole chiave per conversioni
+- Confronto con periodo precedente
+
+SEZIONE 5 — ANALISI E INSIGHTS:
+Campo testo ricco (rich text editor) compilato dal team con:
+- Cosa ha funzionato bene in questo periodo
+- Cosa ha funzionato meno
+- Motivazioni e contesto
+
+SEZIONE 6 — STRATEGIA PROSSIMO PERIODO:
+Campo testo ricco compilato dal team con:
+- Azioni pianificate per il prossimo periodo
+- Modifiche alla strategia
+- Obiettivi specifici da raggiungere
+- Budget consigliato (se cambia)
+
+SEZIONE 7 — NOTE AGGIUNTIVE:
+Campo testo libero per comunicazioni extra al cliente
+
+---
+
+4. FLUSSO DI APPROVAZIONE E INVIO
+
+STEP 1 — BOZZA:
+Il sistema genera la bozza con tutti i dati reali automaticamente.
+Il team può modificare tutte le sezioni di testo.
+
+STEP 2 — REVISIONE:
+Il responsabile clicca "Invia per approvazione".
+Appare notifica a tutti gli admin: "Report [Cliente] in attesa di approvazione".
+
+STEP 3 — APPROVAZIONE:
+L'admin rivede il report completo e può:
+- Approvare → il report diventa "Approvato" e si sblocca il pulsante invio
+- Richiedere modifiche → torna in bozza con nota
+
+STEP 4 — INVIO:
+Solo dopo approvazione appare il pulsante "Invia al cliente".
+Prima dell'invio mostra preview dell'email con:
+- Destinatario (email del cliente dalla sua scheda)
+- Oggetto: "Report [Mensile/Settimanale/Trimestrale] - [Nome Cliente] - [Periodo]"
+- Corpo email: messaggio professionale personalizzabile con saluto, 
+  breve introduzione e link/allegato al report PDF
+Il team conferma e invia.
+L'invio viene registrato con data/ora e mittente.
+
+---
+
+5. EXPORT PDF
+Il report viene esportato in PDF con:
+- Layout professionale e pulito, coerente con il design dell'app
+- Tutti i grafici renderizzati come immagini nel PDF
+- Copertina con logo e dati cliente
+- Numerazione pagine
+- Footer con nome agenzia e contatti di Michael Balleroni
+- Dimensione A4
+Usa la libreria jsPDF + html2canvas per la generazione lato client.
+Il PDF viene salvato anche su Supabase Storage nella cartella del cliente.
+
+---
+
+6. COLLEGAMENTO API (OBBLIGATORIO PER DATI REALI)
+
+Se Meta non è collegato per quel cliente:
+- Mostra banner arancione: "Account Meta non collegato. 
+  I dati social non sono disponibili."
+- Pulsante: "Collega ora" → rimanda alle impostazioni del cliente
+
+Se Google Ads non è collegato:
+- Mostra banner arancione analogo
+
+Il sistema NON genera mai numeri inventati.
+Quando i dati non sono disponibili mostra il grafico vuoto con 
+il messaggio "Nessun dato disponibile per questo periodo".
+
+---
+
+7. LISTA REPORT PER CLIENTE
+
+Nella scheda di ogni cliente aggiungi una tab "Report" con:
+- Lista cronologica di tutti i report generati
+- Badge stato colorato per ognuno
+- Pulsante per aprire, scaricare PDF, o vedere anteprima
+- Filtro per tipo (settimanale/mensile/trimestrale)
+- Indicatore "Non letto" se il report è stato inviato ma non 
+  è stata registrata risposta del cliente
+
+---
+
+8. DASHBOARD REPORT (sezione dedicata nel menu)
+
+Vista globale di tutti i report:
+- Tabella con: cliente, tipo, periodo, stato, autore, data invio
+- Filtri: per cliente, per stato, per tipo, per periodo
+- Sezione "Da approvare" in evidenza in alto
+- Sezione "Da inviare" (approvati ma non ancora inviati)
+- Contatore notifiche badge nel menu laterale
+
+---
+
+9. DATABASE — nuove tabelle Supabase:
+reports (
+  id, cliente_id, project_id, tipo (settimanale/mensile/trimestrale),
+  periodo_inizio, periodo_fine, stato, titolo,
+  riepilogo_esecutivo text, analisi_insights text, 
+  strategia_prossimo_periodo text, note_aggiuntive text,
+  kpi_social_json, kpi_meta_json, kpi_google_json,
+  top_contenuti_json, pdf_url, inviato_a_email,
+  inviato_at, approvato_da, approvato_at,
+  created_by, created_at, updated_at
+)
+
+report_approvals (
+  id, report_id, reviewer_id, azione (approvato/modifiche_richieste),
+  nota, created_at
+)
+
+---
+
+NON inventare dati. Se le API non sono collegate mostrare 
+il messaggio di collegamento. Tutto il testo editoriale 
+(analisi, strategia, note) viene scritto manualmente dal team.

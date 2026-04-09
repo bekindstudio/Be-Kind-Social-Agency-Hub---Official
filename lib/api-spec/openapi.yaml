@@ -1,0 +1,1671 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Agency Portal API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: clients
+    description: Client management
+  - name: projects
+    description: Project management
+  - name: tasks
+    description: Task management
+  - name: team
+    description: Team member management
+  - name: messages
+    description: Chat messages
+  - name: files
+    description: File management
+  - name: dashboard
+    description: Dashboard aggregates
+  - name: quotes
+    description: Quote template management
+  - name: contracts
+    description: Contract template management
+  - name: anthropic
+    description: Anthropic AI chat operations
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # CLIENTS
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: List all clients
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      operationId: createClient
+      tags: [clients]
+      summary: Create a client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientBody"
+      responses:
+        "201":
+          description: Created client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /clients/{id}:
+    get:
+      operationId: getClient
+      tags: [clients]
+      summary: Get a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateClient
+      tags: [clients]
+      summary: Update a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientBody"
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      summary: Delete a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # PROJECTS
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      parameters:
+        - name: clientId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectBody"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectBody"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # TASKS
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: assigneeId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskBody"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # TEAM
+  /team:
+    get:
+      operationId: listTeamMembers
+      tags: [team]
+      summary: List team members
+      responses:
+        "200":
+          description: List of team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMember"
+    post:
+      operationId: createTeamMember
+      tags: [team]
+      summary: Create a team member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamMemberBody"
+      responses:
+        "201":
+          description: Created team member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+
+  /team/{id}:
+    patch:
+      operationId: updateTeamMember
+      tags: [team]
+      summary: Update a team member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamMemberBody"
+      responses:
+        "200":
+          description: Updated team member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteTeamMember
+      tags: [team]
+      summary: Delete a team member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # MESSAGES
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: createMessage
+      tags: [messages]
+      summary: Create a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageBody"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{id}:
+    delete:
+      operationId: deleteMessage
+      tags: [messages]
+      summary: Delete a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # FILES
+  /files:
+    get:
+      operationId: listFiles
+      tags: [files]
+      summary: List files
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SharedFile"
+    post:
+      operationId: createFile
+      tags: [files]
+      summary: Add a file reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFileBody"
+      responses:
+        "201":
+          description: Created file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedFile"
+
+  /files/{id}:
+    delete:
+      operationId: deleteFile
+      tags: [files]
+      summary: Delete a file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # QUOTES
+  /quotes:
+    get:
+      operationId: listQuoteTemplates
+      tags: [quotes]
+      summary: List all quote templates
+      responses:
+        "200":
+          description: List of quote templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuoteTemplate"
+    post:
+      operationId: createQuoteTemplate
+      tags: [quotes]
+      summary: Create a quote template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuoteTemplateBody"
+      responses:
+        "201":
+          description: Created quote template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteTemplate"
+
+  /quotes/{id}:
+    get:
+      operationId: getQuoteTemplate
+      tags: [quotes]
+      summary: Get a quote template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Quote template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteTemplate"
+    patch:
+      operationId: updateQuoteTemplate
+      tags: [quotes]
+      summary: Update a quote template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuoteTemplateBody"
+      responses:
+        "200":
+          description: Updated quote template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteTemplate"
+    delete:
+      operationId: deleteQuoteTemplate
+      tags: [quotes]
+      summary: Delete a quote template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # CONTRACTS
+  /contracts:
+    get:
+      operationId: listContractTemplates
+      tags: [contracts]
+      summary: List all contract templates
+      responses:
+        "200":
+          description: List of contract templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContractTemplate"
+    post:
+      operationId: createContractTemplate
+      tags: [contracts]
+      summary: Create a contract template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContractTemplateBody"
+      responses:
+        "201":
+          description: Created contract template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractTemplate"
+
+  /contracts/{id}:
+    get:
+      operationId: getContractTemplate
+      tags: [contracts]
+      summary: Get a contract template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contract template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractTemplate"
+    patch:
+      operationId: updateContractTemplate
+      tags: [contracts]
+      summary: Update a contract template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContractTemplateBody"
+      responses:
+        "200":
+          description: Updated contract template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractTemplate"
+    delete:
+      operationId: deleteContractTemplate
+      tags: [contracts]
+      summary: Delete a contract template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # DASHBOARD
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/project-status:
+    get:
+      operationId: getProjectStatusBreakdown
+      tags: [dashboard]
+      summary: Get project count by status
+      responses:
+        "200":
+          description: Status breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusCount"
+
+  /anthropic/conversations:
+    get:
+      operationId: listAnthropicConversations
+      tags: [anthropic]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnthropicConversation"
+    post:
+      operationId: createAnthropicConversation
+      tags: [anthropic]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnthropicConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicConversation"
+  /anthropic/conversations/{id}:
+    get:
+      operationId: getAnthropicConversation
+      tags: [anthropic]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicError"
+    patch:
+      operationId: updateAnthropicConversation
+      tags: [anthropic]
+      summary: Update conversation title or star status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAnthropicConversationBody"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicConversation"
+    delete:
+      operationId: deleteAnthropicConversation
+      tags: [anthropic]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicError"
+  /anthropic/conversations/{id}/messages:
+    get:
+      operationId: listAnthropicMessages
+      tags: [anthropic]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnthropicMessage"
+    post:
+      operationId: sendAnthropicMessage
+      tags: [anthropic]
+      summary: Send a message and receive an AI response (SSE stream)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendAnthropicMessageBody"
+      responses:
+        "200":
+          description: SSE stream of assistant response chunks
+          content:
+            text/event-stream: {}
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        color:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+        ragioneSociale:
+          type: ["string", "null"]
+        piva:
+          type: ["string", "null"]
+        codiceFiscale:
+          type: ["string", "null"]
+        indirizzo:
+          type: ["string", "null"]
+        cap:
+          type: ["string", "null"]
+        citta:
+          type: ["string", "null"]
+        provincia:
+          type: ["string", "null"]
+        paese:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        instagramHandle:
+          type: ["string", "null"]
+        metaPageId:
+          type: ["string", "null"]
+        googleAdsId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - color
+        - createdAt
+        - updatedAt
+
+    CreateClientBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        color:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+        ragioneSociale:
+          type: ["string", "null"]
+        piva:
+          type: ["string", "null"]
+        codiceFiscale:
+          type: ["string", "null"]
+        indirizzo:
+          type: ["string", "null"]
+        cap:
+          type: ["string", "null"]
+        citta:
+          type: ["string", "null"]
+        provincia:
+          type: ["string", "null"]
+        paese:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        instagramHandle:
+          type: ["string", "null"]
+        metaPageId:
+          type: ["string", "null"]
+        googleAdsId:
+          type: ["string", "null"]
+      required:
+        - name
+
+    UpdateClientBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        ragioneSociale:
+          type: ["string", "null"]
+        piva:
+          type: ["string", "null"]
+        codiceFiscale:
+          type: ["string", "null"]
+        indirizzo:
+          type: ["string", "null"]
+        cap:
+          type: ["string", "null"]
+        citta:
+          type: ["string", "null"]
+        provincia:
+          type: ["string", "null"]
+        paese:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        instagramHandle:
+          type: ["string", "null"]
+        metaPageId:
+          type: ["string", "null"]
+        googleAdsId:
+          type: ["string", "null"]
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        clientId:
+          type: ["integer", "null"]
+        clientName:
+          type: ["string", "null"]
+        status:
+          type: string
+        progress:
+          type: integer
+        deadline:
+          type: ["string", "null"]
+        budget:
+          type: ["number", "null"]
+        isPrivate:
+          type: boolean
+        createdBy:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - status
+        - progress
+        - isPrivate
+        - createdAt
+        - updatedAt
+
+    CreateProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        clientId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        progress:
+          type: integer
+        deadline:
+          type: ["string", "null"]
+        budget:
+          type: ["number", "null"]
+        isPrivate:
+          type: boolean
+      required:
+        - name
+        - status
+
+    UpdateProjectBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        clientId:
+          type: ["integer", "null"]
+        status:
+          type: ["string", "null"]
+        progress:
+          type: ["integer", "null"]
+        deadline:
+          type: ["string", "null"]
+        budget:
+          type: ["number", "null"]
+        isPrivate:
+          type: ["boolean", "null"]
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        projectId:
+          type: ["integer", "null"]
+        projectName:
+          type: ["string", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        status:
+          type: string
+        priority:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - title
+        - status
+        - priority
+        - createdAt
+        - updatedAt
+
+    CreateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        projectId:
+          type: ["integer", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        priority:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+      required:
+        - title
+        - status
+        - priority
+
+    UpdateTaskBody:
+      type: object
+      properties:
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        projectId:
+          type: ["integer", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        status:
+          type: ["string", "null"]
+        priority:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        avatarColor:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+        - avatarColor
+        - createdAt
+        - updatedAt
+
+    CreateTeamMemberBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        avatarColor:
+          type: string
+      required:
+        - name
+        - email
+        - role
+        - avatarColor
+
+    UpdateTeamMemberBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        role:
+          type: ["string", "null"]
+        avatarColor:
+          type: ["string", "null"]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        authorId:
+          type: ["integer", "null"]
+        authorName:
+          type: string
+        authorColor:
+          type: string
+        projectId:
+          type: ["integer", "null"]
+        projectName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - content
+        - authorName
+        - authorColor
+        - createdAt
+
+    CreateMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        authorId:
+          type: ["integer", "null"]
+        authorName:
+          type: string
+        authorColor:
+          type: string
+        projectId:
+          type: ["integer", "null"]
+      required:
+        - content
+        - authorName
+        - authorColor
+
+    SharedFile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+        type:
+          type: string
+        size:
+          type: ["integer", "null"]
+        projectId:
+          type: ["integer", "null"]
+        projectName:
+          type: ["string", "null"]
+        uploadedBy:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - url
+        - type
+        - uploadedBy
+        - createdAt
+
+    CreateFileBody:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        type:
+          type: string
+        size:
+          type: ["integer", "null"]
+        projectId:
+          type: ["integer", "null"]
+        uploadedBy:
+          type: string
+      required:
+        - name
+        - url
+        - type
+        - uploadedBy
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalClients:
+          type: integer
+        totalProjects:
+          type: integer
+        activeProjects:
+          type: integer
+        totalTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        pendingTasks:
+          type: integer
+        teamMembers:
+          type: integer
+      required:
+        - totalClients
+        - totalProjects
+        - activeProjects
+        - totalTasks
+        - completedTasks
+        - pendingTasks
+        - teamMembers
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        description:
+          type: string
+        entityName:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - description
+        - entityName
+        - createdAt
+
+    StatusCount:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+        - status
+        - count
+
+    QuoteItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+      required:
+        - description
+        - quantity
+        - unitPrice
+        - total
+
+    QuoteTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        clientId:
+          type: ["integer", "null"]
+        clientName:
+          type: ["string", "null"]
+        status:
+          type: string
+        validityDays:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteItem"
+        taxRate:
+          type: integer
+        subtotal:
+          type: number
+        total:
+          type: number
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - status
+        - validityDays
+        - items
+        - taxRate
+        - subtotal
+        - total
+        - createdAt
+        - updatedAt
+
+    CreateQuoteTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        clientId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        validityDays:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteItem"
+        taxRate:
+          type: integer
+      required:
+        - name
+
+    UpdateQuoteTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        clientId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        validityDays:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteItem"
+        taxRate:
+          type: integer
+
+    ContractTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - content
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateContractTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+      required:
+        - name
+
+    UpdateContractTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+
+    AnthropicConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        contextType:
+          type: string
+        contextId:
+          type: string
+          nullable: true
+        isStarred:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+    AnthropicMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        tokensUsed:
+          type: integer
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    CreateAnthropicConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+        contextType:
+          type: string
+        contextId:
+          type: string
+      required:
+        - title
+    UpdateAnthropicConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+        isStarred:
+          type: boolean
+    SendAnthropicMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        context:
+          type: object
+          properties:
+            type:
+              type: string
+            data:
+              type: object
+      required:
+        - content
+    AnthropicConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        contextType:
+          type: string
+        contextId:
+          type: string
+          nullable: true
+        isStarred:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnthropicMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+    AnthropicError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

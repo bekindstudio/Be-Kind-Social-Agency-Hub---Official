@@ -1,0 +1,349 @@
+Add a new "Tools" section to Agency Hub with the first tool being 
+a fully functional Editorial Plan (Piano Editoriale) builder.
+Do not modify anything that already exists.
+
+---
+
+OVERVIEW:
+A monthly editorial plan builder that lets the team create, customize 
+and export a professional content calendar for each client.
+The plan is exportable as a PDF to send to the client for approval 
+before content is produced and published.
+
+---
+
+1. NAVIGATION
+Add "Tools" to the main sidebar navigation with a wrench icon.
+First tool available: "Piano Editoriale"
+Structure for future tools (empty placeholders for now):
+- Piano Editoriale ← build this now
+- Content Brief (coming soon)
+- Hashtag Sets (coming soon)
+- Caption Templates (coming soon)
+
+---
+
+2. EDITORIAL PLAN LIST PAGE
+
+Shows all editorial plans created, organized by client:
+- Table columns: Client, Month, Year, Status, Platforms, 
+  Total Posts, Created by, Last modified, Actions
+- Status badges:
+  * Bozza (gray) — being built
+  * In Revisione (amber) — sent internally for review
+  * Approvato (green) — approved by team
+  * Inviato al Cliente (blue) — PDF sent to client
+  * Confermato (teal) — client confirmed
+- Filter by: client, month, year, status, platform
+- Search by client name
+- Button top right: "+ Nuovo Piano Editoriale"
+- Each row has actions: Edit / Preview / Export PDF / Duplicate / Delete
+
+---
+
+3. CREATE NEW EDITORIAL PLAN
+
+STEP 1 — SETUP (modal or dedicated page):
+
+Fields:
+- Select Client (dropdown from existing clients database)
+- Month (dropdown: January–December)
+- Year (default: current year)
+- Platforms to include (multi-select checkboxes):
+  * Instagram Feed
+  * Instagram Stories
+  * Instagram Reels
+  * Facebook Feed
+  * Facebook Stories
+  * LinkedIn
+  * TikTok
+  * YouTube Shorts
+- Content package (affects how many slots are pre-generated):
+  * Base — 4 feed posts/month
+  * Standard — 8 feed posts/month
+  * Premium — 12 feed posts/month
+  * Custom — user sets exact number per platform
+- Notes for this plan (internal, not shown in PDF)
+
+Click "Crea Piano" → opens the plan builder
+
+---
+
+4. PLAN BUILDER (main editor)
+
+LAYOUT:
+- Left panel (280px): Content slots list
+- Right panel: Selected slot editor
+- Top bar: client name, month/year, status badge, 
+  action buttons (Save / Preview PDF / Send for Review)
+
+LEFT PANEL — CONTENT SLOTS:
+Content slots are organized by platform in collapsible sections.
+Each platform section shows:
+- Platform icon + name
+- Total slots for that platform
+- Progress: [X completed / Y total]
+
+Each content slot card shows:
+- Slot number (es. Post #1, Reel #1)
+- Content category (see categories below)
+- Planned publish date
+- Status dot: empty / in progress / ready / approved
+- Thumbnail if image/video has been attached
+
+Clicking a slot opens it in the RIGHT PANEL editor.
+
+---
+
+5. CONTENT SLOT EDITOR (right panel)
+
+Each slot has these fields:
+
+BASIC INFO:
+- Platform (pre-set from setup, can be changed)
+- Content Type: Post / Reel / Story / Carousel / Video
+- Content Category (fully customizable — see section 6)
+- Planned publish date (date picker)
+- Planned publish time (time picker)
+- Slot status: Da creare / In lavorazione / Pronto / Approvato
+
+CONTENT DETAILS:
+- Post title / working title (internal reference)
+- Caption (rich text — supports emoji, line breaks, hashtags)
+  * Character counter (Instagram max: 2200)
+  * AI assist button: "Generate caption ideas" 
+    → opens AI chat with context pre-filled
+- Hashtags (tag input field, shows count — Instagram max: 30)
+  * Button: "Suggest hashtags" → AI suggests relevant hashtags
+- Call to Action (dropdown): 
+  Shop Now / Learn More / Visit Profile / Send Message / 
+  Save this post / Tag a friend / Custom text
+- Link in bio (if applicable)
+
+VISUAL REFERENCE:
+- Upload reference image or video thumbnail
+- Or paste a reference URL (Canva link, Google Drive link, etc.)
+- Or add a text description of the visual: 
+  "Photo of product on white background, lifestyle mood"
+- Visual format reminder shown: 
+  Feed: 1080x1080 or 1080x1350 | Reel: 1080x1920 | Story: 1080x1920
+
+NOTES:
+- Internal notes for the creative team (not shown in PDF)
+- Client notes (shown in PDF as "Note per il cliente")
+
+---
+
+6. CONTENT CATEGORIES (fully customizable)
+
+Default categories provided (admin can add, edit, rename, delete, 
+reorder, change color and icon for each):
+
+Default list:
+- Prodotto / Servizio (purple) — showcase products or services
+- Educativo / Tips (blue) — educational content, how-to, tips
+- Behind the Scenes (amber) — behind the scenes, team, process
+- User Generated Content (teal) — repost, testimonials, reviews
+- Promozione / Offerta (red) — discounts, offers, limited time
+- Brand Awareness (pink) — brand values, mission, storytelling
+- Evento (coral) — events, launches, announcements
+- Stagionale / Ricorrenza (green) — seasonal, holidays, trending dates
+- Campagna Specifica (indigo) — tied to a specific ad campaign
+- Intrattenimento (orange) — entertaining, trending, viral content
+- Carosello Informativo (cyan) — informative carousel / slides
+- Collaborazione (violet) — influencer, partner content
+
+Each category has:
+- Name (editable)
+- Color (color picker)
+- Icon (select from icon library)
+- Description (tooltip shown in builder)
+
+CATEGORY MANAGER:
+Accessible from Tools → Settings → Categorie Contenuto
+- Add new category with name, color, icon
+- Edit existing
+- Delete (with warning if used in existing plans)
+- Reorder via drag and drop
+- Categories are global (apply to all clients) OR 
+  can be set as client-specific overrides
+
+---
+
+7. MONTHLY CALENDAR VIEW
+
+Toggle between LIST VIEW and CALENDAR VIEW in the plan builder.
+
+CALENDAR VIEW:
+- Standard monthly grid (Mon–Sun)
+- Each planned post appears on its publish date as a colored chip
+- Chip shows: platform icon + content category color + post title
+- Multiple posts on same day stack vertically
+- Click any chip to open that slot in the editor
+- Empty dates show a "+" button to add a new slot on that day
+- Color coded by category
+- Platform filter toggle at top: show/hide specific platforms
+- Weekday distribution summary below calendar:
+  "You have [X] posts on weekdays and [Y] on weekends this month"
+
+---
+
+8. CONTENT MIX ANALYZER
+
+Below the calendar, show an automatic analysis panel:
+
+CONTENT MIX CHART:
+- Donut chart showing distribution by category
+- Recommendation: "Industry best practice suggests max 20% promotional content.
+  Your current mix: [X]% promotional."
+
+PLATFORM DISTRIBUTION:
+- Bar chart showing posts per platform
+- Total count per platform
+
+PUBLISHING FREQUENCY:
+- Posts per week average
+- Days between posts
+- Busiest publishing day of the month
+
+CONTENT TYPE BREAKDOWN:
+- How many posts / reels / stories / carousels
+
+---
+
+9. PDF EXPORT
+
+The exported PDF is a professional client-facing document.
+
+COVER PAGE:
+- Agency logo (Michael Balleroni)
+- Client name and logo (from client profile)
+- "Piano Editoriale — [Month] [Year]"
+- "Preparato da: Michael Balleroni"
+- Date of preparation
+
+PAGE 2 — OVERVIEW:
+- Total content pieces by platform (summary table)
+- Content mix donut chart
+- Publishing frequency summary
+- Month at a glance: mini calendar with colored dots
+
+PAGES 3+ — CONTENT DETAILS (one row per post):
+Each post shown as a clean card with:
+- Publish date and time
+- Platform icon
+- Content type badge
+- Category badge (colored)
+- Visual reference (thumbnail if uploaded, or visual description)
+- Caption (full text)
+- Hashtags (shown in a smaller font below caption)
+- Call to action
+- Client notes (if any)
+- Approval checkbox: □ Approvato dal cliente
+
+Posts sorted by date ascending.
+Each platform gets its own page section with a colored header.
+
+LAST PAGE — APPROVAL SIGN-OFF:
+- "Il presente piano editoriale è stato revisionato e approvato da:"
+- Client name line with signature space
+- Date line
+- Notes space for client feedback
+- Agency contact: Michael Balleroni — michaelballeroni@pec.it
+
+PDF SETTINGS:
+- Format: A4
+- Orientation: Portrait
+- Professional typography, clean layout
+- Client brand color used as accent (pulled from client profile color)
+- Page numbers in footer
+- Agency name and contact in footer on every page
+- Use jsPDF + html2canvas for generation
+
+---
+
+10. DUPLICATE & TEMPLATE SYSTEM
+
+DUPLICATE PLAN:
+- "Duplicate" button on any existing plan
+- Creates a copy for the same or different client/month
+- All content slots copied, dates shifted to new month automatically
+- Status reset to "Bozza"
+
+SAVE AS TEMPLATE:
+- "Save as Template" option on any completed plan
+- Template stored with a name (es. "Standard 8 post — Fashion Brand")
+- When creating a new plan, option to "Start from template"
+- Templates available: custom saved + system defaults
+
+SYSTEM TEMPLATE DEFAULTS:
+- Standard Social Media (8 posts/month balanced mix)
+- E-commerce Focus (12 posts — product heavy)
+- B2B LinkedIn Focus (8 posts — educational heavy)
+- Launch Campaign (12 posts — awareness + conversion mix)
+
+---
+
+11. COLLABORATION FEATURES
+
+INTERNAL REVIEW FLOW:
+1. Creator clicks "Invia per revisione interna"
+2. Team members assigned to that client get notified
+3. They can comment on individual slots (comment icon on each card)
+4. Once approved internally → status changes to "Approvato"
+5. "Invia PDF al Cliente" button unlocks
+
+SLOT COMMENTS:
+- Each content slot has a comments thread (internal only, not in PDF)
+- Team can discuss specific posts: "Change the caption tone" / "Need new visual"
+- Comments resolved with a checkmark
+
+CHANGE HISTORY:
+- Every edit to a slot is logged with: user, timestamp, what changed
+- Accessible via "History" icon on each slot
+
+---
+
+12. DATABASE — new tables:
+
+editorial_plans (
+  id, cliente_id, month, year, status,
+  platforms_json, package_type, notes_internal,
+  created_by, approved_by, approved_at,
+  sent_to_client_at, confirmed_by_client_at,
+  pdf_url, created_at, updated_at
+)
+
+editorial_slots (
+  id, plan_id, platform, content_type,
+  category_id, publish_date, publish_time,
+  title, caption, hashtags_json, call_to_action,
+  link_in_bio, visual_url, visual_description,
+  notes_internal, notes_client, status,
+  position, created_by, created_at, updated_at
+)
+
+content_categories (
+  id, name, color, icon, description,
+  cliente_id (null = global), position,
+  created_by, created_at, updated_at
+)
+
+slot_comments (
+  id, slot_id, author_id, content, 
+  is_resolved, created_at
+)
+
+editorial_templates (
+  id, name, description, package_type,
+  slots_json, created_by, is_system, created_at
+)
+
+---
+
+Pre-populate with:
+- All 12 default content categories with colors and icons
+- One example editorial plan for an existing mock client
+  showing a full month with 8 slots across different categories
+- 2 example templates (Standard 8 post, E-commerce 12 post)
+- Show the calendar view and list view both working

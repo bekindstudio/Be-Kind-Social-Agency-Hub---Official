@@ -1,0 +1,144 @@
+Aggiungi una sezione completa "Contratti" all'app Agency Hub esistente. 
+Non modificare nulla di ciò che esiste già.
+
+---
+
+DATI AGENZIA (precompilati in tutti i contratti):
+Nome: Michael Balleroni
+CF: BLLMHL95D22C357W
+P.IVA: 02871720419
+Indirizzo: Via C. Menotti, 184 - 61122 Pesaro
+SDI: M5UXCR1
+PEC: michaelballeroni@pec.it
+
+---
+
+1. SEZIONE CONTRATTI - LISTA
+- Tabella con tutti i contratti: numero, cliente, tipo servizio, data inizio, data fine, 
+  valore totale, stato (bozza / inviato / firmato / scaduto / rescisso)
+- Filtri per stato e per cliente
+- Pulsante "Nuovo contratto" in alto a destra
+- Badge colorati per stato: bozza=grigio, inviato=ambra, firmato=verde, 
+  scaduto=rosso, rescisso=grigio scuro
+- Indicatore visivo rosso se il contratto scade entro 30 giorni
+
+---
+
+2. CREAZIONE NUOVO CONTRATTO
+Form con questi campi:
+
+DATI CLIENTE (collegato alla scheda cliente esistente):
+- Seleziona cliente dal database (si autocompila: nome, sede legale, P.IVA/CF)
+- Referente cliente (nome e cognome)
+
+DATI CONTRATTO:
+- Numero contratto (automatico: es. CONT-2026-001)
+- Oggetto contratto (es. "Contratto Gestione Social e ADV")
+- Data stipula
+- Data inizio collaborazione
+- Data termine collaborazione
+- Preavviso rescissione in giorni (default: 30)
+
+SERVIZI OFFERTI (macro-categorie personalizzabili):
+Sistema a sezioni espandibili. Le macro-categorie predefinite sono:
+  * Analisi e Strategia
+    - campi: descrizione attività (textarea), 
+  * Produzione Contenuti
+    - campi: descrizione, quantità minima contenuti settimanali (numero)
+  * Gestione Social
+    - canali selezionabili: Facebook, Instagram, LinkedIn, TikTok
+    - per ogni canale: tipo contenuti (post, reel, stories), frequenza
+  * Campagne Advertising
+    - piattaforme: Meta Ads, Google Ads
+    - note: budget pubblicitario escluso e definito separatamente
+  * Reportistica
+    - frequenza report: mensile / trimestrale / finale
+    - tipo: intermedio / finale
+  * Eventi e Copertura Comunicazione
+    - descrizione, costo base per evento (default €400)
+    - note: preventivato separatamente
+  * Materiali di Supporto
+    - descrizione libera
+  * Altro (sezione personalizzabile con titolo e descrizione liberi)
+Ogni macro-categoria può essere aggiunta, rimossa o riordinata.
+Dentro ogni macro si possono aggiungere sotto-voci con descrizione dettagliata.
+
+CONDIZIONI ECONOMICHE:
+- Importo totale (€)
+- Struttura pagamenti: aggiungi tranche (data, importo, descrizione)
+  es. "1^ tranche entro 30/04/2026 - €2.250,00"
+- Aggiunta marca da bollo: sì/no (€2 per fattura)
+- Note IVA (campo libero, default: "Importi non soggetti a IVA ai sensi 
+  dell'art. 1, commi 54-89, Legge n. 190/2014")
+- IBAN agenzia (precompilato, modificabile)
+
+CLAUSOLE STANDARD (tutte precompilate e modificabili):
+- Durata contratto
+- Rescissione anticipata (preavviso scritto)
+- Budget pubblicitario (concordato separatamente)
+- Proprietà dei materiali (di proprietà esclusiva del cliente)
+- Riservatezza
+- Postazione di lavoro (da remoto, supporto WhatsApp lun-ven)
+- Operatività e accesso agli account
+- Diritti e responsabilità
+- Risoluzione delle dispute (foro competente: inserire città automaticamente 
+  in base alla sede del cliente)
+
+---
+
+3. TEMPLATE CONTRATTO
+Il contratto generato deve seguire esattamente questa struttura:
+
+INTESTAZIONE:
+Michael Balleroni
+Via C. Menotti, 184 - 61122 Pesaro
+P.IVA 02871720419 - CF BLLMHL95D22C357W
+SDI M5UXCR1 - PEC michaelballeroni@pec.it
+
+TITOLO: CONTRATTO GESTIONE SOCIAL e ADV (modificabile)
+
+CORPO:
+Tra: [dati agenzia precompilati]
+E: [dati cliente dal database]
+
+Poi tutte le sezioni numerate (1. Durata, 2. Servizi Offerti con sotto-sezioni 
+generate dinamicamente dai servizi selezionati, 3. Pagamento con le tranche 
+inserite, 4. Budget Pubblicitario, 5. Proprietà Materiali, 6. Monitoraggio, 
+7. Postazione di Lavoro, 8. Diritti e Responsabilità, 9. Operatività, 
+10. Riservatezza, 11. Risoluzione Dispute)
+
+FIRMA:
+Data: [data stipula]
+Il cliente: [nome cliente] - Firma per accettazione: _____________
+L'Agenzia: Michael Balleroni - Firma per accettazione: _____________
+
+---
+
+4. ANTEPRIMA E EXPORT
+- Anteprima del contratto in formato documento (come un PDF a schermo)
+- Pulsante "Esporta PDF" che genera il contratto in PDF pronto per la firma
+- Pulsante "Duplica contratto" per riusare la struttura con un altro cliente
+
+---
+
+5. NOTIFICHE SCADENZA
+- Notifica interna nel portale (campanella) quando un contratto scade entro 30 giorni
+- Notifica quando scade entro 7 giorni (urgente, badge rosso)
+- Nella dashboard principale aggiungi un widget "Contratti in scadenza" 
+  con la lista dei contratti che scadono nei prossimi 30 giorni
+- Segna automaticamente il contratto come "scaduto" quando supera la data termine
+
+---
+
+6. DATABASE - nuova tabella Supabase:
+contratti (
+  id, numero, cliente_id, oggetto, data_stipula, data_inizio, data_fine,
+  preavviso_giorni, servizi_json, tranche_pagamento_json, 
+  importo_totale, clausole_json, stato, note, created_at
+)
+
+---
+
+Usa dati mock realistici per mostrare subito 2-3 contratti di esempio 
+nella lista. Il design deve essere coerente con il resto dell'app 
+(sidebar viola, font pulito, tabelle ordinate).

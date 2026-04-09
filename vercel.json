@@ -1,0 +1,9 @@
+{
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "artifacts/agency-portal/dist/public",
+  "installCommand": "pnpm install",
+  "framework": null
+  
+}
+
+

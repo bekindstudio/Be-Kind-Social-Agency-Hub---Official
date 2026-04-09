@@ -1,0 +1,41 @@
+Aggiungi le seguenti integrazioni all'app esistente senza modificare nulla di ciò che è già stato creato:
+
+1. INTEGRAZIONE FACEBOOK & INSTAGRAM (Meta Graph API)
+- Connessione tramite OAuth con Facebook Login
+- Recupero automatico di questi dati per ogni pagina/profilo collegato:
+  * Follower totali e crescita nel periodo
+  * Reach e impression dei post
+  * Engagement (like, commenti, condivisioni, salvataggi)
+  * Dati per ogni singolo post pubblicato
+  * Statistiche stories
+- Per META ADS:
+  * Importazione automatica campagne attive
+  * Aggiornamento KPI in tempo reale: spesa, impression, reach, click, CTR, CPM, CPC, conversioni, ROAS
+- Sezione "Connetti account" nelle impostazioni dove l'utente inserisce il proprio Access Token di Meta
+
+2. INTEGRAZIONE GOOGLE ADS API
+- Connessione tramite OAuth Google
+- Importazione automatica campagne attive per cliente
+- Aggiornamento KPI: impression, click, CTR, CPC, conversioni, Quality Score, spesa totale
+- Sezione "Connetti account Google Ads" nelle impostazioni con campo Customer ID
+
+3. REPORT AUTOMATICO CON DATI REALI
+- Pagina report che aggrega automaticamente:
+  * Dati social da Facebook/Instagram Graph API
+  * Dati ads da Meta Ads e Google Ads
+  * Periodo personalizzabile (7 giorni, 30 giorni, trimestre, custom)
+- Layout report schematico e professionale con:
+  * Sezione Social: grafici crescita follower, engagement rate, top post del periodo
+  * Sezione META Ads: grafico spesa vs risultati, tabella campagne, ROAS evidenziato
+  * Sezione Google Ads: grafico click/conversioni, tabella campagne, CPC medio
+  * Riepilogo esecutivo in alto con i KPI più importanti in card
+- Pulsante "Esporta PDF" che genera un PDF del report completo
+
+4. GRAFICI
+Usa Chart.js per:
+- Grafico a linee: andamento follower nel tempo
+- Grafico a barre: engagement per post
+- Grafico a ciambella: distribuzione budget ads
+- Grafico a linee: spesa giornaliera campagne
+
+Per ora usa dati mock realistici per le API (simula le risposte) così l'interfaccia è visibile e funzionante subito, con la struttura pronta per collegare le API reali inserendo i token.

@@ -1,0 +1,59 @@
+Implementa il sistema completo di connessione OAuth con Meta (Facebook & Instagram) per leggere gli insights dei clienti. Ecco cosa deve fare:
+
+1. FACEBOOK LOGIN PER OGNI CLIENTE
+- Nella scheda di ogni cliente aggiungi un pulsante "Connetti account Meta"
+- Al click apre il flusso OAuth di Facebook
+- Dopo l'autorizzazione salva nel database (tabella account_social):
+  * cliente_id
+  * access_token (long-lived token, valido 60 giorni, rinnovabile)
+  * user_id Meta
+  * lista pagine Facebook autorizzate (id, nome, access_token pagina)
+  * profili Instagram collegati alle pagine (id, username)
+
+2. RACCOLTA INSIGHTS FACEBOOK PAGE
+Per ogni pagina autorizzata, recupera tramite Graph API:
+- Follower totali (fan_count)
+- Reach settimanale e mensile
+- Impression totali
+- Engagement: like, commenti, condivisioni per post
+- Top 5 post del periodo per engagement
+- Crescita follower nel periodo selezionato
+Endpoint: /v18.0/{page-id}/insights
+
+3. RACCOLTA INSIGHTS INSTAGRAM BUSINESS
+Per ogni profilo Instagram collegato:
+- Follower, following, media count
+- Reach, impression, profilo_views
+- Per ogni post: like, commenti, reach, impression, saved, engagement_rate
+- Stories: reach, impression, taps_forward, taps_back, exits
+- Top contenuti del periodo
+Endpoint: /v18.0/{ig-user-id}/insights e /v18.0/{ig-media-id}/insights
+
+4. RACCOLTA DATI META ADS
+Per ogni account pubblicitario autorizzato:
+- Campagne attive con nome, obiettivo, stato
+- KPI per campagna: spesa, impression, reach, click, CTR, CPM, CPC, conversioni, ROAS, frequenza
+- Andamento giornaliero spesa
+Endpoint: /v18.0/act_{ad-account-id}/campaigns e /insights
+
+5. AGGIORNAMENTO AUTOMATICO
+- Crea una funzione di sync che aggiorna i dati ogni 24 ore automaticamente
+- Aggiungi un pulsante "Aggiorna ora" nella sezione report di ogni cliente
+- Salva tutti i dati in Supabase nelle tabelle: insights_facebook, insights_instagram, insights_meta_ads
+
+6. VISUALIZZAZIONE NEL REPORT
+Nella pagina report del cliente mostra:
+- Card KPI in alto: follower totali, reach totale, engagement rate medio, spesa ads totale
+- Grafico a linee: crescita follower nel tempo (Chart.js)
+- Grafico a barre: engagement per post (top 10)
+- Grafico a linee: spesa giornaliera Meta Ads
+- Tabella campagne Meta Ads con tutti i KPI
+- Sezione top post con immagine, caption e metriche
+- Periodo selezionabile: 7 giorni / 30 giorni / 90 giorni / custom
+
+7. GESTIONE TOKEN
+- Implementa il refresh automatico dei token prima della scadenza
+- Notifica interna se un token è scaduto e il cliente deve riautorizzare
+- Ogni cliente vede solo i propri dati, Admin vede tutto
+
+Usa dati mock realistici come fallback quando le API non sono ancora collegate, così l'interfaccia è sempre visibile e funzionante.

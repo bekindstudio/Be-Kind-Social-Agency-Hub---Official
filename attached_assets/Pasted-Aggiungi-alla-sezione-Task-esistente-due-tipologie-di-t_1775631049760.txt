@@ -1,0 +1,159 @@
+Aggiungi alla sezione Task esistente due tipologie di task. Non modificare nulla di ciò che esiste già.
+
+---
+
+TIPOLOGIA 1 — TASK SEMPLICE (già esistente, mantienila com'è)
+- Titolo
+- Descrizione
+- Assegnato a
+- Priorità / Stato / Scadenza
+
+---
+
+TIPOLOGIA 2 — TASK AVANZATA CON CHECKLIST
+Quando si crea una task avanzata, l'utente sceglie una categoria e si carica 
+automaticamente la checklist predefinita relativa. Tutte le voci sono spuntabili 
+singolarmente. L'avanzamento della task è calcolato in % sulle voci completate.
+
+---
+
+CATEGORIE E CHECKLIST PREDEFINITE:
+
+CATEGORIA: "Onboarding Nuovo Cliente"
+Checklist:
+[ ] Analisi gratuita
+[ ] Meeting conoscitivo
+[ ] Preventivo con portfolio
+[ ] Contratto firmato
+[ ] Drive condiviso creato (template)
+[ ] Briefing con domande e obiettivi (Excel)
+[ ] Credenziali ricevute o pagine create:
+    [ ] Facebook
+    [ ] Instagram
+    [ ] LinkedIn
+    [ ] TikTok
+    [ ] YouTube
+    [ ] Sito Web
+[ ] Brand Kit Canva creato
+[ ] Ricerca competitors completata
+
+CATEGORIA: "Piano Editoriale Mensile"
+L'utente seleziona il mese (Gennaio...Dicembre) e il pacchetto contenuti:
+  - Pacchetto Base: 4 contenuti/mese feed
+  - Pacchetto Standard: 8 contenuti/mese feed
+  - Pacchetto Premium: 12 contenuti/mese feed
+
+Checklist generata automaticamente in base al pacchetto:
+[ ] PED [mese selezionato] - Piano editoriale creato
+[ ] Template grafici creati:
+    [ ] Template Carosello
+    [ ] Template Storia
+    [ ] Template Post IG
+[ ] Contenuti Foto/Video creati ([N] su [TOT])
+[ ] Contenuti grafici creati ([N] su [TOT])
+[ ] Programmazione completata
+[ ] Pubblicazioni verificate
+[ ] Approvazione cliente ricevuta
+
+La N viene calcolata automaticamente: 
+- 4 contenuti = 4 post feed + 8 stories + 2 reel
+- 8 contenuti = 8 post feed + 16 stories + 4 reel  
+- 12 contenuti = 12 post feed + 24 stories + 6 reel
+
+CATEGORIA: "Setup Business Manager Meta"
+Checklist:
+[ ] Business Manager configurato
+[ ] Check collegamento pagine Facebook/Instagram
+[ ] Impostazioni di pagamento configurate
+[ ] Pixel di Meta installato e verificato
+[ ] Google Tag Manager installato
+[ ] Google Analytics collegato e verificato
+
+CATEGORIA: "Campagna ADV Meta"
+L'utente specifica: nome campagna, obiettivo, budget
+Checklist:
+[ ] Strategia campagna definita
+[ ] Pubblici target creati (Tofu)
+[ ] Pubblici retargeting creati (Bofu)
+[ ] Creatività ads realizzate
+[ ] Copy ads scritto e approvato
+[ ] Campagna configurata su Meta Ads Manager
+[ ] Pixel eventi verificati
+[ ] Campagna attivata
+[ ] Primo check performance (dopo 48h)
+[ ] Ottimizzazione in corso
+[ ] Report risultati
+
+CATEGORIA: "Campagna ADV Google"
+L'utente specifica: tipo campagna, budget
+Checklist:
+[ ] Ricerca e analisi parole chiave completata
+[ ] Struttura campagna definita
+[ ] Campagna principale creata
+[ ] Campagna brand creata
+[ ] Campagna competitors creata
+[ ] Annunci scritti e approvati
+[ ] Estensioni annunci configurate
+[ ] Conversioni tracciate con GTM
+[ ] Campagna attivata
+[ ] Check performance iniziale
+[ ] Report risultati
+
+CATEGORIA: "Report Cliente"
+L'utente seleziona il tipo: Mensile / Trimestrale / Semestrale
+Checklist:
+[ ] Dati social raccolti (follower, reach, engagement)
+[ ] Dati Meta Ads raccolti (spesa, risultati, ROAS)
+[ ] Dati Google Ads raccolti (click, conversioni, CPC)
+[ ] Grafici e tabelle preparati
+[ ] Analisi risultati scritta
+[ ] Confronto periodo precedente fatto
+[ ] Raccomandazioni strategiche aggiunte
+[ ] Report formattato e revisionato
+[ ] Report inviato al cliente
+[ ] Meeting di presentazione risultati fatto
+
+CATEGORIA: "Personalizzata"
+L'utente crea una checklist libera aggiungendo le voci che vuole.
+
+---
+
+UI E FUNZIONALITÀ:
+
+1. CREAZIONE TASK
+Nella modale di creazione task aggiungere un toggle:
+"Tipo task: [ Semplice ] [ Avanzata con checklist ]"
+Se si sceglie Avanzata: mostra dropdown categoria, 
+poi appare la checklist precompilata modificabile prima del salvataggio.
+
+2. VISTA TASK AVANZATA
+Nel dettaglio della task mostrare:
+- Barra di avanzamento % (voci spuntate / totale voci)
+- Lista checklist con checkbox interattive
+- Contatore "[X/Y] completati"
+- Ogni sotto-voce può essere spuntata da qualsiasi membro del team
+- Le voci spuntate si aggiornano in tempo reale (Supabase Realtime)
+
+3. NELLA BOARD KANBAN
+Le task avanzate mostrano:
+- Badge con la categoria (es. "Piano Editoriale")
+- Mini barra di progresso sotto il titolo
+- Contatore voci completate
+
+4. NELLA SCHEDA CLIENTE/PROGETTO
+Aggiungi una sezione "Avanzamento operativo" che mostra:
+- Per ogni task avanzata attiva: nome, categoria, % completamento
+- Checklist Onboarding Cliente con avanzamento globale
+- Totale contenuti da produrre nel mese (in base al pacchetto scelto)
+  con contatore: "Contenuti creati: [X] su [N]"
+
+5. DATABASE
+Aggiorna la tabella task aggiungendo:
+- tipo: 'semplice' | 'avanzata'
+- categoria: string
+- checklist_json: array di oggetti {id, testo, completato, gruppo}
+- pacchetto_contenuti: '4' | '8' | '12' (solo per categoria Piano Editoriale)
+- mese_riferimento: string (solo per Piano Editoriale)
+
+Usa dati mock realistici per mostrare subito esempi di entrambe le tipologie 
+nella board kanban.

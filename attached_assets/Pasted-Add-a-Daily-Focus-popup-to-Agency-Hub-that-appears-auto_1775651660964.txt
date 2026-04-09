@@ -1,0 +1,295 @@
+Add a Daily Focus popup to Agency Hub that appears automatically 
+when any team member opens the portal each day.
+Do not modify anything that already exists.
+
+---
+
+OVERVIEW:
+A smart daily productivity popup that shows the team member 
+their most important task for the day, one at a time, 
+ordered by a priority matrix based on urgency and importance.
+The goal is to help the team focus on what truly matters 
+each day without feeling overwhelmed.
+
+---
+
+1. TRIGGER BEHAVIOR
+
+The popup appears automatically:
+- Once per day per user, on first login of the day
+- If the user closes it and reopens the portal within the same day: 
+  does NOT show again (tracked via localStorage + Supabase)
+- Exception: if new urgent tasks were added since last seen, 
+  show again with only the new urgent ones
+- User can manually reopen it anytime via:
+  * Top bar button: "Today's Focus" with a target icon
+  * Keyboard shortcut: Cmd+K (or Ctrl+K on Windows)
+
+---
+
+2. PRIORITY MATRIX (Eisenhower Matrix)
+
+Tasks are automatically scored and sorted using this logic:
+
+QUADRANT 1 — DO FIRST (Urgente + Importante):
+- Due today or overdue
+- Priority set to "urgente" or "alta"
+- Assigned to the current user
+- Shown with red accent, label "🔴 Da fare subito"
+
+QUADRANT 2 — SCHEDULE (Importante, non urgente):
+- Due within the next 7 days
+- Priority "alta" or "media"
+- Assigned to current user
+- Shown with purple accent, label "🟣 Pianifica oggi"
+
+QUADRANT 3 — DELEGATE (Urgente, non importante):
+- Due today or tomorrow
+- Priority "bassa"
+- Could be reassigned
+- Shown with amber accent, label "🟡 Valuta se delegare"
+
+QUADRANT 4 — ELIMINATE (Non urgente, non importante):
+- Due far in future
+- Priority "bassa"
+- No hard deadline
+- Shown with gray accent, label "⚪ Bassa priorità"
+
+Scoring algorithm:
+- Base score by priority: urgente=100, alta=75, media=50, bassa=25
+- Days until due: overdue=+50, today=+40, tomorrow=+30, 
+  within 3 days=+20, within 7 days=+10, beyond=0
+- Has client dependency: +15
+- Has blockers (other tasks waiting on this): +10
+- Estimated hours (shorter tasks get slight boost for quick wins): 
+  under 1h=+5
+- Final score determines the order shown
+
+---
+
+3. POPUP UI
+
+SIZE AND POSITION:
+- Centered modal, 560px wide, auto height
+- Backdrop: dark semi-transparent overlay
+- Cannot be dismissed by clicking outside (must use buttons)
+- Smooth entrance animation: scale up from center
+
+HEADER:
+- Left: greeting based on time of day:
+  * Before 12:00 — "Buongiorno, [Name] ☀️"
+  * 12:00–17:00 — "Buon pomeriggio, [Name] 👋"  
+  * After 17:00 — "Buonasera, [Name] 🌙"
+- Right: "X of Y tasks" counter (e.g. "1 di 5")
+- Below greeting: date in Italian format 
+  "Lunedì, 7 Aprile 2026"
+
+PROGRESS BAR:
+- Thin colored bar below header showing position in task list
+- Fills as user moves through tasks
+- Color matches current quadrant (red/purple/amber/gray)
+
+TASK CARD (main content — one task at a time):
+
+┌──────────────────────────────────────────┐
+│  [QUADRANT BADGE]          [CLIENT NAME] │
+│                                          │
+│  [TASK TITLE — large, 20px bold]         │
+│                                          │
+│  [PROJECT NAME]  •  [PLATFORM/CATEGORY]  │
+│                                          │
+│  [DESCRIPTION — max 2 lines, truncated]  │
+│                                          │
+│  ┌────────────┬────────────┬───────────┐ │
+│  │ ⏰ Scadenza │ ⏱ Stimato  │ 👤 Client │ │
+│  │ [date]     │ [Xh]       │ [name]   │ │
+│  └────────────┴────────────┴───────────┘ │
+│                                          │
+│  [PRIORITY SCORE BAR]                    │
+│  "Priorità: [score]/100"                 │
+│                                          │
+│  [QUADRANT EXPLANATION — 1 sentence]     │
+│  e.g. "Questa task è in scadenza oggi    │
+│  e richiede la tua attenzione immediata" │
+└──────────────────────────────────────────┘
+
+QUADRANT EXPLANATION sentences:
+- Q1: "In scadenza oggi — completala prima di tutto il resto"
+- Q2: "Importante per il progetto — pianifica quando farla oggi"
+- Q3: "Urgente ma a bassa priorità — valuta se delegarla al team"
+- Q4: "Non urgente — tienila in mente ma non bloccarti ora"
+
+ACTION BUTTONS (below the card):
+
+Primary row:
+[✓ Inizia ora]  [→ Prossima]  [✗ Salta]
+
+- "Inizia ora": marks task as "in_corso" in database, 
+  closes popup and navigates directly to the task detail page
+- "Prossima": moves to next task without action, 
+  remembers user saw this one
+- "Salta": removes task from today's focus list for this user 
+  (not deleted, just hidden from today's popup)
+
+Secondary row (smaller, text buttons):
+[Delega al team]  [Sposta a domani]  [Segna come completata]
+
+- "Delega al team": opens a small inline panel to reassign 
+  to another team member with a note
+- "Sposta a domani": updates due_date +1 day with a note "Posticipata da [user]"
+- "Segna come completata": marks done, shows micro-celebration animation,
+  moves to next task automatically
+
+---
+
+4. NAVIGATION BETWEEN TASKS
+
+SWIPE GESTURES (touch/trackpad):
+- Swipe left → next task
+- Swipe right → previous task
+
+KEYBOARD SHORTCUTS:
+- Arrow Right / N → next task
+- Arrow Left / P → previous task
+- Enter → start task now
+- S → skip
+- C → mark complete
+- D → delegate
+
+TASK COUNTER DOTS:
+- Row of dots below action buttons
+- One dot per task (max 10 dots shown, rest as "+X more")
+- Current task dot is filled, others are empty
+- Clicking a dot jumps to that task
+
+---
+
+5. COMPLETION CELEBRATION
+
+When a task is marked complete directly from the popup:
+- Small confetti burst animation (canvas confetti, 1.5 seconds)
+- Task card flips/fades out
+- Next task slides in from the right
+- If last task: show completion screen (see section 7)
+
+---
+
+6. EMPTY STATES
+
+NO TASKS TODAY:
+Show a motivational full-card message:
+- Green checkmark icon (large)
+- "Tutto in ordine! 🎉"
+- "Non hai task urgenti per oggi. Ottimo lavoro."
+- Subtext: "Puoi usare questo tempo per lavorare sui 
+  progetti in anticipo o dedicarti alla strategia."
+- Button: "Vedi tutti i progetti" → closes popup, 
+  navigates to projects page
+
+ONLY LOW PRIORITY TASKS:
+- Show them but with a relaxed tone:
+- "Giornata tranquilla 😌"
+- "Hai solo task a bassa priorità oggi."
+
+---
+
+7. END OF LIST SCREEN
+
+After viewing all tasks:
+
+If all completed:
+- Large celebration: "🏆 Giornata completata!"
+- "Hai completato tutte le [X] task di oggi. Sei in forma!"
+- Confetti animation (3 seconds)
+- Stats card: "Oggi hai completato [X] task in [Y] ore stimate"
+- Button: "Chiudi e vai alla dashboard"
+
+If some skipped:
+- "[X] task completate, [Y] saltate"
+- "Le task saltate saranno visibili nel tuo backlog"
+- Two buttons: "Rivedi le saltate" / "Vai alla dashboard"
+
+If none completed (just browsed):
+- "Hai visto tutte le [X] task di oggi"
+- "Ricorda: inizia sempre dalla prima della lista!"
+- Button: "Inizia dalla prima" (loops back to Q1 tasks)
+  and "Vai alla dashboard"
+
+---
+
+8. DAILY FOCUS SUMMARY (top bar widget)
+
+After closing the popup, show a persistent mini widget in the top bar:
+- Target icon + "Focus: [X] task oggi"
+- Progress: "[Y]/[X] completate" with mini progress bar
+- Click to reopen the popup at current position
+- When all done: turns green with checkmark
+
+---
+
+9. WEEKLY PRODUCTIVITY STATS
+
+In the user profile page add a "Produttività" section:
+- Tasks completed this week (bar chart by day)
+- Average completion rate (% of daily tasks completed)
+- Streak: "🔥 [X] giorni consecutivi di focus completato"
+- Best day of the week for task completion
+- Tasks delegated vs completed personally
+
+---
+
+10. SMART SUGGESTIONS
+
+After showing all Q1 tasks, before moving to Q2 show a tip card:
+"💡 Suggerimento del giorno"
+Rotate through these tips daily:
+- "Inizia con la task più difficile — il resto della giornata sarà più facile"
+- "Blocca 2 ore di lavoro profondo senza notifiche per le task importanti"
+- "Comunica al team le tue priorità di oggi nel canale #generale"
+- "Ogni task completata aumenta il momentum — non fermarti dopo la prima"
+- "Se una task richiede meno di 2 minuti, falla subito senza metterla in lista"
+- "Controlla le scadenze dei clienti prima di iniziare le task interne"
+
+---
+
+11. SETTINGS (user preferences)
+
+Accessible from the popup via gear icon top-right:
+- Enable/disable daily popup on login (default: on)
+- Set popup trigger time: 
+  "Show popup only after [time]" (default: always)
+- Max tasks to show: 5 / 10 / All (default: 10)
+- Include tasks from: 
+  All projects / Only my projects / Specific clients (multi-select)
+- Show tasks assigned to me only / Also unassigned tasks
+- Quadrant visibility: toggle each quadrant on/off
+
+---
+
+12. DATABASE — new and updated:
+
+daily_focus_sessions (
+  id, user_id, date, tasks_shown_json,
+  tasks_completed_json, tasks_skipped_json,
+  tasks_delegated_json, opened_at, closed_at,
+  completion_rate
+)
+
+task_focus_actions (
+  id, user_id, task_id, date, action,
+  -- action: viewed/started/completed/skipped/delegated/postponed
+  note, created_at
+)
+
+Update existing tasks table:
+- Add: focus_score integer (calculated score for today's ranking)
+- Add: last_postponed_at timestamptz
+- Add: postponed_count integer default 0
+
+---
+
+Pre-populate with:
+- At least 5 mock tasks across all 4 quadrants for the demo user
+- Show the popup immediately when the app loads in preview
+- Make sure the priority scoring is visible and logical
+- All animations must be smooth (use Framer Motion or CSS transitions)

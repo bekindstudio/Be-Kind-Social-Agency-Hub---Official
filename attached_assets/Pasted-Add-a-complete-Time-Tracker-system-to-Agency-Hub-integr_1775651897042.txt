@@ -1,0 +1,375 @@
+Add a complete Time Tracker system to Agency Hub, integrated with 
+tasks and clients. Do not modify anything that already exists.
+
+---
+
+OVERVIEW:
+A professional time tracking tool that automatically starts when 
+a team member clicks "Inizia ora" from the Daily Focus popup or 
+manually from any task. Every minute worked is logged, attributed 
+to a client and project, giving the agency a clear picture of 
+how much time is invested per client each month.
+
+---
+
+1. HOW IT STARTS
+
+AUTOMATIC START:
+- When user clicks "Inizia ora" in the Daily Focus popup
+  → timer starts immediately for that task
+- When user clicks "Inizia" button on any task detail page
+  → timer starts for that task
+
+MANUAL START:
+- Floating timer button in the top bar (clock icon)
+- Click → dropdown to select:
+  * Client (required)
+  * Project (filtered by selected client)
+  * Task (filtered by selected project, optional)
+  * Description (free text, optional)
+  * Click "Avvia timer"
+
+QUICK START from any page:
+- On every task card and task detail page add a 
+  ▶ Play button that starts the timer instantly
+- On every project page add "Track time" button
+- On every client page add "Track time" button
+
+---
+
+2. ACTIVE TIMER WIDGET
+
+When a timer is running show a persistent widget in the top bar:
+- Pulsing red dot (recording indicator)
+- Client name + task name (truncated)
+- Live counter: HH:MM:SS counting up in real time
+- Pause button (⏸)
+- Stop button (⏹)
+- The widget is always visible on every page while timer runs
+- Only one timer can run at a time per user
+- If user tries to start a second timer:
+  Show prompt: "Hai già un timer attivo per [task].
+  Vuoi fermarlo e iniziarne uno nuovo?"
+  Options: "Ferma e inizia nuovo" / "Annulla"
+
+PAUSE BEHAVIOR:
+- Paused timer shows gray dot instead of red
+- Counter freezes
+- Resume button (▶) to continue
+- Pause reason optional: 
+  "Pausa pranzo / Riunione / Interruzione / Altro"
+- Paused time is NOT counted in the total
+
+---
+
+3. STOP AND LOG
+
+When user clicks Stop:
+
+Show a quick log modal:
+┌─────────────────────────────────────────┐
+│  ⏱ Tempo registrato: 1h 23m             │
+│                                         │
+│  Cliente: [Client Name]                 │
+│  Progetto: [Project Name]               │
+│  Task: [Task Name]                      │
+│                                         │
+│  Descrizione attività:                  │
+│  [text input — pre-filled with          │
+│   task title, editable]                 │
+│                                         │
+│  Tipo di attività:                      │
+│  [dropdown — see activity types]        │
+│                                         │
+│  Fatturabile: [toggle YES / NO]         │
+│  (default: YES)                         │
+│                                         │
+│  [Salva]  [Scarta]  [Continua timer]    │
+└─────────────────────────────────────────┘
+
+ACTIVITY TYPES (customizable):
+- Strategia e pianificazione
+- Creazione contenuti
+- Grafica e design
+- Copywriting
+- Gestione campagne ADV
+- Reportistica
+- Riunione / Call con cliente
+- Riunione interna
+- Revisioni e feedback
+- Amministrazione
+- Altro
+
+BILLABLE TOGGLE:
+- Default ON for all client work
+- Default OFF for: internal meetings, admin, training
+- Billable hours tracked separately for invoicing purposes
+
+---
+
+4. MANUAL TIME ENTRY
+
+Users can add time entries manually (for time worked offline,
+forgotten to track, etc.):
+
+From the Time Tracker section → "+ Aggiungi tempo manuale"
+
+Fields:
+- Client (required)
+- Project (required)
+- Task (optional)
+- Description (required)
+- Activity type
+- Date (default: today)
+- Start time
+- End time
+- OR: Duration (hours + minutes)
+- Billable: yes/no
+- Note: "Inserimento manuale" label always shown on manual entries
+
+---
+
+5. TIME TRACKER DASHBOARD (dedicated page in Tools section)
+
+MY TIME — personal view (default):
+
+HEADER STATS (cards):
+- Today: [Xh Ym] tracked today
+- This week: [Xh Ym] tracked this week  
+- This month: [Xh Ym] tracked this month
+- Billable this month: [Xh Ym] (and % of total)
+
+DAILY TIMELINE:
+- Visual timeline of today showing colored blocks per client
+- Each block = one time entry
+- Color coded by client
+- Hover to see details
+- Click to edit entry
+
+WEEKLY BAR CHART:
+- Bar chart: Mon–Sun with hours per day
+- Stacked bars colored by client
+- Shows this week vs last week comparison
+
+CLIENT BREAKDOWN (this month):
+- Donut chart: time distribution by client
+- Table below:
+  Client | Hours this month | Billable hours | % of total time
+  Sorted by hours descending
+
+PROJECT BREAKDOWN:
+- Same as client but by project
+- Shows which projects are consuming most time
+
+---
+
+6. CLIENT TIME REPORT
+
+In every client profile page add a "Tempo" tab showing:
+
+THIS MONTH:
+- Total hours tracked for this client
+- Billable vs non-billable split
+- Hours by team member (if multiple people work on the client)
+- Hours by activity type (pie chart)
+- Daily hours chart for the month
+
+ALL TIME:
+- Total hours ever tracked for this client
+- Monthly trend chart (bar chart last 12 months)
+- Average hours per month
+- Record month (highest hours)
+
+TIME ENTRIES TABLE:
+- All entries for this client
+- Columns: Date, Team member, Project, Task, 
+  Description, Activity type, Duration, Billable
+- Filter by: date range, team member, project, activity type
+- Export as CSV or PDF
+
+ESTIMATED vs ACTUAL:
+- If tasks have estimated_hours set, show comparison:
+  "Estimated: [X]h — Actual: [Y]h — Variance: [+/-Z]h"
+  Per project and per task
+
+---
+
+7. TEAM TIME VIEW (Admin only)
+
+Shows time tracked by all team members:
+
+TEAM OVERVIEW:
+- Table: Team member | Today | This week | This month | Billable %
+- Who is currently tracking (live green dot)
+- Who hasn't tracked anything today (amber warning)
+
+TEAM TIMELINE:
+- Horizontal Gantt-like view showing all team members' 
+  time blocks for today side by side
+- Color coded by client
+
+WORKLOAD BALANCE:
+- Bar chart comparing hours per team member this month
+- Highlights if someone is significantly over or under
+- Average hours per person shown as reference line
+
+---
+
+8. TIMESHEET VIEW
+
+Weekly timesheet per user (classic agency format):
+
+Grid layout:
+- Rows: Client / Project / Task combinations
+- Columns: Mon / Tue / Wed / Thu / Fri / Sat / Sun
+- Each cell: hours worked (editable inline)
+- Row totals (right column)
+- Column totals (bottom row)
+- Grand total bottom right
+
+Submit timesheet:
+- "Invia timesheet settimanale" button
+- Once submitted: locked for editing (admin can unlock)
+- Admin receives notification: "[User] ha inviato il timesheet"
+
+---
+
+9. INVOICING HELPER
+
+At the end of each month, for each client show:
+
+BILLABLE SUMMARY:
+- Total billable hours this month: [X]h [Y]m
+- At agency rate (if set): €[amount]
+- Button: "Genera riepilogo per fattura"
+
+INVOICE SUMMARY EXPORT:
+Generates a PDF with:
+- Client name and period
+- Table of all billable entries:
+  Date | Description | Activity type | Hours | Rate | Amount
+- Subtotal hours
+- Subtotal amount
+- Note: "Questo documento è un riepilogo interno. 
+  Non costituisce fattura fiscale."
+
+HOURLY RATE SETTINGS (Admin):
+- Global default rate: €/hour
+- Per client override rate
+- Per activity type rate override
+- Per team member rate (if billing different rates)
+- Stored in: billing_rates table
+
+---
+
+10. PRODUCTIVITY INSIGHTS
+
+Weekly email digest (optional, per user preference):
+- Hours tracked this week vs last week
+- Top client by time this week
+- Billable percentage
+- Most productive day
+- Longest single work session
+
+IN-APP INSIGHTS (shown in Time Tracker dashboard):
+- "You spend [X]% of your time on client work vs admin"
+- "Your most productive hours are [time range] based on 
+   your tracking patterns"
+- "This week you tracked [X]h more than last week 🔥"
+- "[Client] is taking [X]% more time than last month"
+- "You have [X] tasks with no time tracked yet this week"
+
+---
+
+11. INTEGRATIONS WITH EXISTING FEATURES
+
+TASKS:
+- Every task shows total time tracked against it
+- Progress bar: estimated hours vs tracked hours
+- When task is marked complete, prompt: 
+  "Hai impiegato [Xh] su questa task. 
+   Stima iniziale: [Yh]. Vuoi aggiornare la stima per task simili?"
+
+DAILY FOCUS POPUP:
+- Each task in the popup shows: 
+  "Stima: [Xh]" and if already started "Già tracciato: [Yh]"
+- "Inizia ora" button starts timer automatically
+
+PROJECTS:
+- Each project shows total tracked hours vs estimated
+- Burn rate: "Al ritmo attuale finirete il budget ore in [X] settimane"
+- Hours remaining if budget is set
+
+REPORTS:
+- Add "Ore lavorate" section to client reports (optional toggle)
+- Shows hours invested per category this period
+- Internal only — not shown to client by default
+  (admin can choose to include it)
+
+CONTRACTS:
+- If contract has a max hours clause, show alert when approaching limit:
+  "⚠️ Hai utilizzato [X]% delle ore contrattuali con [client]"
+
+---
+
+12. REMINDERS AND ALERTS
+
+- If user has no active timer for more than 2 hours during work hours:
+  Gentle nudge notification: "Stai lavorando? Non dimenticare 
+  di avviare il timer ⏱"
+  (work hours defined in user settings, default 9am–6pm)
+
+- End of day reminder (customizable time, default 6pm):
+  "Hai tracciato [Xh] oggi. Ricordati di fermare il timer 
+  se hai finito di lavorare."
+
+- Weekly reminder every Friday at 5pm:
+  "Hai inviato il timesheet questa settimana?"
+
+- Monthly alert on last working day:
+  "Fine mese! Controlla il riepilogo ore per la fatturazione."
+
+---
+
+13. DATABASE — new tables:
+
+time_entries (
+  id, user_id, client_id, project_id, task_id,
+  description, activity_type, 
+  started_at, ended_at, paused_seconds,
+  duration_seconds, is_billable, is_manual,
+  hourly_rate, amount,
+  created_at, updated_at
+)
+
+timer_sessions (
+  id, user_id, client_id, project_id, task_id,
+  description, activity_type,
+  started_at, paused_at, resumed_at,
+  status (running / paused / stopped),
+  created_at
+)
+
+timesheets (
+  id, user_id, week_start, week_end,
+  status (draft / submitted / approved),
+  submitted_at, approved_by, approved_at,
+  total_hours, billable_hours,
+  created_at
+)
+
+billing_rates (
+  id, client_id (null=global), user_id (null=all),
+  activity_type (null=all), hourly_rate,
+  valid_from, valid_to, created_by, created_at
+)
+
+---
+
+Pre-populate with:
+- 5 realistic time entries spread across the last 7 days
+  for the mock clients (Fiore Moda, TechNova, Rossi & Partners)
+- Show a running timer in demo mode on first load
+- Make sure the top bar widget is visible and the daily stats 
+  cards show real calculated totals from the mock entries
+- Charts must render immediately with mock data

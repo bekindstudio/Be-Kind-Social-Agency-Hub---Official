@@ -1,0 +1,217 @@
+Add a complete internal team chat system to the existing Agency Hub app. 
+Do not modify anything that already exists.
+
+---
+
+OVERVIEW:
+A Slack-inspired messaging system for internal team communication only.
+Every message, action, and interaction is fully logged and traceable.
+Built on Supabase Realtime for instant message delivery.
+
+---
+
+1. CHANNELS
+Three types of channels:
+
+GENERAL CHANNELS (always visible to everyone):
+- #general — main team channel
+- #announcements — admin-only posting, everyone reads
+- #random — informal chat
+
+PROJECT CHANNELS (auto-created when a new project is created):
+- One channel per project, named after the project
+- Only team members assigned to that project can see it
+- Pinned message at the top with project brief, deadline, and budget
+
+DIRECT MESSAGES (1:1 private):
+- Any team member can open a DM with any other member
+- Shows online/offline status indicator
+
+---
+
+2. MESSAGE FEATURES
+
+Each message supports:
+- Plain text with markdown formatting (bold, italic, code blocks)
+- Emoji reactions (click to add, shows who reacted)
+- File attachments (images, PDF, docs — stored in Supabase Storage)
+- Reply in thread (nested replies without cluttering the main channel)
+- Edit message (shows "edited" label with timestamp)
+- Delete message (soft delete — shows "message deleted" placeholder)
+- @mention a team member (sends them a notification)
+- Pin important messages to the channel (pinned messages accessible via pin icon)
+- Copy message link for reference
+
+---
+
+3. FULL TRACEABILITY & AUDIT LOG
+
+Every action is logged in a message_audit_log table:
+- message_id
+- action: sent / edited / deleted / reacted / pinned / unpinned / file_attached
+- performed_by (user_id)
+- timestamp
+- previous_content (for edits — stores the original text before change)
+- metadata_json (any extra context)
+
+Admins can access a "Chat Audit" panel in Settings showing:
+- Full history of all messages including deleted ones
+- Filter by user, channel, date range, action type
+- Export audit log as CSV
+- Cannot be disabled or bypassed by any user
+
+---
+
+4. NOTIFICATIONS
+
+In-app notifications (bell icon in topbar):
+- New message in a channel you belong to
+- @mention anywhere
+- Reply to your message
+- New DM received
+
+Notification preferences per user:
+- All messages / Only mentions / Nothing (per channel)
+- Do not disturb mode with schedule (es. off after 7pm)
+
+Unread indicators:
+- Bold channel name when there are unread messages
+- Red badge with count on the sidebar icon
+- Blue dot on DM list for unread direct messages
+
+---
+
+5. SEARCH
+
+Global search across all messages:
+- Search by keyword, returns results grouped by channel
+- Filter by: user, channel, date range, has file
+- Click result to jump directly to that message in context
+- Admins can search deleted messages too (from audit log)
+
+---
+
+6. UI LAYOUT
+
+Left sidebar (inside the existing app sidebar):
+- Section "Channels" with list of general + project channels
+- Section "Direct Messages" with team member list and online status
+- "+ New Channel" button (admin only for general, anyone for project)
+- Collapse/expand sections
+
+Main chat area:
+- Channel header: name, description, member count, search icon, pin icon
+- Message list: infinite scroll upward to load history
+- Message composer at the bottom:
+  * Text input with formatting toolbar (bold, italic, code, link)
+  * Attach file button
+  * Emoji picker button
+  * Send button (also Enter to send, Shift+Enter for new line)
+- Thread panel slides in from the right when opening a reply thread
+
+Member list panel (toggle):
+- Shows all members in the current channel
+- Online status (green dot = online, gray = offline)
+- Click member → open DM
+
+---
+
+7. MESSAGE COMPOSER SMART FEATURES
+
+- Typing indicator: "Marco is typing..." shown to others in real time
+- Draft saving: if you navigate away mid-message, draft is saved locally
+- Slash commands:
+  * /task [title] — creates a new task linked to the current project channel
+  * /deadline [title] [date] — creates a deadline from chat
+  * /report — opens the report creation panel for the channel's client
+  * /help — shows available commands
+
+---
+
+8. FILE SHARING
+
+Files sent in chat:
+- Images show inline preview
+- PDFs show filename + size with download button
+- Max file size: 25MB
+- Stored in Supabase Storage under /chat-attachments/{channel_id}/{filename}
+- All attachments indexed in the attachments table with reference to message_id
+- Channel "Files" tab: gallery of all files ever shared in that channel,
+  filterable by type and date, with download option
+
+---
+
+9. CHANNEL MANAGEMENT (Admin only)
+
+- Create / archive / delete channels
+- Set channel description and topic
+- Add or remove members from private channels
+- Transfer channel ownership
+- View channel stats: total messages, active members, files shared
+- Export channel history as PDF or CSV (for compliance/client handoff)
+
+---
+
+10. DATABASE — new and updated tables:
+
+message_audit_log (
+  id, message_id, channel_id, action, performed_by,
+  previous_content, metadata_json, created_at
+)
+
+message_reactions (
+  id, message_id, user_id, emoji, created_at,
+  unique(message_id, user_id, emoji)
+)
+
+message_threads (
+  id, parent_message_id, reply_message_id, created_at
+)
+
+pinned_messages (
+  id, channel_id, message_id, pinned_by, pinned_at
+)
+
+user_channel_preferences (
+  id, user_id, channel_id, 
+  notification_level (all/mentions/none),
+  last_read_at, is_muted,
+  unique(user_id, channel_id)
+)
+
+typing_indicators (
+  channel_id, user_id, updated_at
+  -- records deleted after 5 seconds of inactivity
+)
+
+Update existing messages table to add:
+- is_deleted boolean default false
+- deleted_at timestamptz
+- deleted_by uuid
+- edited_at timestamptz
+- thread_count integer default 0
+- reaction_count integer default 0
+
+---
+
+11. REALTIME (Supabase)
+
+Enable realtime on:
+- messages (INSERT, UPDATE — for edits and soft deletes)
+- typing_indicators (INSERT, DELETE)
+- message_reactions (INSERT, DELETE)
+- notifications (INSERT)
+
+---
+
+12. COMPLIANCE NOTE
+
+Display a subtle footer inside every channel:
+"All messages in this workspace are logged and may be reviewed by administrators."
+This ensures team members are aware of the full traceability policy.
+
+Use mock data to show the chat working immediately:
+- Pre-populate #general and #announcements with a few realistic messages
+- Show at least one thread reply and one emoji reaction as example
+- Design must be consistent with the existing app (purple sidebar accents, 
+  clean white surfaces, Inter font)

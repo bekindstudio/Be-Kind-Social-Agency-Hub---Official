@@ -1,0 +1,105 @@
+Update the Top Performing Content section of the report to show 
+the actual Instagram post media — real photos and video thumbnails 
+directly inside the report. Do not change anything else.
+
+---
+
+REAL MEDIA DISPLAY RULES:
+
+For each of the 3 top posts (most followers, most interactions, most saves)
+fetch and display the actual post media using the Instagram Graph API.
+
+Use these endpoints to retrieve real media:
+- GET /{media-id}?fields=id,caption,media_type,media_url,thumbnail_url,
+  permalink,timestamp,like_count,comments_count,reach,impressions,saved,
+  shares,follows,profile_visits
+
+---
+
+PHOTO POSTS:
+- Display the actual image using media_url from the API
+- Show it as a large card (full width of the report column)
+- Image aspect ratio preserved (square 1:1, portrait 4:5, landscape 1.91:1)
+- Rounded corners, subtle border
+- Clicking the image opens the original Instagram post in a new tab 
+  (using permalink from API)
+
+VIDEO POSTS AND REELS:
+- Display the video thumbnail using thumbnail_url from the API
+- Overlay a play button icon in the center of the thumbnail
+- Show video duration if available
+- Clicking opens the original Instagram post/reel in a new tab
+- Do NOT try to embed the video directly — just show thumbnail + link
+
+CAROUSEL POSTS:
+- Show the first image of the carousel as the preview
+- Add a small indicator in the top right corner: 
+  grid icon with "1/[total slides]" label
+- Clicking opens the original post in a new tab
+
+STORIES:
+- Stories media expires after 24 hours per Instagram API rules
+- If story is older than 24h, show a placeholder with the story icon and:
+  "Story media no longer available (Instagram API 24h limit)"
+  but still show all the metrics
+
+---
+
+POST CARD LAYOUT (for each of the 3 top posts):
+
+┌─────────────────────────────────────────┐
+│  [ACTUAL PHOTO or VIDEO THUMBNAIL]      │
+│  Full width, real media from API        │
+│  Click to open on Instagram ↗           │
+├─────────────────────────────────────────┤
+│  📅 [Date]  •  [Post type]  •  IG icon  │
+├─────────────────────────────────────────┤
+│  [Caption — first 120 chars]            │
+│  [Read more toggle for full caption]    │
+├─────────────────────────────────────────┤
+│  🏆 [Primary metric — large and bold]  │
+│  "[Context sentence about performance]" │
+├─────────────────────────────────────────┤
+│  ❤️ [likes]  💬 [comments]  🔖 [saves] │
+│  📤 [shares]  👁 [reach]               │
+└─────────────────────────────────────────┘
+
+---
+
+IF INSTAGRAM IS NOT CONNECTED FOR THIS CLIENT:
+
+Show the 3 post cards in their full layout but with:
+- A blurred gray placeholder rectangle where the image would be
+- Instagram icon centered on the placeholder
+- Text overlay: "Connect Instagram account to display real post media"
+- Button inside the placeholder: "Connect now →" 
+  links to the client's social account settings
+- All other metrics in the card remain visible if available,
+  shown as "—" if not available
+
+---
+
+PDF EXPORT WITH REAL IMAGES:
+
+When generating the PDF:
+- Use html2canvas to capture each post card including the real image
+- Images must render correctly in the PDF export
+- If an image fails to load (CORS or expired URL), 
+  replace it with a gray placeholder in the PDF with the post URL printed below
+- Add below each image in the PDF: 
+  "View original post: [permalink]" as a clickable link
+
+---
+
+IMPORTANT API NOTE:
+
+The media_url from Instagram Graph API is a direct CDN link.
+To display it in the app:
+- Fetch the URL server-side (Next.js API route) to avoid CORS issues
+- Cache the image URL in Supabase for 24 hours to avoid repeated API calls
+- For videos, only thumbnail_url is needed (not the video file itself)
+- Always include the permalink so the client can click through 
+  to the original post
+
+Add a small Instagram attribution line below each post card:
+"Via Instagram • @[username]"

@@ -1,0 +1,251 @@
+Enhance the existing Report system in Agency Hub with a more detailed, 
+visual and scrollable layout. Do not remove anything already built.
+Only add and improve the report content structure.
+
+---
+
+GENERAL PRINCIPLE:
+The report must tell a story as you scroll through it.
+Each section flows naturally into the next, like a professional 
+presentation document. Data is always shown in context, with comparisons, 
+rankings and visual highlights — not just raw numbers.
+Every metric has a brief human-readable explanation beneath it
+(e.g. "This post reached 3x more people than your monthly average").
+
+---
+
+ENHANCED SECTION: TOP PERFORMING CONTENT
+
+This section replaces the basic "top content" table with a rich, 
+scrollable visual showcase. Divide it into 3 distinct podiums:
+
+---
+
+PODIUM 1 — TOP POST BY NEW FOLLOWERS GAINED
+"The post that brought the most new people to your profile"
+
+Display:
+- Full post preview card (image thumbnail, caption preview, platform icon)
+- Metric highlighted: followers gained directly attributable to this post
+- Supporting metrics below: reach, impressions, profile visits from post
+- Comparison bar: "This post generated [X]% more followers than 
+  your average post this month"
+- Date published and content type (reel / post / carousel / story)
+- Caption: first 100 characters with "read more" toggle
+- Direct link to the original post (if available from API)
+
+---
+
+PODIUM 2 — TOP POST BY TOTAL INTERACTIONS
+"The post your audience engaged with the most"
+
+Display:
+- Full post preview card
+- Metric highlighted: total interactions 
+  (likes + comments + shares + saves combined)
+- Breakdown bar chart showing split between:
+  * Likes
+  * Comments  
+  * Shares
+  * Saves
+- Engagement rate % with context: 
+  "Your average engagement rate this month was [X]%. 
+   This post achieved [Y]% — [Z]x above average."
+- Most relevant comment shown (highest liked comment if available from API)
+- Date published and content type
+
+---
+
+PODIUM 3 — TOP POST BY SAVES
+"The post people found most worth keeping"
+
+Display:
+- Full post preview card
+- Metric highlighted: total saves
+- Context explanation: 
+  "Saves indicate high-value content. This post was saved [X] times,
+   meaning [X] people found it worth returning to."
+- Supporting metrics: reach, impressions, saves rate (saves/reach %)
+- Comparison: "This is [X]x your average saves per post this month"
+- Date published and content type
+
+---
+
+ADDITIONAL TOP CONTENT ROWS (below the 3 podiums):
+
+TOP 3 REELS BY VIEWS:
+Horizontal scrollable row of 3 cards showing:
+- Thumbnail, title, views count, average watch time (if available),
+  completion rate %, likes, comments, shares
+
+TOP 3 STORIES BY REACH:
+Horizontal scrollable row showing:
+- Story type, reach, taps forward, taps back, exits, replies
+
+TOP 3 CAROUSEL POSTS:
+Horizontal scrollable row showing:
+- Thumbnail, swipe-through rate, reach, engagement
+
+---
+
+ENHANCED SECTION: MONTHLY CONTENT CALENDAR RECAP
+
+A visual grid showing every piece of content published during the period:
+- Mini calendar view with dots on published dates
+- Color coded by content type: 
+  blue=post, purple=reel, pink=story, teal=carousel
+- Click any dot to see the post preview card inline
+- Summary below: "You published [N] times this month — 
+  [X] posts, [Y] reels, [Z] stories, [W] carousels"
+- Comparison: "vs [N-1] last month (+/-[X]%)"
+- Best publishing day: "Your audience was most active on [Thursdays]"
+- Best publishing time: "Posts published between [6pm-8pm] 
+  got [X]% more reach"
+
+---
+
+ENHANCED SECTION: AUDIENCE INSIGHTS
+
+Data from Instagram/Facebook Insights API:
+
+FOLLOWER GROWTH CHART:
+- Line chart showing daily follower count across the period
+- Annotated with the top performing post dates (vertical dotted lines)
+- Shows net growth: new followers gained vs unfollows
+- Total at end: "+[X] net new followers this [week/month/quarter]"
+
+AUDIENCE DEMOGRAPHICS:
+- Age range bar chart: 18-24, 25-34, 35-44, 45-54, 55+
+- Gender split: donut chart
+- Top 5 cities: horizontal bar chart
+- Top 3 countries
+
+REACH BREAKDOWN:
+- Donut chart: organic reach vs paid reach vs viral reach
+- Total unique accounts reached
+
+---
+
+ENHANCED SECTION: PERFORMANCE TRENDS
+
+WEEK-OVER-WEEK or MONTH-OVER-MONTH comparison table:
+Each metric shown as a row with:
+- Metric name
+- Current period value
+- Previous period value  
+- Trend arrow (↑ green / ↓ red / → gray)
+- % change
+- Sparkline mini chart
+
+Metrics included:
+- Follower count
+- Total reach
+- Total impressions
+- Engagement rate
+- Total interactions
+- Posts published
+- Average likes per post
+- Average comments per post
+- Average saves per post
+- Profile visits
+- Website clicks (if linked)
+- Story views
+
+---
+
+ENHANCED SECTION: META ADS DEEP DIVE (if connected)
+
+TOP 3 PERFORMING ADS:
+Same podium structure as organic content:
+- Top ad by lowest CPC
+- Top ad by highest ROAS
+- Top ad by most conversions
+
+Each ad card shows:
+- Creative thumbnail
+- Ad name and campaign
+- Primary metric highlighted
+- Supporting metrics: spend, reach, clicks, CTR, CPC, conversions, ROAS
+- Audience targeted
+- Placement (feed / stories / reels / audience network)
+
+BUDGET UTILIZATION:
+- Progress bar: amount spent vs total budget
+- Daily spend chart (line graph)
+- Projected end-of-period spend at current rate
+
+---
+
+ENHANCED SECTION: STRATEGIC NOTES (team-written)
+
+Split into two visual columns side by side:
+
+LEFT COLUMN — "What worked this month":
+- Bullet-point rich text editor
+- Team writes specific observations
+- Each point can be tagged: content / timing / audience / budget / creative
+
+RIGHT COLUMN — "What we're improving next":  
+- Bullet-point rich text editor
+- Each improvement linked to a specific metric that underperformed
+- Can attach a planned action: 
+  "We will test [X] to improve [metric] by [target]"
+
+FULL-WIDTH BELOW — "Next period strategy":
+- Rich text editor with formatting
+- Recommended content mix for next period:
+  table with columns: content type, quantity, objective, target metric
+- Budget recommendation (if ads are running)
+- Key dates and events to plan content around
+
+---
+
+REPORT SCROLLING EXPERIENCE:
+
+Add a sticky table of contents on the left side of the report 
+(visible while scrolling in full-screen preview mode):
+- Executive Summary
+- Top Performing Content
+- Content Calendar Recap
+- Audience Insights
+- Performance Trends
+- Meta Ads (if active)
+- Google Ads (if active)  
+- Strategic Notes
+- Next Period Strategy
+
+Each section has an anchor link. 
+Clicking jumps smoothly to that section.
+Active section is highlighted in the TOC as you scroll.
+
+---
+
+PDF EXPORT RULES:
+
+When exporting to PDF maintain this exact scroll order as pages:
+Page 1: Cover (client name, period, agency logo)
+Page 2: Executive Summary with KPI cards
+Page 3-4: Top Performing Content (3 podiums)
+Page 5: Content Calendar Grid
+Page 6: Audience Insights charts
+Page 7: Performance Trends table
+Page 8-9: Meta Ads deep dive (if active)
+Page 10-11: Google Ads deep dive (if active)
+Page 12: Strategic Notes (two columns)
+Page 13: Next Period Strategy
+Page 14: Back cover with agency contact details
+
+Charts must render correctly in PDF — use html2canvas to capture 
+each chart section before generating the PDF with jsPDF.
+
+---
+
+DATA RULES (strict):
+- NEVER show placeholder numbers or mock metrics in the final report
+- If a metric is unavailable from the API show: 
+  "Data unavailable — connect [platform] account to display this metric"
+- If the period has zero posts show: 
+  "No content was published during this period"
+- All percentage comparisons require data from the previous period too.
+  If previous period data is missing, hide the comparison and show:
+  "No previous period data available for comparison"

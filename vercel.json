@@ -3,5 +3,12 @@
   "framework": null,
   "installCommand": "pnpm install",
   "buildCommand": "pnpm --filter @workspace/agency-portal run build",
-  "outputDirectory": "artifacts/agency-portal/dist/public"
+  "outputDirectory": "artifacts/agency-portal/dist/public",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://be-kind-social-agency-hub-official.onrender.com/api/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

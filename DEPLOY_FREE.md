@@ -46,7 +46,9 @@ Variabili ambiente (Vercel -> Environment Variables):
 - `VITE_CLERK_PUBLISHABLE_KEY=pk_...`
 - `VITE_SUPABASE_URL=https://...supabase.co`
 - `VITE_SUPABASE_ANON_KEY=...`
-- `VITE_API_PROXY_TARGET=https://<tuo-backend>.onrender.com`
+- `VITE_API_PROXY_TARGET=https://<tuo-backend>.onrender.com` (solo dev locale; in produzione Vercel usa i `rewrites` in `vercel.json` verso lo stesso host Render)
+
+Se cambi URL del backend Render, aggiorna anche `rewrites` in `vercel.json` (root e/o `artifacts/agency-portal/vercel.json`) con il nuovo dominio.
 
 ## 4) Configurazioni esterne
 

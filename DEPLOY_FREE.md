@@ -32,10 +32,12 @@ Nota: `FRONTEND_URLS` accetta piu' domini separati da virgola.
 
 ## 3) Frontend su Vercel (free)
 
-- Crea un nuovo progetto da GitHub.
-- Root directory: `artifacts/agency-portal`
-- Build command: `pnpm run build`
-- Output directory: `dist/public`
+Monorepo: imposta **Root Directory** vuota (root del repo) cosi' Vercel legge `vercel.json` nella root.
+
+- Root directory: **`.`** (lascia vuoto / repository root, **non** solo `artifacts/agency-portal` a meno che non configuri install monorepo a mano)
+- `vercel.json` in root gia' contiene: `installCommand`, `buildCommand` (solo portal), `outputDirectory: artifacts/agency-portal/dist/public`
+
+Se invece imposti Root su `artifacts/agency-portal`, allora **Output directory** deve essere **`dist/public`** (non `public`). Su monorepo e' piu' semplice usare la root del repo come sopra.
 
 Variabili ambiente (Vercel -> Environment Variables):
 

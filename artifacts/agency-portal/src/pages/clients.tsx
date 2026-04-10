@@ -65,6 +65,7 @@ export default function Clients() {
       try {
         const res = await fetch("/api/clients", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: lc.name,
@@ -106,12 +107,17 @@ export default function Clients() {
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
+      const local = readLocalClients();
       try {
-        const res = await fetch("/api/clients");
-        const data = await res.json();
-        const remote = Array.isArray(data) ? data : [];
-        const local = readLocalClients();
+        const res = await fetch("/api/clients", { credentials: "include" });
+        let remote: ClientRow[] = [];
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          remote = Array.isArray(data) ? data : [];
+        }
         setClients([...local, ...remote]);
+      } catch {
+        setClients([...local]);
       } finally {
         setIsLoading(false);
       }
@@ -146,7 +152,9 @@ export default function Clients() {
   useEffect(() => {
     const check = async () => {
       if (!form.name?.trim() && !form.piva?.trim()) return setDuplicateMatches([]);
-      const res = await fetch(`/api/clients/duplicate-check?q=${encodeURIComponent(form.name ?? "")}&piva=${encodeURIComponent(form.piva ?? "")}`);
+      const res = await fetch(`/api/clients/duplicate-check?q=${encodeURIComponent(form.name ?? "")}&piva=${encodeURIComponent(form.piva ?? "")}`, {
+        credentials: "include",
+      });
       const data = await res.json();
       setDuplicateMatches(Array.isArray(data?.matches) ? data.matches : []);
     };
@@ -166,6 +174,7 @@ export default function Clients() {
     try {
       const res = await fetch("/api/clients", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
@@ -232,7 +241,7 @@ export default function Clients() {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm("Eliminare questo cliente?")) return;
-    const res = await fetch(`/api/clients/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) setClients((prev) => prev.filter((c) => c.id !== id));
   };
 

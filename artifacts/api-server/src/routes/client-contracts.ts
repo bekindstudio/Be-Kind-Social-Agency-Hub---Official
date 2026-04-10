@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, and, isNull } from "drizzle-orm";
 import { db, contractsTable, clientsTable } from "@workspace/db";
 import { z } from "zod";
 import { getUserId, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const CreateClientContractBody = z.object({
   clientId: z.number(),
@@ -66,7 +67,10 @@ async function autoUpdateExpired() {
     .update(contractsTable)
     .set({ stato: "scaduto" })
     .where(
-      sql`${contractsTable.stato} NOT IN ('rescisso', 'scaduto') AND ${contractsTable.dataFine} < ${today}`
+      and(
+        isNull(contractsTable.deletedAt),
+        sql`${contractsTable.stato} NOT IN ('rescisso', 'scaduto') AND ${contractsTable.dataFine} < ${today}`,
+      ),
     );
 }
 
@@ -75,7 +79,12 @@ async function getNextNumero(): Promise<string> {
   const rows = await db
     .select()
     .from(contractsTable)
-    .where(sql`${contractsTable.numero} LIKE ${`CONT-${year}-%`}`)
+    .where(
+      and(
+        isNull(contractsTable.deletedAt),
+        sql`${contractsTable.numero} LIKE ${`CONT-${year}-%`}`,
+      ),
+    )
     .orderBy(asc(contractsTable.id));
   const nums = rows.map((r) => {
     const parts = r.numero.split("-");
@@ -86,10 +95,10 @@ async function getNextNumero(): Promise<string> {
 }
 
 async function seedIfEmpty() {
-  const existing = await db.select().from(contractsTable).limit(1);
+  const existing = await db.select().from(contractsTable).where(isNull(contractsTable.deletedAt)).limit(1);
   if (existing.length > 0) return;
 
-  const clients = await db.select().from(clientsTable).limit(3);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt)).limit(3);
   if (clients.length === 0) return;
 
   const year = new Date().getFullYear();
@@ -215,6 +224,7 @@ router.get("/client-contracts", async (req, res): Promise<void> => {
     })
     .from(contractsTable)
     .leftJoin(clientsTable, eq(contractsTable.clientId, clientsTable.id))
+    .where(isNull(contractsTable.deletedAt))
     .orderBy(asc(contractsTable.createdAt));
   const accessible = userId ? await getAccessibleClientIds(userId) : "all" as const;
   const filtered = filterByClientAccess(rows, accessible);
@@ -241,7 +251,10 @@ router.get("/client-contracts/expiring", async (_req, res): Promise<void> => {
     .from(contractsTable)
     .leftJoin(clientsTable, eq(contractsTable.clientId, clientsTable.id))
     .where(
-      sql`${contractsTable.stato} = 'firmato' AND ${contractsTable.dataFine} >= ${today} AND ${contractsTable.dataFine} <= ${in30str}`
+      and(
+        isNull(contractsTable.deletedAt),
+        sql`${contractsTable.stato} = 'firmato' AND ${contractsTable.dataFine} >= ${today} AND ${contractsTable.dataFine} <= ${in30str}`,
+      ),
     );
   res.json(rows);
 });
@@ -339,7 +352,7 @@ router.get("/client-contracts/:id", async (req, res): Promise<void> => {
     })
     .from(contractsTable)
     .leftJoin(clientsTable, eq(contractsTable.clientId, clientsTable.id))
-    .where(eq(contractsTable.id, id));
+    .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -361,6 +374,12 @@ router.patch("/client-contracts/:id", async (req, res): Promise<void> => {
 
   const parsed = UpdateClientContractBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [active] = await db
+    .select()
+    .from(contractsTable)
+    .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
+  if (!active) { res.status(404).json({ error: "Not found" }); return; }
 
   const d = parsed.data;
   const updates: Record<string, unknown> = {};
@@ -423,19 +442,23 @@ router.patch("/client-contracts/:id", async (req, res): Promise<void> => {
 router.delete("/client-contracts/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [row] = await db
-    .delete(contractsTable)
-    .where(eq(contractsTable.id, id))
-    .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.sendStatus(204);
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("contracts", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.post("/client-contracts/:id/duplicate", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [orig] = await db.select().from(contractsTable).where(eq(contractsTable.id, id));
+  const [orig] = await db
+    .select()
+    .from(contractsTable)
+    .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
   if (!orig) { res.status(404).json({ error: "Not found" }); return; }
 
   const numero = await getNextNumero();

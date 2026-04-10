@@ -15,6 +15,7 @@ import {
 import { Line, Bar, Doughnut } from "react-chartjs-2";
 import { Layout } from "@/components/layout/Layout";
 import { cn } from "@/lib/utils";
+import { portalFetch } from "@workspace/api-client-react";
 import {
   TrendingUp,
   TrendingDown,
@@ -280,7 +281,7 @@ export default function Reports() {
       if (filterAuthor) params.set("author", filterAuthor);
       if (filterFrom) params.set("from", filterFrom);
       if (filterTo) params.set("to", filterTo);
-      const res = await fetch(`/api/reports?${params}`);
+      const res = await portalFetch(`/api/reports?${params}`);
       const data = await res.json();
       setReports(Array.isArray(data) ? data : []);
     } catch { if (!silent) setReports([]); }
@@ -296,7 +297,7 @@ export default function Reports() {
 
   const fetchReportDetail = useCallback(async (id: number) => {
     try {
-      const res = await fetch(`/api/reports/detail/${id}`);
+      const res = await portalFetch(`/api/reports/detail/${id}`);
       const data = await res.json();
       setSelectedReport(data);
       setEditForm({
@@ -327,13 +328,13 @@ export default function Reports() {
       if (liveDateFrom) params.set("since", liveDateFrom);
       if (liveDateTo) params.set("until", liveDateTo);
       params.set("sync", "true");
-      const syncRes = await fetch(`/api/meta/sync/${selectedReport.clientId}?${params}`, { method: "POST" });
+      const syncRes = await portalFetch(`/api/meta/sync/${selectedReport.clientId}?${params}`, { method: "POST" });
       if (!syncRes.ok) throw new Error("Errore sync");
       const daysDiff = liveDateFrom && liveDateTo
         ? Math.max(1, Math.ceil((new Date(liveDateTo).getTime() - new Date(liveDateFrom).getTime()) / (1000 * 60 * 60 * 24)))
         : 30;
       const range = daysDiff <= 7 ? "7d" : daysDiff <= 30 ? "30d" : "90d";
-      const freshRes = await fetch(`/api/meta/insights/${selectedReport.clientId}?range=${range}&${params}`);
+      const freshRes = await portalFetch(`/api/meta/insights/${selectedReport.clientId}?range=${range}&${params}`);
       const data = await freshRes.json();
       setLiveData(data);
     } catch (err: any) {
@@ -360,9 +361,9 @@ export default function Reports() {
       const insightsParams = new URLSearchParams({ range });
       if (dates.inizio) insightsParams.set("since", dates.inizio);
       if (dates.fine) insightsParams.set("until", dates.fine);
-      const insightsRes = await fetch(`/api/meta/insights/${createForm.clientId}?${insightsParams}`).then((r) => r.json()).catch(() => null);
+      const insightsRes = await portalFetch(`/api/meta/insights/${createForm.clientId}?${insightsParams}`).then((r) => r.json()).catch(() => null);
 
-      const res = await fetch("/api/reports", {
+      const res = await portalFetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -399,7 +400,7 @@ export default function Reports() {
     if (!selectedReportId) return;
     setSaving(true);
     try {
-      await fetch(`/api/reports/${selectedReportId}`, {
+      await portalFetch(`/api/reports/${selectedReportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
@@ -415,7 +416,7 @@ export default function Reports() {
     if (!selectedReportId) return;
     setActionLoading(action);
     try {
-      const res = await fetch(`/api/reports/${selectedReportId}/${action}`, {
+      const res = await portalFetch(`/api/reports/${selectedReportId}/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -430,7 +431,7 @@ export default function Reports() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Eliminare questo report?")) return;
-    await fetch(`/api/reports/${id}`, { method: "DELETE" });
+    await portalFetch(`/api/reports/${id}`, { method: "DELETE" });
     if (selectedReportId === id) { setView("list"); setSelectedReport(null); }
     await fetchReports();
   };

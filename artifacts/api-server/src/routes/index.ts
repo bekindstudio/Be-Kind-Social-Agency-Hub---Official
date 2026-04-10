@@ -28,6 +28,7 @@ import clientBriefsRouter from "./client-briefs";
 import editorialPlansRouter from "./editorial-plans";
 import dailyFocusRouter from "./daily-focus";
 import timeTrackerRouter from "./time-tracker";
+import trashRouter from "./trash";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(clientBriefsRouter);
 router.use(editorialPlansRouter);
 router.use(dailyFocusRouter);
 router.use(timeTrackerRouter);
+router.use(trashRouter);
 
 export default router;

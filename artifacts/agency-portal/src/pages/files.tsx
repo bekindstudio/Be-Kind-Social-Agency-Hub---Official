@@ -11,6 +11,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Plus, Trash2, ExternalLink, FileText, Image, FileSpreadsheet, File, Upload, X, Download, Search } from "lucide-react";
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
 import { usePortalUser } from "@/hooks/usePortalUser";
+import { portalFetch } from "@workspace/api-client-react";
 
 function FileIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
@@ -76,7 +77,7 @@ export default function Files() {
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       try {
-        const reqRes = await fetch("/api/storage/uploads/request-url", {
+        const reqRes = await portalFetch("/api/storage/uploads/request-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),

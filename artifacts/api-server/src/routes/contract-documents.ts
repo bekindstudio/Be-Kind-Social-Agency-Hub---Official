@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, desc, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, isNotNull, inArray, isNull } from "drizzle-orm";
 import { db, contractDocumentsTable } from "@workspace/db";
 import { z } from "zod";
+import { getUserId } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
@@ -48,7 +50,12 @@ async function getNextAgzNumber(): Promise<string> {
   const rows = await db
     .select({ num: contractDocumentsTable.contractNumber })
     .from(contractDocumentsTable)
-    .where(sql`${contractDocumentsTable.contractNumber} LIKE ${`AGZ-${year}-%`}`);
+    .where(
+      and(
+        isNull(contractDocumentsTable.deletedAt),
+        sql`${contractDocumentsTable.contractNumber} LIKE ${`AGZ-${year}-%`}`,
+      ),
+    );
   const nums = rows
     .map((r) => {
       const parts = r.num.split("-");
@@ -66,6 +73,7 @@ async function autoMarkExpired() {
     .set({ status: "scaduto", updatedAt: new Date() })
     .where(
       and(
+        isNull(contractDocumentsTable.deletedAt),
         inArray(contractDocumentsTable.status, ["inviato", "firmato"]),
         isNotNull(contractDocumentsTable.endDate),
         sql`${contractDocumentsTable.endDate} < ${today}`
@@ -107,7 +115,10 @@ router.get("/contract-documents/stats", async (_req, res): Promise<void> => {
   in30.setDate(in30.getDate() + 30);
   const in30s = in30.toISOString().slice(0, 10);
 
-  const all = await db.select().from(contractDocumentsTable);
+  const all = await db
+    .select()
+    .from(contractDocumentsTable)
+    .where(isNull(contractDocumentsTable.deletedAt));
 
   const active = all.filter((c) => {
     if (c.status !== "firmato") return false;
@@ -138,7 +149,7 @@ router.get("/contract-documents", async (req, res): Promise<void> => {
   const serviceType = typeof req.query.serviceType === "string" ? req.query.serviceType : undefined;
   const month = typeof req.query.month === "string" ? req.query.month : undefined;
 
-  const conditions = [];
+  const conditions = [isNull(contractDocumentsTable.deletedAt)];
   if (status && status !== "tutti") {
     conditions.push(eq(contractDocumentsTable.status, status));
   }
@@ -150,10 +161,7 @@ router.get("/contract-documents", async (req, res): Promise<void> => {
   }
 
   const base = db.select().from(contractDocumentsTable);
-  const rows =
-    conditions.length > 0
-      ? await base.where(and(...conditions)).orderBy(desc(contractDocumentsTable.createdAt))
-      : await base.orderBy(desc(contractDocumentsTable.createdAt));
+  const rows = await base.where(and(...conditions)).orderBy(desc(contractDocumentsTable.createdAt));
 
   res.json(rows.map(serializeDoc));
 });
@@ -201,7 +209,10 @@ router.get("/contract-documents/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  const [row] = await db.select().from(contractDocumentsTable).where(eq(contractDocumentsTable.id, id));
+  const [row] = await db
+    .select()
+    .from(contractDocumentsTable)
+    .where(and(eq(contractDocumentsTable.id, id), isNull(contractDocumentsTable.deletedAt)));
   if (!row) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -247,6 +258,15 @@ router.patch("/contract-documents/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const [ex] = await db
+    .select()
+    .from(contractDocumentsTable)
+    .where(and(eq(contractDocumentsTable.id, id), isNull(contractDocumentsTable.deletedAt)));
+  if (!ex) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
   const [row] = await db
     .update(contractDocumentsTable)
     .set({ ...updates, updatedAt: new Date() })
@@ -265,12 +285,13 @@ router.delete("/contract-documents/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  const [row] = await db.delete(contractDocumentsTable).where(eq(contractDocumentsTable.id, id)).returning();
-  if (!row) {
-    res.status(404).json({ error: "Not found" });
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("contract_documents", id, { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
     return;
   }
-  res.sendStatus(204);
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.post("/contract-documents/:id/duplicate", async (req, res): Promise<void> => {
@@ -279,7 +300,10 @@ router.post("/contract-documents/:id/duplicate", async (req, res): Promise<void>
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  const [orig] = await db.select().from(contractDocumentsTable).where(eq(contractDocumentsTable.id, id));
+  const [orig] = await db
+    .select()
+    .from(contractDocumentsTable)
+    .where(and(eq(contractDocumentsTable.id, id), isNull(contractDocumentsTable.deletedAt)));
   if (!orig) {
     res.status(404).json({ error: "Not found" });
     return;

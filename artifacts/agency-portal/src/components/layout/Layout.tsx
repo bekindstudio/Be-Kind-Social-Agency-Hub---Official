@@ -1,10 +1,13 @@
 import { ReactNode, useState, useEffect, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
 import { ActiveTimerWidget, useTimerStart } from "@/components/ActiveTimerWidget";
 import { Menu } from "lucide-react";
+import { AutoSaveIndicator } from "./AutoSaveIndicator";
+import { OfflineBanner } from "./OfflineBanner";
 
 interface LayoutProps {
   children: ReactNode;
@@ -19,7 +22,7 @@ export function Layout({ children }: LayoutProps) {
     let mounted = true;
     const check = async () => {
       try {
-        const res = await fetch("/api/daily-focus/should-open", { credentials: "include" });
+        const res = await portalFetch("/api/daily-focus/should-open");
         if (!res.ok) return;
         const data = await res.json();
         if (mounted && data?.shouldOpen) {
@@ -78,11 +81,13 @@ export function Layout({ children }: LayoutProps) {
           </button>
           <span className="text-sm font-semibold md:hidden">Be Kind Social Agency HUB</span>
           <div className="ml-auto flex items-center gap-2">
+            <AutoSaveIndicator />
             <ActiveTimerWidget />
             <DailyFocusWidget onClick={() => setFocusOpen(true)} />
             <GlobalSearch />
           </div>
         </div>
+        <OfflineBanner />
         {children}
       </main>
 

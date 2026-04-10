@@ -20,6 +20,7 @@ export const contractsTable = pgTable("contracts", {
   marcaDaBollo: integer("marca_da_bollo").notNull().default(0),
   stato: text("stato").notNull().default("bozza"),
   note: text("note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

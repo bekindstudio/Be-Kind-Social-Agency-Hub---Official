@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, isNull } from "drizzle-orm";
 import { db, tasksTable, projectsTable, teamMembersTable } from "@workspace/db";
 import {
   CreateTaskBody,
@@ -10,12 +10,13 @@ import {
   ListTasksQueryParams,
 } from "@workspace/api-zod";
 import { getUserId } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
 async function getProjectsAndMembers() {
   const [projects, members] = await Promise.all([
-    db.select().from(projectsTable),
+    db.select().from(projectsTable).where(isNull(projectsTable.deletedAt)),
     db.select().from(teamMembersTable),
   ]);
   return {
@@ -42,7 +43,8 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
 async function seedAdvancedTasks() {
   const taskCount = await db
     .select({ count: sql<number>`count(*)` })
-    .from(tasksTable);
+    .from(tasksTable)
+    .where(isNull(tasksTable.deletedAt));
 
   if (Number(taskCount[0]?.count) > 0) return;
 
@@ -202,7 +204,11 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   await seedAdvancedTasks();
 
-  const tasks = await db.select().from(tasksTable).orderBy(tasksTable.createdAt);
+  const tasks = await db
+    .select()
+    .from(tasksTable)
+    .where(isNull(tasksTable.deletedAt))
+    .orderBy(tasksTable.createdAt);
   const { projectMap, memberMap } = await getProjectsAndMembers();
 
   let result = tasks.map((t) => serializeTask(t, projectMap, memberMap));
@@ -252,7 +258,10 @@ router.get("/tasks/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, params.data.id));
+  const [task] = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, params.data.id), isNull(tasksTable.deletedAt)));
   if (!task) {
     res.status(404).json({ error: "Task not found" });
     return;
@@ -292,6 +301,15 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (b.pacchettoContenuti !== undefined) updates.pacchettoContenuti = b.pacchettoContenuti;
   if (b.meseRiferimento !== undefined) updates.meseRiferimento = b.meseRiferimento;
 
+  const [ex] = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, params.data.id), isNull(tasksTable.deletedAt)));
+  if (!ex) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
+
   const [task] = await db.update(tasksTable).set(updates).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) {
     res.status(404).json({ error: "Task not found" });
@@ -310,12 +328,12 @@ router.delete("/tasks/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [task] = await db.delete(tasksTable).where(eq(tasksTable.id, params.data.id)).returning();
-  if (!task) {
-    res.status(404).json({ error: "Task not found" });
+  const r = await softDeleteRecord("tasks", String(params.data.id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
     return;
   }
-  res.sendStatus(204);
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 export default router;

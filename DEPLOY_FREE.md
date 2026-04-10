@@ -10,6 +10,19 @@ Questa guida pubblica l'app in produzione con costi zero (con limiti free tier).
   - `pnpm -w run build`
 - Chiavi e password sensibili non committate.
 
+## 1b) Checklist veloce (quando vedi 500 su `/api/projects`, dashboard, clienti)
+
+1. **Schema Postgres** — Stesso database che usi in `DATABASE_URL` su Render deve avere tabelle e colonne allineate al codice. Una sola volta (o dopo pull che cambiano lo schema), dalla root del repo:
+   - `export DATABASE_URL='postgresql://...'` (stringa da Supabase → **Project Settings → Database**; per `drizzle-kit push` di solito va bene URI con host `db.<ref>.supabase.co` porta **5432**, oppure “Session” se usi il pooler; se `push` fallisce, prova la connection string **non** transaction-pooler.)
+   - `pnpm run db:push`
+   - Se Drizzle segnala conflitti irrisolvibili e accetti il rischio (meglio backup prima): `pnpm run db:push-force`
+2. **Render** — `DATABASE_URL` punta a **quel** stesso progetto Supabase; `SUPABASE_JWT_SECRET` dalla dashboard Supabase (**API → JWT Secret**); `FRONTEND_URLS` include l’URL esatto del sito Vercel (con `https://`).
+3. **Vercel** — `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (o publishable); in `vercel.json` il `rewrites` `/api/*` deve puntare al dominio **attuale** del servizio Render (non un URL vecchio).
+4. **Auth** — Con login reale: **non** impostare `API_AUTH_DISABLED` (o `false`). Solo demo locale può usare `API_AUTH_DISABLED=true`.
+5. **Verifica** — `GET https://<render>/api/healthz` → `{"status":"ok"}`; poi `GET /api/projects` (anche senza auth se in demo) non deve rispondere 500; login sul portale e ricarica dashboard.
+
+**Schema incompleto:** se `/api/projects` va in 500 mentre `/api/clients` funziona, spesso mancano tabelle tipo `project_milestones` / `project_members`. In **Supabase → SQL Editor** esegui le migrazioni in `supabase/migrations/` in ordine (incluso `20260410190000_satellite_tables_and_fks.sql`), oppure `pnpm run db:push` con `DATABASE_URL` dello stesso database.
+
 ## 2) Backend su Render (free)
 
 - Crea un nuovo **Web Service** da GitHub.

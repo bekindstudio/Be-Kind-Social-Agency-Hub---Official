@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { portalFetch } from "@workspace/api-client-react";
 import { Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { ArrowLeft, ArrowRight, Check, FileDown, Save } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/contracts-shared";
 import { exportContractElementToPdf } from "@/lib/contract-pdf";
 import { ContractRichEditor } from "@/components/contracts/ContractRichEditor";
+import { useAutoSave } from "@/hooks/useAutoSave";
 
 const BASE = "/api";
 
@@ -133,7 +135,7 @@ export default function ContractsNew() {
   ]);
 
   useEffect(() => {
-    fetch(`${BASE}/contracts`)
+    portalFetch(`${BASE}/contracts`)
       .then((r) => r.json())
       .then((rows: TemplateRow[]) => setTemplates(Array.isArray(rows) ? rows : []))
       .catch(() => setTemplates([]));
@@ -141,7 +143,7 @@ export default function ContractsNew() {
 
   useEffect(() => {
     if (!loadId) return;
-    fetch(`${BASE}/contract-documents/${loadId}`)
+    portalFetch(`${BASE}/contract-documents/${loadId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((doc: null | Record<string, unknown>) => {
         if (!doc) return;
@@ -173,8 +175,8 @@ export default function ContractsNew() {
     setStep((s) => Math.min(4, s + 1));
   };
 
-  const persist = async (status: "bozza" | "inviato") => {
-    setSaving(true);
+  const persist = async (status: "bozza" | "inviato", opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setSaving(true);
     try {
       const num = parseFloat(valueEur.replace(",", "."));
       const body = {
@@ -192,13 +194,13 @@ export default function ContractsNew() {
       };
       let res: Response;
       if (savedId) {
-        res = await fetch(`${BASE}/contract-documents/${savedId}`, {
+        res = await portalFetch(`${BASE}/contract-documents/${savedId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
       } else {
-        res = await fetch(`${BASE}/contract-documents`, {
+        res = await portalFetch(`${BASE}/contract-documents`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -212,9 +214,50 @@ export default function ContractsNew() {
       qc.invalidateQueries({ queryKey: ["contract-documents-stats"] });
       return data as { id: string; contractNumber: string };
     } finally {
-      setSaving(false);
+      if (!opts?.silent) setSaving(false);
     }
   };
+
+  const autosaveEnabled =
+    step === 4 &&
+    Boolean(slug) &&
+    clientName.trim().length > 0 &&
+    content.trim().length > 0;
+
+  const { scheduleSave, onFieldBlur } = useAutoSave({
+    enabled: autosaveEnabled,
+    debounceMs: 1500,
+    maxRetries: 3,
+    storageKey: savedId ? `autosave-contract-${savedId}` : "autosave-contract-new",
+    getBackupPayload: () => ({
+      clientName,
+      slug,
+      savedId,
+      contentLen: content.length,
+    }),
+    save: async () => {
+      await persist("bozza", { silent: true });
+    },
+  });
+
+  useEffect(() => {
+    if (!autosaveEnabled) return;
+    scheduleSave();
+  }, [
+    autosaveEnabled,
+    scheduleSave,
+    clientName,
+    clientEmail,
+    clientVat,
+    clientAddress,
+    valueEur,
+    startDate,
+    endDate,
+    content,
+    slug,
+    templateId,
+    extraVars,
+  ]);
 
   const handlePdf = async (fileNumber?: string) => {
     if (!previewRef.current) return;
@@ -370,7 +413,7 @@ export default function ContractsNew() {
           <div className="grid lg:grid-cols-2 gap-6 items-start">
             <div>
               <p className="text-sm font-medium mb-2">Testo finale (WYSIWYG)</p>
-              <ContractRichEditor value={content} onChange={setContent} />
+              <ContractRichEditor value={content} onChange={setContent} onBlur={onFieldBlur} />
               <p className="text-xs text-muted-foreground mt-2">
                 Le variabili sono già sostituite; puoi rifinire il testo prima di salvare o esportare.
               </p>

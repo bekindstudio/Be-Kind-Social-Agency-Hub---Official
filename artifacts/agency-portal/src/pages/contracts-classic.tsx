@@ -7,6 +7,7 @@ import {
   useDeleteContractTemplate,
   getListContractTemplatesQueryKey,
   useListClients,
+  portalFetch,
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import {
@@ -100,7 +101,7 @@ const BASE = "/api";
 function useContracts() {
   return useQuery<Contract[]>({
     queryKey: ["client-contracts"],
-    queryFn: () => fetch(`${BASE}/client-contracts`).then((r) => r.json()),
+    queryFn: () => portalFetch(`${BASE}/client-contracts`).then((r) => r.json()),
   });
 }
 
@@ -108,7 +109,7 @@ function useCreateContract() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<Contract>) =>
-      fetch(`${BASE}/client-contracts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json()),
+      portalFetch(`${BASE}/client-contracts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-contracts"] }),
   });
 }
@@ -117,7 +118,7 @@ function useUpdateContract() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Contract> }) =>
-      fetch(`${BASE}/client-contracts/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json()),
+      portalFetch(`${BASE}/client-contracts/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-contracts"] }),
   });
 }
@@ -125,7 +126,7 @@ function useUpdateContract() {
 function useDeleteContract() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => fetch(`${BASE}/client-contracts/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => portalFetch(`${BASE}/client-contracts/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-contracts"] }),
   });
 }
@@ -133,7 +134,7 @@ function useDeleteContract() {
 function useDuplicateContract() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => fetch(`${BASE}/client-contracts/${id}/duplicate`, { method: "POST" }).then((r) => r.json()),
+    mutationFn: (id: number) => portalFetch(`${BASE}/client-contracts/${id}/duplicate`, { method: "POST" }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-contracts"] }),
   });
 }

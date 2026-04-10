@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, clientsTable, projectsTable, tasksTable, contractsTable, clientReportsTable, teamMembersTable } from "@workspace/db";
 import {
   GetClientParams,
@@ -7,6 +7,7 @@ import {
   DeleteClientParams,
 } from "@workspace/api-zod";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
@@ -39,7 +40,7 @@ function computeHealthScore(input: {
 }
 
 async function seedMockClients() {
-  const existing = await db.select().from(clientsTable);
+  const existing = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   if (existing.length > 0) return;
 
   const [manager] = await db.select().from(teamMembersTable).limit(1);
@@ -112,7 +113,11 @@ async function seedMockClients() {
 router.get("/clients", async (req, res): Promise<void> => {
   await seedMockClients();
   const userId = getUserId(req);
-  const clients = await db.select().from(clientsTable).orderBy(clientsTable.name);
+  const clients = await db
+    .select()
+    .from(clientsTable)
+    .where(isNull(clientsTable.deletedAt))
+    .orderBy(clientsTable.name);
 
   if (!userId || isEnvAdmin(userId)) {
     res.json(clients.map(serializeClient));
@@ -133,7 +138,7 @@ router.get("/clients/duplicate-check", async (req, res): Promise<void> => {
   const q = String(req.query.q ?? "").trim().toLowerCase();
   const piva = String(req.query.piva ?? "").trim();
   if (!q && !piva) { res.json({ matches: [] }); return; }
-  const clients = await db.select().from(clientsTable);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const matches = clients.filter((c) => {
     const byName = q && (c.name?.toLowerCase().includes(q) || (c.ragioneSociale ?? "").toLowerCase().includes(q));
     const byPiva = piva && (c.piva ?? "") === piva;
@@ -287,7 +292,10 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
     return;
   }
   const userId = getUserId(req);
-  const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, params.data.id));
+  const [client] = await db
+    .select()
+    .from(clientsTable)
+    .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)));
   if (!client) {
     res.status(404).json({ error: "Client not found" });
     return;
@@ -320,6 +328,15 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
   }
   if (body.tags !== undefined) updates.tagsJson = JSON.stringify(Array.isArray(body.tags) ? body.tags : []);
 
+  const [existing] = await db
+    .select()
+    .from(clientsTable)
+    .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)));
+  if (!existing) {
+    res.status(404).json({ error: "Client not found" });
+    return;
+  }
+
   const [client] = await db.update(clientsTable).set(updates).where(eq(clientsTable.id, params.data.id)).returning();
   if (!client) {
     res.status(404).json({ error: "Client not found" });
@@ -332,13 +349,25 @@ router.get("/clients/:id/profile", async (req, res): Promise<void> => {
   const params = GetClientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const clientId = params.data.id;
-  const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
+  const [client] = await db
+    .select()
+    .from(clientsTable)
+    .where(and(eq(clientsTable.id, clientId), isNull(clientsTable.deletedAt)));
   if (!client) { res.status(404).json({ error: "Client not found" }); return; }
 
   const [projects, tasks, contracts, reports] = await Promise.all([
-    db.select().from(projectsTable).where(eq(projectsTable.clientId, clientId)),
-    db.select().from(tasksTable).where(eq(tasksTable.clientId, clientId)),
-    db.select().from(contractsTable).where(eq(contractsTable.clientId, clientId)),
+    db
+      .select()
+      .from(projectsTable)
+      .where(and(eq(projectsTable.clientId, clientId), isNull(projectsTable.deletedAt))),
+    db
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.clientId, clientId), isNull(tasksTable.deletedAt))),
+    db
+      .select()
+      .from(contractsTable)
+      .where(and(eq(contractsTable.clientId, clientId), isNull(contractsTable.deletedAt))),
     db.select().from(clientReportsTable).where(eq(clientReportsTable.clientId, clientId)),
   ]);
 
@@ -390,12 +419,12 @@ router.delete("/clients/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [client] = await db.delete(clientsTable).where(eq(clientsTable.id, params.data.id)).returning();
-  if (!client) {
-    res.status(404).json({ error: "Client not found" });
+  const r = await softDeleteRecord("clients", String(params.data.id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
     return;
   }
-  res.sendStatus(204);
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 export default router;

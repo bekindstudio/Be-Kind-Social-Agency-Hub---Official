@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
+import { portalFetch } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import { ChevronLeft, CalendarDays, BarChart2, Download, Share2, Copy, Archive, Plus } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
@@ -30,7 +31,7 @@ export default function ProjectDetail({ id }: Props) {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/projects/${projectId}/workspace`);
+        const res = await portalFetch(`/api/projects/${projectId}/workspace`);
         const json = await res.json();
         setData(json);
         setNotes(json?.project?.notes ?? "");
@@ -83,8 +84,8 @@ export default function ProjectDetail({ id }: Props) {
           <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden"><div className={cn("h-full", budgetPct > 95 ? "bg-red-500" : budgetPct >= 80 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, budgetPct)}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="px-3 py-1.5 text-xs border border-input rounded-lg">Edit</button>
-            <button onClick={() => fetch(`/api/projects/${project.id}/archive`, { method: "POST" })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
-            <button onClick={() => fetch(`/api/projects/${project.id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ copyTasks: true }) })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Copy size={12} /> Duplicate</button>
+            <button onClick={() => portalFetch(`/api/projects/${project.id}/archive`, { method: "POST" })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
+            <button onClick={() => portalFetch(`/api/projects/${project.id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ copyTasks: true }) })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Copy size={12} /> Duplicate</button>
             <button className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Download size={12} /> Export</button>
             <button className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Share2 size={12} /> Share brief</button>
           </div>
@@ -138,7 +139,7 @@ export default function ProjectDetail({ id }: Props) {
               <div className="bg-card border border-card-border rounded-xl p-4">
                 <h3 className="font-semibold mb-2">Quick notes</h3>
                 <textarea rows={4} className="w-full px-2.5 py-2 border border-input rounded-lg bg-background text-sm" value={notes} onChange={(e) => setNotes(e.target.value)} />
-                <button onClick={() => fetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes, lastActivityAt: new Date().toISOString() }) })} className="mt-2 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded">Salva note</button>
+                <button onClick={() => portalFetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes, lastActivityAt: new Date().toISOString() }) })} className="mt-2 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded">Salva note</button>
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
+import { portalFetch } from "@workspace/api-client-react";
 
 const AVATAR_COLORS = ["#6366f1", "#ec4899", "#10b981", "#f59e0b", "#0ea5e9", "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4", "#84cc16", "#a855f7"];
 
@@ -107,14 +108,14 @@ export default function Team() {
 
   const fetchMembers = useCallback(async () => {
     try {
-      const res = await fetch("/api/team");
+      const res = await portalFetch("/api/team");
       if (res.ok) setMembers(await res.json());
     } catch {} finally { setLoading(false); }
   }, []);
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await fetch("/api/clients");
+      const res = await portalFetch("/api/clients");
       if (res.ok) {
         const data = await res.json();
         setAllClients(data.map((c: any) => ({ id: c.id, name: c.name })));
@@ -124,7 +125,7 @@ export default function Team() {
 
   const fetchMemberAccess = useCallback(async (memberId: number) => {
     try {
-      const res = await fetch(`/api/team-client-access/${memberId}`);
+      const res = await portalFetch(`/api/team-client-access/${memberId}`);
       if (res.ok) {
         const data: ClientAccess[] = await res.json();
         setMemberAccess((prev) => ({ ...prev, [memberId]: data.map((a) => a.clientId) }));
@@ -135,7 +136,7 @@ export default function Team() {
   const saveClientAccess = useCallback(async (memberId: number, clientIds: number[]) => {
     setSavingAccess(memberId);
     try {
-      await fetch(`/api/team-client-access/${memberId}`, {
+      await portalFetch(`/api/team-client-access/${memberId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientIds }),
@@ -152,7 +153,7 @@ export default function Team() {
     try {
       const url = editId ? `/api/team/${editId}` : "/api/team";
       const method = editId ? "PATCH" : "POST";
-      const res = await fetch(url, {
+      const res = await portalFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -193,7 +194,7 @@ export default function Team() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Rimuovere questo membro dal team?")) return;
-    await fetch(`/api/team/${id}`, { method: "DELETE" });
+    await portalFetch(`/api/team/${id}`, { method: "DELETE" });
     await fetchMembers();
   };
 
@@ -201,7 +202,7 @@ export default function Team() {
     e.stopPropagation();
     setInvitingId(memberId);
     try {
-      const res = await fetch(`/api/team/${memberId}/supabase-invite`, { method: "POST" });
+      const res = await portalFetch(`/api/team/${memberId}/supabase-invite`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         window.alert(typeof data.error === "string" ? data.error : "Invito non riuscito");

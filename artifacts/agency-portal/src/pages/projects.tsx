@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useListProjects, useListClients, useCreateProject, getListProjectsQueryKey } from "@workspace/api-client-react";
+import { useListProjects, useListClients, useCreateProject, getListProjectsQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays } from "lucide-react";
@@ -172,7 +172,7 @@ export default function Projects() {
                     <button onClick={() => navigate(`/projects/${p.id}`)} className="px-2 py-1 text-xs border border-input rounded">Open</button>
                     <button onClick={() => navigate("/tasks")} className="px-2 py-1 text-xs border border-input rounded">New Task</button>
                     <button onClick={() => navigate("/chat")} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><MessageCircle size={12} /> Msg</button>
-                    <button onClick={() => fetch(`/api/projects/${p.id}/archive`, { method: "POST" }).then(() => qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }))} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
+                    <button onClick={() => portalFetch(`/api/projects/${p.id}/archive`, { method: "POST" }).then(() => qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }))} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
                   </div>
                 </div>
               </div>

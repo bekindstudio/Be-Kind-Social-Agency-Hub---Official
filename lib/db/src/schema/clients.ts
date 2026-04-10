@@ -47,6 +47,7 @@ export const clientsTable = pgTable("clients", {
   contractStatus: text("contract_status").default("nessuno"),
   monthlyValue: integer("monthly_value").default(0),
   lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -19,6 +19,7 @@ import {
   Wrench,
   Timer,
   LogOut,
+  Trash2,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -26,6 +27,7 @@ import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { NotificationBell } from "./NotificationBell";
 import { useUserRole } from "@/hooks/useUserRole";
+import { portalFetch } from "@workspace/api-client-react";
 
 function ThemeToggle() {
   const { dark, toggle } = useTheme();
@@ -55,6 +57,7 @@ const navGroups = [
     label: "Principale",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/trash", label: "Cestino", icon: Trash2 },
       { href: "/clients", label: "Clienti", icon: Users },
       { href: "/projects", label: "Progetti", icon: FolderKanban },
       { href: "/tasks", label: "Task", icon: CheckSquare },
@@ -97,15 +100,28 @@ export function Sidebar() {
   const { authDisabled, signOut } = useSupabaseAuth();
   const { hasPermission, loading: roleLoading } = useUserRole();
   const [reportBadge, setReportBadge] = useState(0);
+  const [trashBadge, setTrashBadge] = useState(0);
 
   useEffect(() => {
-    fetch("/api/reports/counts")
+    portalFetch("/api/reports/counts")
       .then((r) => r.json())
       .then((d) => { setReportBadge((d.in_revisione ?? 0) + (d.approvato ?? 0)); })
       .catch(() => {});
     const interval = setInterval(() => {
-      fetch("/api/reports/counts").then((r) => r.json()).then((d) => { setReportBadge((d.in_revisione ?? 0) + (d.approvato ?? 0)); }).catch(() => {});
+      portalFetch("/api/reports/counts").then((r) => r.json()).then((d) => { setReportBadge((d.in_revisione ?? 0) + (d.approvato ?? 0)); }).catch(() => {});
     }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const load = () => {
+      portalFetch("/api/trash/count")
+        .then((r) => r.json())
+        .then((d) => setTrashBadge(Number(d.count ?? 0)))
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, 120000);
     return () => clearInterval(interval);
   }, []);
 
@@ -138,7 +154,12 @@ export function Sidebar() {
               <ul className="space-y-0.5">
                 {visibleItems.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
-                  const badge = href === "/reports" && reportBadge > 0 ? reportBadge : 0;
+                  const badge =
+                    href === "/reports" && reportBadge > 0
+                      ? reportBadge
+                      : href === "/trash" && trashBadge > 0
+                        ? trashBadge
+                        : 0;
                   return (
                     <li key={href}>
                       <Link href={href}>

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { portalFetch } from "@workspace/api-client-react";
 
 let client: SupabaseClient | null = null;
 let resolvedUrl: string | null = null;
@@ -8,8 +9,13 @@ function viteUrl(): string | undefined {
   return import.meta.env.VITE_SUPABASE_URL?.trim() || undefined;
 }
 
+/** Anon / “publishable” (dashboard Supabase recente): stesso uso per createClient lato browser. */
 function viteAnon(): string | undefined {
-  return import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || undefined;
+  return (
+    import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    undefined
+  );
 }
 
 /**
@@ -25,7 +31,7 @@ export async function initSupabaseFromEnvOrApi(): Promise<boolean> {
     return true;
   }
   try {
-    const r = await fetch("/api/public/supabase-config", { credentials: "include" });
+    const r = await portalFetch("/api/public/supabase-config");
     if (!r.ok) return false;
     const j = (await r.json()) as { url?: string; anonKey?: string };
     const url = j.url?.trim();
@@ -44,7 +50,9 @@ export function getSupabaseBrowserClient(): SupabaseClient {
   const url = resolvedUrl ?? viteUrl();
   const anon = resolvedAnon ?? viteAnon();
   if (!url?.trim() || !anon?.trim()) {
-    throw new Error("Mancano URL e anon key Supabase. Configura VITE_SUPABASE_* su Vercel oppure PUBLIC_SUPABASE_* / SUPABASE_ANON_KEY su Render.");
+    throw new Error(
+      "Mancano URL e chiave anon/publishable Supabase. Su Vercel: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (o VITE_SUPABASE_PUBLISHABLE_KEY). Su Render: PUBLIC_SUPABASE_URL + PUBLIC_SUPABASE_ANON_KEY (o …_PUBLISHABLE_KEY / SUPABASE_ANON_KEY).",
+    );
   }
   client = createClient(url.trim(), anon.trim(), {
     auth: {

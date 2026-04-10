@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { useAiChat } from "./AiChatContext";
 import { cn } from "@/lib/utils";
 import {
@@ -99,7 +100,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await fetch("/api/anthropic/conversations");
+      const res = await portalFetch("/api/anthropic/conversations");
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
@@ -117,7 +118,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const loadConversation = useCallback(async (id: number) => {
     try {
-      const res = await fetch(`/api/anthropic/conversations/${id}`);
+      const res = await portalFetch(`/api/anthropic/conversations/${id}`);
       if (res.ok) {
         const data = await res.json();
         setActiveConvId(id);
@@ -128,7 +129,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const createConversation = useCallback(async (title: string) => {
     try {
-      const res = await fetch("/api/anthropic/conversations", {
+      const res = await portalFetch("/api/anthropic/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, contextType, contextId: context?.data?.id?.toString() }),
@@ -146,7 +147,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const deleteConversation = useCallback(async (id: number) => {
     try {
-      await fetch(`/api/anthropic/conversations/${id}`, { method: "DELETE" });
+      await portalFetch(`/api/anthropic/conversations/${id}`, { method: "DELETE" });
       if (activeConvId === id) {
         setActiveConvId(null);
         setMessages([]);
@@ -157,7 +158,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const toggleStar = useCallback(async (id: number, current: boolean) => {
     try {
-      await fetch(`/api/anthropic/conversations/${id}`, {
+      await portalFetch(`/api/anthropic/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isStarred: !current }),
@@ -168,7 +169,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const sendFeedback = useCallback(async (messageId: number, feedback: string) => {
     try {
-      await fetch(`/api/anthropic/messages/${messageId}/feedback`, {
+      await portalFetch(`/api/anthropic/messages/${messageId}/feedback`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feedback }),
@@ -213,7 +214,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
     abortRef.current = controller;
 
     try {
-      const res = await fetch(`/api/anthropic/conversations/${convId}/messages`, {
+      const res = await portalFetch(`/api/anthropic/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, context: context ?? undefined }),
@@ -241,7 +242,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
             const payload = JSON.parse(line.slice(6));
             if (payload.done) {
               fetchConversations();
-              const reloadRes = await fetch(`/api/anthropic/conversations/${convId}`);
+              const reloadRes = await portalFetch(`/api/anthropic/conversations/${convId}`);
               if (reloadRes.ok) {
                 const data = await reloadRes.json();
                 setMessages(data.messages ?? []);

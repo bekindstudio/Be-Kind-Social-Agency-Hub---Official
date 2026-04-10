@@ -3,6 +3,10 @@ import { Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Plus, Trash2, Search, ExternalLink, MessageSquare, List, LayoutGrid, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { portalFetch } from "@workspace/api-client-react";
+import { describeApiFailureForUser } from "@/lib/api-response-errors";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 
 type ClientRow = any;
 
@@ -26,6 +30,7 @@ function ClientLogo({ name, color, logoUrl }: { name: string; color?: string; lo
 }
 
 export default function Clients() {
+  const { toast } = useToast();
   const LOCAL_CLIENTS_KEY = "agency-local-clients";
   const [, navigate] = useLocation();
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -63,7 +68,7 @@ export default function Clients() {
 
     for (const lc of localClients) {
       try {
-        const res = await fetch("/api/clients", {
+        const res = await portalFetch("/api/clients", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -109,7 +114,7 @@ export default function Clients() {
       setIsLoading(true);
       const local = readLocalClients();
       try {
-        const res = await fetch("/api/clients", { credentials: "include" });
+        const res = await portalFetch("/api/clients", { credentials: "include" });
         let remote: ClientRow[] = [];
         if (res.ok) {
           const data = await res.json().catch(() => null);
@@ -152,7 +157,7 @@ export default function Clients() {
   useEffect(() => {
     const check = async () => {
       if (!form.name?.trim() && !form.piva?.trim()) return setDuplicateMatches([]);
-      const res = await fetch(`/api/clients/duplicate-check?q=${encodeURIComponent(form.name ?? "")}&piva=${encodeURIComponent(form.piva ?? "")}`, {
+      const res = await portalFetch(`/api/clients/duplicate-check?q=${encodeURIComponent(form.name ?? "")}&piva=${encodeURIComponent(form.piva ?? "")}`, {
         credentials: "include",
       });
       const data = await res.json();
@@ -172,7 +177,7 @@ export default function Clients() {
       String(form.nomeCommerciale ?? "").trim() ||
       `Cliente senza nome - ${new Date().toLocaleString("it-IT")}`;
     try {
-      const res = await fetch("/api/clients", {
+      const res = await portalFetch("/api/clients", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -192,57 +197,78 @@ export default function Clients() {
           data?.detail && typeof data.detail === "object"
             ? [data.detail.primary, data.detail.fallback, data.detail.minimal].filter(Boolean).join(" | ")
             : "";
-        setSaveError(
+        const plain =
           technical
             ? `${data?.error ?? "Errore durante il salvataggio cliente."} (${technical})`
-            : (data?.error ?? `Errore durante il salvataggio cliente. HTTP ${res.status}${data?.raw ? `: ${String(data.raw).slice(0, 180)}` : ""}`),
-        );
-        // Fallback: save locally if API unavailable, so anagrafica still works.
-        const localClient = {
-          id: -Date.now(),
-          name: finalName,
-          settore: form.settore ?? null,
-          contractStatus: "nessuno",
-          healthScore: 50,
-          tagsJson: JSON.stringify(String(form.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean)),
-          monthlyValue: 0,
-          brandColor: form.brandColor ?? form.color ?? "#7a8f5c",
-          color: form.color ?? "#7a8f5c",
-          logoUrl: form.logoUrl ?? null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const local = (() => {
-          try {
-            const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-            return Array.isArray(parsed) ? parsed : [];
-          } catch {
-            return [];
-          }
-        })();
-        localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify([localClient, ...local]));
-        setClients((prev) => [localClient, ...prev]);
-        setShowForm(false);
-        setSaveError("API non disponibile: cliente salvato localmente in anagrafica.");
-        setIsSaving(false);
+            : (data?.error ?? `Errore durante il salvataggio cliente. HTTP ${res.status}${data?.raw ? `: ${String(data.raw).slice(0, 180)}` : ""}`);
+        setSaveError(describeApiFailureForUser(res.status, rawText, plain));
         return;
       }
       setClients((prev) => [data, ...prev]);
       setShowForm(false);
       navigate(`/clients/${data.id}`);
     } catch {
-      setSaveError("Impossibile salvare il cliente. Riprova.");
+      // Solo se la richiesta non arriva al server (rete / DNS / CORS): fallback locale.
+      const localClient = {
+        id: -Date.now(),
+        name: finalName,
+        settore: form.settore ?? null,
+        contractStatus: "nessuno",
+        healthScore: 50,
+        tagsJson: JSON.stringify(String(form.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean)),
+        monthlyValue: 0,
+        brandColor: form.brandColor ?? form.color ?? "#7a8f5c",
+        color: form.color ?? "#7a8f5c",
+        logoUrl: form.logoUrl ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
+        const local = Array.isArray(parsed) ? parsed : [];
+        localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify([localClient, ...local]));
+        setClients((prev) => [localClient, ...prev]);
+        setShowForm(false);
+        setSaveError(
+          "Connessione assente: cliente salvato solo in questo browser. Quando sei online, apri la scheda cliente e usa «Sincronizza sul database».",
+        );
+      } catch {
+        setSaveError("Impossibile salvare il cliente. Riprova.");
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
+  const reloadClients = async () => {
+    const r = await portalFetch("/api/clients", { credentials: "include" });
+    if (r.ok) setClients(await r.json());
+  };
+
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Eliminare questo cliente?")) return;
-    const res = await fetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) setClients((prev) => prev.filter((c) => c.id !== id));
+    if (!confirm("Eliminare questo cliente? Verrà spostato nel cestino.")) return;
+    const res = await portalFetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
+    const data = (await res.json().catch(() => ({}))) as { trashLogId?: string };
+    if (res.ok) {
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      const trashLogId = typeof data.trashLogId === "string" ? data.trashLogId : null;
+      toast({
+        title: "Spostato nel cestino",
+        action: trashLogId ? (
+          <ToastAction
+            altText="Annulla"
+            onClick={async () => {
+              const r = await portalFetch(`/api/trash/${trashLogId}/restore`, { method: "POST" });
+              if (r.ok) await reloadClients();
+            }}
+          >
+            Annulla
+          </ToastAction>
+        ) : undefined,
+      });
+    }
   };
 
   return (

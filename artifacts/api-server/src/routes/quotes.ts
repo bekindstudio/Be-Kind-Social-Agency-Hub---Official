@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, quoteTemplatesTable, clientsTable } from "@workspace/db";
 import {
   CreateQuoteTemplateBody,
   UpdateQuoteTemplateBody,
 } from "@workspace/api-zod";
 import { getUserId, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
@@ -26,7 +27,10 @@ async function enrichQuote(q: typeof quoteTemplatesTable.$inferSelect) {
   const { subtotal, total } = computeTotals(rawItems, q.taxRate);
   let clientName: string | null = null;
   if (q.clientId) {
-    const [c] = await db.select({ name: clientsTable.name }).from(clientsTable).where(eq(clientsTable.id, q.clientId));
+    const [c] = await db
+      .select({ name: clientsTable.name })
+      .from(clientsTable)
+      .where(and(eq(clientsTable.id, q.clientId), isNull(clientsTable.deletedAt)));
     clientName = c?.name ?? null;
   }
   return {
@@ -42,7 +46,11 @@ async function enrichQuote(q: typeof quoteTemplatesTable.$inferSelect) {
 
 router.get("/quotes", async (req, res): Promise<void> => {
   const userId = getUserId(req);
-  const rows = await db.select().from(quoteTemplatesTable).orderBy(quoteTemplatesTable.createdAt);
+  const rows = await db
+    .select()
+    .from(quoteTemplatesTable)
+    .where(isNull(quoteTemplatesTable.deletedAt))
+    .orderBy(quoteTemplatesTable.createdAt);
   const accessible = userId ? await getAccessibleClientIds(userId) : "all" as const;
   const filtered = filterByClientAccess(rows, accessible);
   const enriched = await Promise.all(filtered.map(enrichQuote));
@@ -72,7 +80,10 @@ router.post("/quotes", async (req, res): Promise<void> => {
 router.get("/quotes/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [row] = await db.select().from(quoteTemplatesTable).where(eq(quoteTemplatesTable.id, id));
+  const [row] = await db
+    .select()
+    .from(quoteTemplatesTable)
+    .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
 
   const userId = getUserId(req);
@@ -103,6 +114,12 @@ router.patch("/quotes/:id", async (req, res): Promise<void> => {
   if (d.items != null) updates.items = d.items;
   if (d.taxRate != null) updates.taxRate = d.taxRate;
 
+  const [existing] = await db
+    .select()
+    .from(quoteTemplatesTable)
+    .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
   const [row] = await db.update(quoteTemplatesTable).set(updates).where(eq(quoteTemplatesTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(await enrichQuote(row));
@@ -111,7 +128,10 @@ router.patch("/quotes/:id", async (req, res): Promise<void> => {
 router.post("/quotes/:id/duplicate", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [orig] = await db.select().from(quoteTemplatesTable).where(eq(quoteTemplatesTable.id, id));
+  const [orig] = await db
+    .select()
+    .from(quoteTemplatesTable)
+    .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
   if (!orig) { res.status(404).json({ error: "Not found" }); return; }
   const [copy] = await db.insert(quoteTemplatesTable).values({
     name: orig.name + " (Copia)",
@@ -128,9 +148,13 @@ router.post("/quotes/:id/duplicate", async (req, res): Promise<void> => {
 router.delete("/quotes/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [row] = await db.delete(quoteTemplatesTable).where(eq(quoteTemplatesTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.sendStatus(204);
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("quote_templates", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 export default router;

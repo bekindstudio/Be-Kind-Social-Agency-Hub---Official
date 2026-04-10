@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   useGetClient,
   useUpdateClient,
@@ -11,6 +11,7 @@ import {
   getGetClientQueryKey,
   getListProjectsQueryKey,
   getListTasksQueryKey,
+  portalFetch,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
@@ -129,6 +130,7 @@ const PRIORITY_OPTIONS = [
 
 export default function ClientDetail({ id }: Props) {
   const LOCAL_CLIENTS_KEY = "agency-local-clients";
+  const [, navigate] = useLocation();
   const clientId = parseInt(id, 10);
   const isLocalClient = clientId < 0;
   const localClient = (() => {
@@ -161,6 +163,7 @@ export default function ClientDetail({ id }: Props) {
   const createTask = useCreateTask();
 
   const { openDrawer: openAiDrawer } = useAiChat();
+  const [syncingLocal, setSyncingLocal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -215,7 +218,7 @@ export default function ClientDetail({ id }: Props) {
   const fetchMetaStatus = useCallback(async () => {
     if (!clientId) return;
     try {
-      const d = await fetch(`/api/meta/status/${clientId}`).then((r) => r.json());
+      const d = await portalFetch(`/api/meta/status/${clientId}`).then((r) => r.json());
       setMetaStatus(d);
       setMetaAssign({
         pageId: d.assignedPage?.id ?? "",
@@ -230,7 +233,7 @@ export default function ClientDetail({ id }: Props) {
   const handleMetaSync = async () => {
     setMetaSyncing(true);
     try {
-      await fetch(`/api/meta/sync/${clientId}`, { method: "POST" });
+      await portalFetch(`/api/meta/sync/${clientId}`, { method: "POST" });
       await fetchMetaStatus();
     } finally { setMetaSyncing(false); }
   };
@@ -238,7 +241,7 @@ export default function ClientDetail({ id }: Props) {
   const handleMetaAssignSave = async () => {
     setMetaSaving(true);
     try {
-      await fetch(`/api/meta/assign/${clientId}`, {
+      await portalFetch(`/api/meta/assign/${clientId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -253,7 +256,7 @@ export default function ClientDetail({ id }: Props) {
 
   const handleMetaDisconnect = async () => {
     if (!confirm("Rimuovere le assegnazioni Meta per questo cliente?")) return;
-    await fetch(`/api/meta/disconnect/${clientId}`, { method: "POST" });
+    await portalFetch(`/api/meta/disconnect/${clientId}`, { method: "POST" });
     setMetaAssign({ pageId: "", igId: "", adId: "" });
     await fetchMetaStatus();
   };
@@ -268,7 +271,7 @@ export default function ClientDetail({ id }: Props) {
     if (!clientId) return;
     setReportsLoading(true);
     try {
-      const data = await fetch(`/api/reports/client/${clientId}`).then((r) => r.json());
+      const data = await portalFetch(`/api/reports/client/${clientId}`).then((r) => r.json());
       setReports(Array.isArray(data) ? data : []);
     } finally {
       setReportsLoading(false);
@@ -280,7 +283,7 @@ export default function ClientDetail({ id }: Props) {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!clientId) return;
-      fetch(`/api/reports/client/${clientId}`).then((r) => r.json()).then((data) => {
+      portalFetch(`/api/reports/client/${clientId}`).then((r) => r.json()).then((data) => {
         if (Array.isArray(data)) setReports(data);
       }).catch(() => {});
     }, 30000);
@@ -288,13 +291,13 @@ export default function ClientDetail({ id }: Props) {
   }, [clientId]);
 
   const handleApproveReport = async (id: number) => {
-    const res = await fetch(`/api/reports/${id}/approve`, { method: "POST" });
+    const res = await portalFetch(`/api/reports/${id}/approve`, { method: "POST" });
     if (!res.ok) { alert("Errore nell'approvazione"); return; }
     fetchReports();
   };
 
   const handleRejectReport = async (id: number) => {
-    const res = await fetch(`/api/reports/${id}/reject`, { method: "POST" });
+    const res = await portalFetch(`/api/reports/${id}/reject`, { method: "POST" });
     if (!res.ok) { alert("Errore nel rifiuto"); return; }
     fetchReports();
   };
@@ -302,7 +305,7 @@ export default function ClientDetail({ id }: Props) {
   const handleSendReport = async (report: any) => {
     setSendingReportId(report.id);
     try {
-      const res = await fetch(`/api/reports/${report.id}/send`, {
+      const res = await portalFetch(`/api/reports/${report.id}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipientEmail: report.recipientEmail }),
@@ -322,10 +325,69 @@ export default function ClientDetail({ id }: Props) {
 
   const handleDeleteReport = async (id: number) => {
     if (!confirm("Eliminare questo report?")) return;
-    const res = await fetch(`/api/reports/${id}`, { method: "DELETE" });
+    const res = await portalFetch(`/api/reports/${id}`, { method: "DELETE" });
     if (!res.ok) { alert("Errore nell'eliminazione"); return; }
     fetchReports();
   };
+
+  const syncLocalClientToServer = useCallback(async () => {
+    if (!isLocalClient || !localClient) return;
+    setSyncingLocal(true);
+    try {
+      let tags: string[] = [];
+      try {
+        const parsed = JSON.parse(localClient.tagsJson ?? "[]");
+        tags = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        tags = [];
+      }
+      const res = await portalFetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: localClient.name,
+          nomeCommerciale: localClient.company ?? localClient.name,
+          ragioneSociale: localClient.ragioneSociale ?? localClient.name,
+          settore: localClient.settore ?? null,
+          color: localClient.color ?? "#7a8f5c",
+          brandColor: localClient.brandColor ?? localClient.color ?? "#7a8f5c",
+          logoUrl: localClient.logoUrl ?? null,
+          tags,
+        }),
+      });
+      const rawText = await res.text();
+      let created: Record<string, unknown> = {};
+      try {
+        created = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+      } catch {
+        created = { raw: rawText };
+      }
+      if (!res.ok) {
+        alert(
+          typeof created.error === "string"
+            ? created.error
+            : `Sincronizzazione non riuscita (HTTP ${res.status})`,
+        );
+        return;
+      }
+      const newId = created.id;
+      if (typeof newId !== "number" && typeof newId !== "string") {
+        alert("Risposta API non valida.");
+        return;
+      }
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
+        const list = Array.isArray(parsed) ? parsed : [];
+        const next = list.filter((c: { id?: unknown }) => Number(c.id) !== clientId);
+        localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore storage errors */
+      }
+      navigate(`/clients/${newId}`);
+    } finally {
+      setSyncingLocal(false);
+    }
+  }, [isLocalClient, localClient, clientId, navigate, LOCAL_CLIENTS_KEY]);
 
   const REPORT_STATUS_LABELS: Record<string, string> = {
     bozza: "Bozza",
@@ -520,9 +582,19 @@ export default function ClientDetail({ id }: Props) {
                 <Sparkles size={12} /> Chiedi all'AI su questo cliente
               </button>
               {isLocalClient && (
-                <p className="text-[11px] text-amber-700 mt-2">
-                  Cliente salvato in locale (offline). Per sincronizzarlo su database, ricrea il cliente quando l'API è online.
-                </p>
+                <div className="mt-2 space-y-2 max-w-md">
+                  <p className="text-[11px] text-amber-700">
+                    Questo record è solo nel browser (salvato senza connessione o da una versione precedente che trattava errori API come offline). Non è sul database finché non lo sincronizzi.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void syncLocalClientToServer()}
+                    disabled={syncingLocal}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {syncingLocal ? "Sincronizzazione…" : "Sincronizza sul database"}
+                  </button>
+                </div>
               )}
             </div>
           </div>

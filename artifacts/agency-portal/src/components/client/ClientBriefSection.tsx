@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { FileText, Sparkles, Loader2, ClipboardPaste, Trash2, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStrategyPDF } from "@/lib/strategy-pdf";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
 
 interface Brief {
   id: number;
@@ -100,12 +99,10 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 async function apiFetch(path: string, options?: RequestInit) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return portalFetch(path, {
     ...options,
-    credentials: "include",
     headers: { "Content-Type": "application/json", ...options?.headers },
   });
-  return res;
 }
 
 export function ClientBriefSection({ clientId, clientName }: { clientId: number; clientName: string }) {
@@ -173,7 +170,7 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
     setShowStrategy(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/clients/${clientId}/brief/generate-strategy`, {
+      const res = await portalFetch(`/api/clients/${clientId}/brief/generate-strategy`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

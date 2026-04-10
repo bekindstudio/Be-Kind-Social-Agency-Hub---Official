@@ -11,7 +11,7 @@ import {
   tasksTable,
   teamMembersTable,
 } from "@workspace/db";
-import { getUserId, isEnvAdmin } from "../lib/access-control";
+import { getUserId, isEnvAdmin, isAnonymousApiUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -35,6 +35,11 @@ function monthStartStr(): string {
 router.get("/timer/active", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  // Con API_AUTH_DISABLED l'ID sintetico non è un UUID: evita query che falliscono se user_id nel DB è uuid.
+  if (isAnonymousApiUserId(userId)) {
+    res.json(null);
+    return;
+  }
 
   const [session] = await db.select().from(timerSessionsTable)
     .where(and(

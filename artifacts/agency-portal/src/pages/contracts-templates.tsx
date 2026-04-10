@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListContractTemplates, getListContractTemplatesQueryKey } from "@workspace/api-client-react";
+import { useListContractTemplates, getListContractTemplatesQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
@@ -52,7 +52,7 @@ export default function ContractsTemplates() {
   const saveEdit = async () => {
     if (!editing) return;
     const vars = extractVariableKeys(draftContent);
-    const res = await fetch(`${BASE}/contracts/${editing.id}`, {
+    const res = await portalFetch(`${BASE}/contracts/${editing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -81,7 +81,7 @@ export default function ContractsTemplates() {
     const content =
       "<p><strong>Nuovo contratto</strong></p><p>Cliente: {{NOME_CLIENTE}}</p><p>Data: {{DATA_ODIERNA}}</p>";
     const variables = extractVariableKeys(content);
-    const res = await fetch(`${BASE}/contracts`, {
+    const res = await portalFetch(`${BASE}/contracts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

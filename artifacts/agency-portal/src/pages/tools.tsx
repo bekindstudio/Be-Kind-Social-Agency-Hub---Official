@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
+import { portalFetch } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import {
   Plus,
@@ -107,7 +108,7 @@ export default function Tools() {
 
   const fetchPlans = useCallback(async () => {
     try {
-      const res = await fetch("/api/editorial-plans");
+      const res = await portalFetch("/api/editorial-plans");
       if (res.ok) setPlans(await res.json());
     } catch {}
     setLoading(false);
@@ -115,7 +116,7 @@ export default function Tools() {
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await fetch("/api/clients");
+      const res = await portalFetch("/api/clients");
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setClients(data);
@@ -128,13 +129,13 @@ export default function Tools() {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const res = await fetch("/api/editorial-templates");
+      const res = await portalFetch("/api/editorial-templates");
       if (res.ok) setTemplates(await res.json());
     } catch {}
   }, []);
 
   useEffect(() => {
-    fetch("/api/editorial-plans/seed-defaults", { method: "POST" }).catch(() => {});
+    portalFetch("/api/editorial-plans/seed-defaults", { method: "POST" }).catch(() => {});
     fetchPlans();
     fetchClients();
     fetchTemplates();
@@ -146,7 +147,7 @@ export default function Tools() {
       return;
     }
     try {
-      const res = await fetch("/api/editorial-plans", {
+      const res = await portalFetch("/api/editorial-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -171,13 +172,13 @@ export default function Tools() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Eliminare questo piano editoriale?")) return;
-    await fetch(`/api/editorial-plans/${id}`, { method: "DELETE" });
+    await portalFetch(`/api/editorial-plans/${id}`, { method: "DELETE" });
     fetchPlans();
   };
 
   const handleDuplicate = async (id: number) => {
     try {
-      const res = await fetch(`/api/editorial-plans/${id}/duplicate`, {
+      const res = await portalFetch(`/api/editorial-plans/${id}/duplicate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

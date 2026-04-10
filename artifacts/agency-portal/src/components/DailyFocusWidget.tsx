@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { Target, CheckCircle2 } from "lucide-react";
 
 const API = "/api";
@@ -13,7 +14,7 @@ export function DailyFocusWidget({ onClick }: { onClick: () => void }) {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/daily-focus`, { credentials: "include" });
+      const res = await portalFetch(`${API}/daily-focus`);
       if (!res.ok) return;
       const json = await res.json();
       const tasks = json.tasks ?? [];

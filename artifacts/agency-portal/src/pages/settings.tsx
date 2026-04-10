@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
+import { portalFetch } from "@workspace/api-client-react";
 
 type AgencyMeta = {
   connected: boolean;
@@ -92,7 +93,7 @@ export default function Settings() {
 
   const fetchAgencyMeta = useCallback(async () => {
     try {
-      const data = await fetch("/api/meta/agency-status").then((r) => r.json());
+      const data = await portalFetch("/api/meta/agency-status").then((r) => r.json());
       setMeta(data);
     } catch { setMeta({ connected: false }); }
   }, []);
@@ -109,7 +110,7 @@ export default function Settings() {
     setMetaConnecting(true);
     setMetaConnectError("");
     try {
-      const res = await fetch("/api/meta/connect-agency", {
+      const res = await portalFetch("/api/meta/connect-agency", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken: metaToken.trim() }),
@@ -132,7 +133,7 @@ export default function Settings() {
   const handleMetaRefresh = async () => {
     setMetaRefreshing(true);
     try {
-      await fetch("/api/meta/refresh-agency", { method: "POST" });
+      await portalFetch("/api/meta/refresh-agency", { method: "POST" });
       await fetchAgencyMeta();
     } finally {
       setMetaRefreshing(false);
@@ -141,7 +142,7 @@ export default function Settings() {
 
   const handleMetaDisconnect = async () => {
     if (!confirm("Disconnettere l'account Meta dell'agenzia? Tutti i clienti perderanno l'accesso ai dati Meta.")) return;
-    await fetch("/api/meta/disconnect-agency", { method: "POST" });
+    await portalFetch("/api/meta/disconnect-agency", { method: "POST" });
     setMeta({ connected: false });
     setMetaToken("");
   };
@@ -507,7 +508,7 @@ function RoleManagement() {
 
   const fetchRoles = useCallback(async () => {
     try {
-      const res = await fetch("/api/roles");
+      const res = await portalFetch("/api/roles");
       if (res.ok) {
         const data = await res.json();
         setRoles(data.roles ?? []);
@@ -521,7 +522,7 @@ function RoleManagement() {
   const handleRoleChange = async (clerkUserId: string, role: string) => {
     setSaving(clerkUserId);
     try {
-      await fetch(`/api/roles/${clerkUserId}`, {
+      await portalFetch(`/api/roles/${clerkUserId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
@@ -537,7 +538,7 @@ function RoleManagement() {
     setAddError("");
     setSaving("new");
     try {
-      const res = await fetch(`/api/roles/${newUserId.trim()}`, {
+      const res = await portalFetch(`/api/roles/${newUserId.trim()}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
@@ -555,7 +556,7 @@ function RoleManagement() {
 
   const handleRemove = async (clerkUserId: string) => {
     if (!confirm("Rimuovere questo ruolo? L'utente tornerà al ruolo Osservatore.")) return;
-    await fetch(`/api/roles/${clerkUserId}`, { method: "DELETE" });
+    await portalFetch(`/api/roles/${clerkUserId}`, { method: "DELETE" });
     await fetchRoles();
   };
 
@@ -682,7 +683,7 @@ function SmtpStatusSection() {
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/email-notifications/smtp-status");
+      const res = await portalFetch("/api/email-notifications/smtp-status");
       if (res.ok) setStatus(await res.json());
     } catch {}
   }, []);
@@ -751,7 +752,7 @@ function GoogleAdsServerSection() {
   const [status, setStatus] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/google-ads/status")
+    portalFetch("/api/google-ads/status")
       .then(r => r.ok ? r.json() : null)
       .then(d => d && setStatus(d))
       .catch(() => {});

@@ -18,9 +18,11 @@ type Props = {
   onChange: (html: string) => void;
   className?: string;
   readOnly?: boolean;
+  /** Es. salvataggio immediato su uscita dal campo (autosave). */
+  onBlur?: () => void;
 };
 
-export function ContractRichEditor({ value, onChange, className, readOnly }: Props) {
+export function ContractRichEditor({ value, onChange, className, readOnly, onBlur }: Props) {
   const mods = useMemo(() => modules, []);
   return (
     <div
@@ -33,6 +35,7 @@ export function ContractRichEditor({ value, onChange, className, readOnly }: Pro
         theme="snow"
         value={value}
         onChange={onChange}
+        onBlur={onBlur}
         modules={mods}
         readOnly={readOnly}
       />

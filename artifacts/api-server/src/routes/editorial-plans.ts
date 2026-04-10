@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, asc, sql } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
 import {
   db,
   editorialPlansTable,
@@ -10,6 +10,7 @@ import {
   clientsTable,
 } from "@workspace/db";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
@@ -44,6 +45,7 @@ router.get("/editorial-plans", async (req, res): Promise<void> => {
     })
     .from(editorialPlansTable)
     .leftJoin(clientsTable, eq(editorialPlansTable.clientId, clientsTable.id))
+    .where(isNull(editorialPlansTable.deletedAt))
     .orderBy(desc(editorialPlansTable.updatedAt));
 
   if (userId && !isEnvAdmin(userId)) {
@@ -59,6 +61,7 @@ router.get("/editorial-plans", async (req, res): Promise<void> => {
       total: sql<number>`count(*)`.as("total"),
     })
     .from(editorialSlotsTable)
+    .where(isNull(editorialSlotsTable.deletedAt))
     .groupBy(editorialSlotsTable.planId);
 
   const countsMap = new Map(slotsCount.map((s) => [s.planId, Number(s.total)]));
@@ -86,7 +89,7 @@ router.get("/editorial-plans/:id", async (req, res): Promise<void> => {
     })
     .from(editorialPlansTable)
     .leftJoin(clientsTable, eq(editorialPlansTable.clientId, clientsTable.id))
-    .where(eq(editorialPlansTable.id, id));
+    .where(and(eq(editorialPlansTable.id, id), isNull(editorialPlansTable.deletedAt)));
 
   if (!row) { res.status(404).json({ error: "Piano non trovato" }); return; }
 
@@ -101,7 +104,7 @@ router.get("/editorial-plans/:id", async (req, res): Promise<void> => {
   const slots = await db
     .select()
     .from(editorialSlotsTable)
-    .where(eq(editorialSlotsTable.planId, id))
+    .where(and(eq(editorialSlotsTable.planId, id), isNull(editorialSlotsTable.deletedAt)))
     .orderBy(asc(editorialSlotsTable.position), asc(editorialSlotsTable.publishDate));
 
   res.json({
@@ -136,7 +139,10 @@ router.post("/editorial-plans", async (req, res): Promise<void> => {
     .returning();
 
   if (templateId) {
-    const [template] = await db.select().from(editorialTemplatesTable).where(eq(editorialTemplatesTable.id, Number(templateId)));
+    const [template] = await db
+      .select()
+      .from(editorialTemplatesTable)
+      .where(and(eq(editorialTemplatesTable.id, Number(templateId)), isNull(editorialTemplatesTable.deletedAt)));
     if (template && Array.isArray(template.slotsJson)) {
       const templateSlots = template.slotsJson as any[];
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
@@ -191,7 +197,11 @@ router.post("/editorial-plans", async (req, res): Promise<void> => {
     }
   }
 
-  const slots = await db.select().from(editorialSlotsTable).where(eq(editorialSlotsTable.planId, plan.id)).orderBy(asc(editorialSlotsTable.position));
+  const slots = await db
+    .select()
+    .from(editorialSlotsTable)
+    .where(and(eq(editorialSlotsTable.planId, plan.id), isNull(editorialSlotsTable.deletedAt)))
+    .orderBy(asc(editorialSlotsTable.position));
   res.status(201).json({ ...serializePlan(plan), slots: slots.map(serializeSlot) });
 });
 
@@ -199,7 +209,10 @@ router.patch("/editorial-plans/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
-  const [existing] = await db.select().from(editorialPlansTable).where(eq(editorialPlansTable.id, id));
+  const [existing] = await db
+    .select()
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.id, id), isNull(editorialPlansTable.deletedAt)));
   if (!existing) { res.status(404).json({ error: "Piano non trovato" }); return; }
 
   const userId = getUserId(req);
@@ -236,7 +249,10 @@ router.delete("/editorial-plans/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
-  const [existing] = await db.select().from(editorialPlansTable).where(eq(editorialPlansTable.id, id));
+  const [existing] = await db
+    .select()
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.id, id), isNull(editorialPlansTable.deletedAt)));
   if (!existing) { res.status(404).json({ error: "Piano non trovato" }); return; }
 
   const userId = getUserId(req);
@@ -247,9 +263,12 @@ router.delete("/editorial-plans/:id", async (req, res): Promise<void> => {
     }
   }
 
-  await db.delete(editorialSlotsTable).where(eq(editorialSlotsTable.planId, id));
-  await db.delete(editorialPlansTable).where(eq(editorialPlansTable.id, id));
-  res.status(204).end();
+  const r = await softDeleteRecord("editorial_plans", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> => {
@@ -257,7 +276,10 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
   const userId = getUserId(req);
   const { clientId, month, year } = req.body;
 
-  const [original] = await db.select().from(editorialPlansTable).where(eq(editorialPlansTable.id, id));
+  const [original] = await db
+    .select()
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.id, id), isNull(editorialPlansTable.deletedAt)));
   if (!original) { res.status(404).json({ error: "Piano non trovato" }); return; }
 
   if (userId && !isEnvAdmin(userId)) {
@@ -281,7 +303,11 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
     createdBy: userId,
   }).returning();
 
-  const originalSlots = await db.select().from(editorialSlotsTable).where(eq(editorialSlotsTable.planId, id)).orderBy(asc(editorialSlotsTable.position));
+  const originalSlots = await db
+    .select()
+    .from(editorialSlotsTable)
+    .where(and(eq(editorialSlotsTable.planId, id), isNull(editorialSlotsTable.deletedAt)))
+    .orderBy(asc(editorialSlotsTable.position));
 
   for (const slot of originalSlots) {
     let newDate = slot.publishDate;
@@ -312,7 +338,11 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
     });
   }
 
-  const slots = await db.select().from(editorialSlotsTable).where(eq(editorialSlotsTable.planId, newPlan.id)).orderBy(asc(editorialSlotsTable.position));
+  const slots = await db
+    .select()
+    .from(editorialSlotsTable)
+    .where(and(eq(editorialSlotsTable.planId, newPlan.id), isNull(editorialSlotsTable.deletedAt)))
+    .orderBy(asc(editorialSlotsTable.position));
   res.status(201).json({ ...serializePlan(newPlan), slots: slots.map(serializeSlot) });
 });
 
@@ -321,6 +351,12 @@ router.post("/editorial-slots", async (req, res): Promise<void> => {
   const { planId, platform, contentType, categoryId, publishDate, publishTime, title, caption, hashtagsJson, callToAction, linkInBio, visualUrl, visualDescription, notesInternal, notesClient, status, position } = req.body;
 
   if (!planId || !platform) { res.status(400).json({ error: "planId e platform obbligatori" }); return; }
+
+  const [planOk] = await db
+    .select()
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.id, Number(planId)), isNull(editorialPlansTable.deletedAt)));
+  if (!planOk) { res.status(400).json({ error: "Piano non trovato o nel cestino" }); return; }
 
   const [slot] = await db.insert(editorialSlotsTable).values({
     planId: Number(planId),
@@ -362,6 +398,12 @@ router.patch("/editorial-slots/:id", async (req, res): Promise<void> => {
     }
   }
 
+  const [slotEx] = await db
+    .select()
+    .from(editorialSlotsTable)
+    .where(and(eq(editorialSlotsTable.id, id), isNull(editorialSlotsTable.deletedAt)));
+  if (!slotEx) { res.status(404).json({ error: "Slot non trovato" }); return; }
+
   const [updated] = await db.update(editorialSlotsTable).set(updates).where(eq(editorialSlotsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Slot non trovato" }); return; }
   res.json(serializeSlot(updated));
@@ -370,19 +412,35 @@ router.patch("/editorial-slots/:id", async (req, res): Promise<void> => {
 router.delete("/editorial-slots/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
-  await db.delete(editorialSlotsTable).where(eq(editorialSlotsTable.id, id));
-  res.status(204).end();
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("editorial_slots", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.get("/content-categories", async (req, res): Promise<void> => {
   const clientId = req.query.clientId ? Number(req.query.clientId) : null;
   let categories;
   if (clientId) {
-    categories = await db.select().from(contentCategoriesTable)
-      .where(sql`${contentCategoriesTable.clientId} IS NULL OR ${contentCategoriesTable.clientId} = ${clientId}`)
+    categories = await db
+      .select()
+      .from(contentCategoriesTable)
+      .where(
+        and(
+          isNull(contentCategoriesTable.deletedAt),
+          sql`${contentCategoriesTable.clientId} IS NULL OR ${contentCategoriesTable.clientId} = ${clientId}`,
+        ),
+      )
       .orderBy(asc(contentCategoriesTable.position));
   } else {
-    categories = await db.select().from(contentCategoriesTable).orderBy(asc(contentCategoriesTable.position));
+    categories = await db
+      .select()
+      .from(contentCategoriesTable)
+      .where(isNull(contentCategoriesTable.deletedAt))
+      .orderBy(asc(contentCategoriesTable.position));
   }
   res.json(categories.map((c) => ({
     ...c,
@@ -410,6 +468,12 @@ router.patch("/content-categories/:id", async (req, res): Promise<void> => {
   for (const key of ["name", "color", "icon", "description", "clientId", "position"]) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
   }
+  const [catEx] = await db
+    .select()
+    .from(contentCategoriesTable)
+    .where(and(eq(contentCategoriesTable.id, id), isNull(contentCategoriesTable.deletedAt)));
+  if (!catEx) { res.status(404).json({ error: "Categoria non trovata" }); return; }
+
   const [updated] = await db.update(contentCategoriesTable).set(updates).where(eq(contentCategoriesTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Categoria non trovata" }); return; }
   res.json(updated);
@@ -418,8 +482,13 @@ router.patch("/content-categories/:id", async (req, res): Promise<void> => {
 router.delete("/content-categories/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
-  await db.delete(contentCategoriesTable).where(eq(contentCategoriesTable.id, id));
-  res.status(204).end();
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("content_categories", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.get("/slot-comments/:slotId", async (req, res): Promise<void> => {
@@ -451,7 +520,11 @@ router.patch("/slot-comments/:id", async (req, res): Promise<void> => {
 });
 
 router.get("/editorial-templates", async (_req, res): Promise<void> => {
-  const templates = await db.select().from(editorialTemplatesTable).orderBy(desc(editorialTemplatesTable.isSystem), asc(editorialTemplatesTable.name));
+  const templates = await db
+    .select()
+    .from(editorialTemplatesTable)
+    .where(isNull(editorialTemplatesTable.deletedAt))
+    .orderBy(desc(editorialTemplatesTable.isSystem), asc(editorialTemplatesTable.name));
   res.json(templates.map((t) => ({
     ...t,
     slotsJson: typeof t.slotsJson === "string" ? JSON.parse(t.slotsJson) : t.slotsJson,
@@ -473,20 +546,25 @@ router.post("/editorial-templates", async (req, res): Promise<void> => {
 router.delete("/editorial-templates/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
-  await db.delete(editorialTemplatesTable).where(eq(editorialTemplatesTable.id, id));
-  res.status(204).end();
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("editorial_templates", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 router.post("/editorial-plans/seed-defaults", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId || !isEnvAdmin(userId)) {
-    const existingCats = await db.select().from(contentCategoriesTable);
-    const existingTemplates = await db.select().from(editorialTemplatesTable);
+    const existingCats = await db.select().from(contentCategoriesTable).where(isNull(contentCategoriesTable.deletedAt));
+    const existingTemplates = await db.select().from(editorialTemplatesTable).where(isNull(editorialTemplatesTable.deletedAt));
     if (existingCats.length > 0 && existingTemplates.length > 0) {
       res.json({ success: true, skipped: true }); return;
     }
   }
-  const existingCats = await db.select().from(contentCategoriesTable);
+  const existingCats = await db.select().from(contentCategoriesTable).where(isNull(contentCategoriesTable.deletedAt));
   if (existingCats.length === 0) {
     const defaultCategories = [
       { name: "Prodotto / Servizio", color: "#9333ea", icon: "ShoppingBag", description: "Showcase prodotti o servizi", position: 0 },
@@ -507,7 +585,7 @@ router.post("/editorial-plans/seed-defaults", async (req, res): Promise<void> =>
     }
   }
 
-  const existingTemplates = await db.select().from(editorialTemplatesTable);
+  const existingTemplates = await db.select().from(editorialTemplatesTable).where(isNull(editorialTemplatesTable.deletedAt));
   if (existingTemplates.length === 0) {
     await db.insert(editorialTemplatesTable).values({
       name: "Standard Social Media (8 post)",

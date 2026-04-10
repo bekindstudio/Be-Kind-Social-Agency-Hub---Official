@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import { Clock, TrendingUp, DollarSign, Calendar, Plus, X, Trash2, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
@@ -57,8 +58,8 @@ export default function TimeTrackerPage() {
     try {
       setLoading(true);
       const [statsRes, entriesRes] = await Promise.all([
-        fetch(`${API}/time-tracker/stats`, { credentials: "include" }),
-        fetch(`${API}/time-entries`, { credentials: "include" }),
+        portalFetch(`${API}/time-tracker/stats`, { credentials: "include" }),
+        portalFetch(`${API}/time-entries`, { credentials: "include" }),
       ]);
       if (statsRes.ok) setStats(await statsRes.json());
       if (entriesRes.ok) setEntries(await entriesRes.json());
@@ -70,8 +71,8 @@ export default function TimeTrackerPage() {
   const loadClientsProjects = useCallback(async () => {
     try {
       const [cRes, pRes] = await Promise.all([
-        fetch(`${API}/clients`, { credentials: "include" }),
-        fetch(`${API}/projects`, { credentials: "include" }),
+        portalFetch(`${API}/clients`, { credentials: "include" }),
+        portalFetch(`${API}/projects`, { credentials: "include" }),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
@@ -86,7 +87,7 @@ export default function TimeTrackerPage() {
   useEffect(() => {
     fetchData();
     loadClientsProjects();
-    fetch(`${API}/time-tracker/seed`, { method: "POST", credentials: "include" }).catch(() => {});
+    portalFetch(`${API}/time-tracker/seed`, { method: "POST", credentials: "include" }).catch(() => {});
   }, [fetchData, loadClientsProjects]);
 
   const handleManualSubmit = useCallback(async () => {
@@ -96,7 +97,7 @@ export default function TimeTrackerPage() {
 
     const startedAt = new Date(`${manualDate}T09:00:00`);
     try {
-      const res = await fetch(`${API}/time-entries`, {
+      const res = await portalFetch(`${API}/time-entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -122,7 +123,7 @@ export default function TimeTrackerPage() {
 
   const handleDeleteEntry = useCallback(async (id: number) => {
     try {
-      await fetch(`${API}/time-entries/${id}`, { method: "DELETE", credentials: "include" });
+      await portalFetch(`${API}/time-entries/${id}`, { method: "DELETE", credentials: "include" });
       fetchData();
     } catch {}
   }, [fetchData]);

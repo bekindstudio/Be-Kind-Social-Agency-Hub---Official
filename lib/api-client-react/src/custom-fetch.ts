@@ -374,3 +374,26 @@ export async function customFetch<T = unknown>(
 
   return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }
+
+/**
+ * Stesso header Bearer + `credentials: "include"` di `customFetch`, senza lanciare su HTTP error.
+ * Usalo per `fetch` manuali nel portale verso `/api/*` così il token Supabase arriva a Render anche con `API_AUTH_DISABLED`.
+ */
+export async function mergePortalFetchInit(init?: RequestInit): Promise<RequestInit> {
+  const headers = mergeHeaders(undefined, init?.headers);
+  if (_authTokenGetter && !headers.has("authorization")) {
+    const token = await _authTokenGetter();
+    if (token) {
+      headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+  return {
+    ...init,
+    headers,
+    credentials: init?.credentials ?? "include",
+  };
+}
+
+export async function portalFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(applyBaseUrl(input), await mergePortalFetchInit(init));
+}

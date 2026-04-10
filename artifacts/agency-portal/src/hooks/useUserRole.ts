@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 
 interface UserRole {
   role: string;
@@ -12,7 +13,7 @@ export function useUserRole() {
 
   const fetchRole = useCallback(async () => {
     try {
-      const res = await fetch("/api/roles/my-role");
+      const res = await portalFetch("/api/roles/my-role");
       if (res.ok) {
         const data = await res.json();
         setUserRole(data);

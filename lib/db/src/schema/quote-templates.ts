@@ -17,6 +17,7 @@ export const quoteTemplatesTable = pgTable("quote_templates", {
   notes: text("notes"),
   items: jsonb("items").notNull().default([]),
   taxRate: integer("tax_rate").notNull().default(22),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { Search, X, Users, FolderKanban, CheckSquare, FileText, ScrollText } from "lucide-react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,7 @@ export function GlobalSearch() {
     if (q.length < 2) { setResults(EMPTY); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const res = await portalFetch(`/api/search?q=${encodeURIComponent(q)}`);
       if (res.ok) setResults(await res.json());
     } catch {} finally { setLoading(false); }
   }, []);

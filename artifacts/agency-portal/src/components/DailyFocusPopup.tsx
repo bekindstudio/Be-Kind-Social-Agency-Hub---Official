@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { useLocation } from "wouter";
 import {
@@ -108,7 +109,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/daily-focus`, { credentials: "include" });
+      const res = await portalFetch(`${API}/daily-focus`);
       if (!res.ok) return;
       const data = await res.json();
       setTasks(data.tasks ?? []);
@@ -139,10 +140,9 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
 
   const logAction = useCallback(async (taskId: number, action: string, extra?: any) => {
     try {
-      await fetch(`${API}/daily-focus/action`, {
+      await portalFetch(`${API}/daily-focus/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ taskId, action, ...extra }),
       });
     } catch {}
@@ -150,10 +150,9 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
 
   const saveSession = useCallback(async () => {
     try {
-      await fetch(`${API}/daily-focus/session`, {
+      await portalFetch(`${API}/daily-focus/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           tasksShownJson: tasks.map(t => t.id),
           tasksCompletedJson: Array.from(completed),

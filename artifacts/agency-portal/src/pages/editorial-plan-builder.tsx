@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
+import { portalFetch } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import {
   ArrowLeft,
@@ -124,7 +125,7 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
 
   const fetchPlan = useCallback(async () => {
     try {
-      const res = await fetch(`/api/editorial-plans/${id}`);
+      const res = await portalFetch(`/api/editorial-plans/${id}`);
       if (res.ok) {
         const data = await res.json();
         setPlan(data);
@@ -137,7 +138,7 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
 
   useEffect(() => {
     fetchPlan();
-    fetch("/api/content-categories").then((r) => r.json()).then(setCategories).catch(() => {});
+    portalFetch("/api/content-categories").then((r) => r.json()).then(setCategories).catch(() => {});
   }, [fetchPlan]);
 
   const selectedSlot = plan?.slots.find((s) => s.id === selectedSlotId) ?? null;
@@ -145,7 +146,7 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
   const updateSlot = async (slotId: number, updates: Partial<Slot>) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/editorial-slots/${slotId}`, {
+      const res = await portalFetch(`/api/editorial-slots/${slotId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -166,7 +167,7 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
 
   const addSlot = async (platform: string, publishDate?: string) => {
     try {
-      const res = await fetch("/api/editorial-slots", {
+      const res = await portalFetch("/api/editorial-slots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,14 +187,14 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
   };
 
   const deleteSlot = async (slotId: number) => {
-    await fetch(`/api/editorial-slots/${slotId}`, { method: "DELETE" });
+    await portalFetch(`/api/editorial-slots/${slotId}`, { method: "DELETE" });
     setPlan((prev) => prev ? { ...prev, slots: prev.slots.filter((s) => s.id !== slotId) } : prev);
     if (selectedSlotId === slotId) setSelectedSlotId(null);
   };
 
   const updatePlanStatus = async (status: string) => {
     try {
-      const res = await fetch(`/api/editorial-plans/${id}`, {
+      const res = await portalFetch(`/api/editorial-plans/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

@@ -7,6 +7,7 @@ import {
   useListProjects,
   useListTasks,
   useListClients,
+  portalFetch,
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
@@ -232,7 +233,7 @@ export default function Dashboard() {
   };
 
   const onToggleTaskDone = (task: AnyObj) => {
-    fetch(`/api/tasks/${task.id}`, {
+    portalFetch(`/api/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),

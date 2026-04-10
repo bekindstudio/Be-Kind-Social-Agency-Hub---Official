@@ -30,3 +30,4 @@ export * from "./project-milestones";
 export * from "./project-expenses";
 export * from "./project-templates";
 export * from "./project-activity";
+export * from "./trash-log";

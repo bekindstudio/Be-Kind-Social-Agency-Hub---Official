@@ -1,11 +1,13 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, contractTemplatesTable } from "@workspace/db";
 import {
   CreateContractTemplateBody,
   UpdateContractTemplateBody,
 } from "@workspace/api-zod";
 import { z } from "zod";
+import { getUserId } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
@@ -33,7 +35,11 @@ function serializeContract(c: typeof contractTemplatesTable.$inferSelect) {
 }
 
 router.get("/contracts", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(contractTemplatesTable).orderBy(contractTemplatesTable.createdAt);
+  const rows = await db
+    .select()
+    .from(contractTemplatesTable)
+    .where(isNull(contractTemplatesTable.deletedAt))
+    .orderBy(contractTemplatesTable.createdAt);
   res.json(rows.map(serializeContract));
 });
 
@@ -58,7 +64,10 @@ router.post("/contracts", async (req, res): Promise<void> => {
 router.get("/contracts/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [row] = await db.select().from(contractTemplatesTable).where(eq(contractTemplatesTable.id, id));
+  const [row] = await db
+    .select()
+    .from(contractTemplatesTable)
+    .where(and(eq(contractTemplatesTable.id, id), isNull(contractTemplatesTable.deletedAt)));
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(serializeContract(row));
 });
@@ -80,6 +89,12 @@ router.patch("/contracts/:id", async (req, res): Promise<void> => {
     updates.variables = vars;
   }
 
+  const [ex] = await db
+    .select()
+    .from(contractTemplatesTable)
+    .where(and(eq(contractTemplatesTable.id, id), isNull(contractTemplatesTable.deletedAt)));
+  if (!ex) { res.status(404).json({ error: "Not found" }); return; }
+
   const [row] = await db.update(contractTemplatesTable).set(updates).where(eq(contractTemplatesTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(serializeContract(row));
@@ -88,9 +103,13 @@ router.patch("/contracts/:id", async (req, res): Promise<void> => {
 router.delete("/contracts/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [row] = await db.delete(contractTemplatesTable).where(eq(contractTemplatesTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.sendStatus(204);
+  const userId = getUserId(req);
+  const r = await softDeleteRecord("contract_templates", String(id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 export default router;

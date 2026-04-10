@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import { Clock, Pause, Play, Square, Timer } from "lucide-react";
 
 const API = "/api";
@@ -63,7 +64,7 @@ export function ActiveTimerWidget() {
 
   const fetchSession = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/timer/active`, { credentials: "include" });
+      const res = await portalFetch(`${API}/timer/active`, { credentials: "include" });
       if (!res.ok) return;
       const data = await res.json();
       setSession(data);
@@ -101,14 +102,14 @@ export function ActiveTimerWidget() {
 
   const handlePause = useCallback(async () => {
     try {
-      await fetch(`${API}/timer/pause`, { method: "POST", credentials: "include" });
+      await portalFetch(`${API}/timer/pause`, { method: "POST", credentials: "include" });
       fetchSession();
     } catch {}
   }, [fetchSession]);
 
   const handleResume = useCallback(async () => {
     try {
-      await fetch(`${API}/timer/resume`, { method: "POST", credentials: "include" });
+      await portalFetch(`${API}/timer/resume`, { method: "POST", credentials: "include" });
       fetchSession();
     } catch {}
   }, [fetchSession]);
@@ -122,7 +123,7 @@ export function ActiveTimerWidget() {
 
   const handleStopConfirm = useCallback(async (discard?: boolean) => {
     try {
-      const res = await fetch(`${API}/timer/stop`, {
+      const res = await portalFetch(`${API}/timer/stop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -146,7 +147,7 @@ export function ActiveTimerWidget() {
   const handleStartNew = useCallback(async () => {
     if (!startClientId) return;
     try {
-      const res = await fetch(`${API}/timer/start`, {
+      const res = await portalFetch(`${API}/timer/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -169,8 +170,8 @@ export function ActiveTimerWidget() {
   const loadClientsProjects = useCallback(async () => {
     try {
       const [cRes, pRes] = await Promise.all([
-        fetch(`${API}/clients`, { credentials: "include" }),
-        fetch(`${API}/projects`, { credentials: "include" }),
+        portalFetch(`${API}/clients`, { credentials: "include" }),
+        portalFetch(`${API}/projects`, { credentials: "include" }),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
@@ -371,7 +372,7 @@ export function useTimerStart() {
     description?: string;
   }) => {
     try {
-      const res = await fetch(`${API}/timer/start`, {
+      const res = await portalFetch(`${API}/timer/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -383,8 +384,8 @@ export function useTimerStart() {
           `Hai gia un timer attivo. Vuoi fermarlo e iniziarne uno nuovo?`
         );
         if (ok) {
-          await fetch(`${API}/timer/force-stop`, { method: "POST", credentials: "include" });
-          await fetch(`${API}/timer/start`, {
+          await portalFetch(`${API}/timer/force-stop`, { method: "POST", credentials: "include" });
+          await portalFetch(`${API}/timer/start`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",

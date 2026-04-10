@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { SERVICE_LABELS, SERVICE_SLUGS } from "@/lib/contracts-shared";
+import { portalFetch } from "@workspace/api-client-react";
 
 const BASE = "/api";
 
@@ -76,7 +77,7 @@ export default function Contracts() {
   const statsQuery = useQuery({
     queryKey: ["contract-documents-stats"],
     queryFn: (): Promise<Stats> =>
-      fetch(`${BASE}/contract-documents/stats`).then((r) => r.json()),
+      portalFetch(`${BASE}/contract-documents/stats`).then((r) => r.json()),
   });
 
   const listQuery = useQuery({
@@ -87,13 +88,13 @@ export default function Contracts() {
       if (serviceF !== "tutti") p.set("serviceType", serviceF);
       if (monthF) p.set("month", monthF);
       const q = p.toString();
-      return fetch(`${BASE}/contract-documents${q ? `?${q}` : ""}`).then((r) => r.json());
+      return portalFetch(`${BASE}/contract-documents${q ? `?${q}` : ""}`).then((r) => r.json());
     },
   });
 
   const duplicate = useMutation({
     mutationFn: (id: string) =>
-      fetch(`${BASE}/contract-documents/${id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json()),
+      portalFetch(`${BASE}/contract-documents/${id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contract-documents"] });
       qc.invalidateQueries({ queryKey: ["contract-documents-stats"] });
@@ -101,7 +102,7 @@ export default function Contracts() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => fetch(`${BASE}/contract-documents/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => portalFetch(`${BASE}/contract-documents/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contract-documents"] });
       qc.invalidateQueries({ queryKey: ["contract-documents-stats"] });

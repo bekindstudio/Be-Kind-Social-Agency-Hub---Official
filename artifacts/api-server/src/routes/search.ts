@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { ilike, or, sql } from "drizzle-orm";
+import { ilike, or, and, isNull } from "drizzle-orm";
 import { db, clientsTable, projectsTable, tasksTable, quoteTemplatesTable, contractsTable } from "@workspace/db";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
 
@@ -16,25 +16,40 @@ router.get("/search", async (req, res): Promise<void> => {
   const pattern = `%${q}%`;
 
   const [clients, projects, tasks, quotes, contracts] = await Promise.all([
-    db.select({ id: clientsTable.id, name: clientsTable.name, company: clientsTable.company })
+    db
+      .select({ id: clientsTable.id, name: clientsTable.name, company: clientsTable.company })
       .from(clientsTable)
-      .where(or(ilike(clientsTable.name, pattern), ilike(clientsTable.company, pattern)))
+      .where(
+        and(
+          isNull(clientsTable.deletedAt),
+          or(ilike(clientsTable.name, pattern), ilike(clientsTable.company, pattern)),
+        ),
+      )
       .limit(5),
-    db.select({ id: projectsTable.id, name: projectsTable.name, status: projectsTable.status, clientId: projectsTable.clientId })
+    db
+      .select({ id: projectsTable.id, name: projectsTable.name, status: projectsTable.status, clientId: projectsTable.clientId })
       .from(projectsTable)
-      .where(ilike(projectsTable.name, pattern))
+      .where(and(isNull(projectsTable.deletedAt), ilike(projectsTable.name, pattern)))
       .limit(5),
-    db.select({ id: tasksTable.id, title: tasksTable.title, status: tasksTable.status, projectId: tasksTable.projectId })
+    db
+      .select({ id: tasksTable.id, title: tasksTable.title, status: tasksTable.status, projectId: tasksTable.projectId })
       .from(tasksTable)
-      .where(ilike(tasksTable.title, pattern))
+      .where(and(isNull(tasksTable.deletedAt), ilike(tasksTable.title, pattern)))
       .limit(5),
-    db.select({ id: quoteTemplatesTable.id, name: quoteTemplatesTable.name, status: quoteTemplatesTable.status, clientId: quoteTemplatesTable.clientId })
+    db
+      .select({ id: quoteTemplatesTable.id, name: quoteTemplatesTable.name, status: quoteTemplatesTable.status, clientId: quoteTemplatesTable.clientId })
       .from(quoteTemplatesTable)
-      .where(ilike(quoteTemplatesTable.name, pattern))
+      .where(and(isNull(quoteTemplatesTable.deletedAt), ilike(quoteTemplatesTable.name, pattern)))
       .limit(5),
-    db.select({ id: contractsTable.id, numero: contractsTable.numero, oggetto: contractsTable.oggetto, clientId: contractsTable.clientId })
+    db
+      .select({ id: contractsTable.id, numero: contractsTable.numero, oggetto: contractsTable.oggetto, clientId: contractsTable.clientId })
       .from(contractsTable)
-      .where(or(ilike(contractsTable.numero, pattern), ilike(contractsTable.oggetto, pattern)))
+      .where(
+        and(
+          isNull(contractsTable.deletedAt),
+          or(ilike(contractsTable.numero, pattern), ilike(contractsTable.oggetto, pattern)),
+        ),
+      )
       .limit(5),
   ]);
 

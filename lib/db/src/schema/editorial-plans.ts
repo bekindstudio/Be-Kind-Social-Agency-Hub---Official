@@ -12,6 +12,7 @@ export const contentCategoriesTable = pgTable("content_categories", {
   clientId: integer("client_id").references(() => clientsTable.id, { onDelete: "cascade" }),
   position: integer("position").notNull().default(0),
   createdBy: text("created_by"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -31,6 +32,7 @@ export const editorialPlansTable = pgTable("editorial_plans", {
   sentToClientAt: timestamp("sent_to_client_at", { withTimezone: true }),
   confirmedByClientAt: timestamp("confirmed_by_client_at", { withTimezone: true }),
   pdfUrl: text("pdf_url"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -55,6 +57,7 @@ export const editorialSlotsTable = pgTable("editorial_slots", {
   status: text("status").notNull().default("da_creare"),
   position: integer("position").notNull().default(0),
   createdBy: text("created_by"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -76,6 +79,7 @@ export const editorialTemplatesTable = pgTable("editorial_templates", {
   slotsJson: jsonb("slots_json").notNull().default("[]"),
   createdBy: text("created_by"),
   isSystem: boolean("is_system").notNull().default(false),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

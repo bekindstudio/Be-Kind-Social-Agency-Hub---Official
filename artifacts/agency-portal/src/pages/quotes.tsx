@@ -6,6 +6,7 @@ import {
   useDeleteQuoteTemplate,
   getListQuoteTemplatesQueryKey,
   useListClients,
+  portalFetch,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
@@ -280,7 +281,7 @@ export default function Quotes() {
                     <button
                       onClick={async () => {
                         try {
-                          await fetch(`/api/quotes/${q.id}/duplicate`, { method: "POST" });
+                          await portalFetch(`/api/quotes/${q.id}/duplicate`, { method: "POST" });
                           qc.invalidateQueries({ queryKey: getListQuoteTemplatesQueryKey() });
                         } catch {}
                       }}

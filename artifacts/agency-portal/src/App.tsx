@@ -24,6 +24,7 @@ import AiAssistant from "@/pages/ai-assistant";
 import Tools from "@/pages/tools";
 import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
 import TimeTracker from "@/pages/time-tracker";
+import Trash from "@/pages/trash";
 import NotFound from "@/pages/not-found";
 import SignInPage from "@/pages/sign-in";
 import AuthCallbackPage from "@/pages/auth-callback";
@@ -33,6 +34,7 @@ import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { initSupabaseFromEnvOrApi } from "@/lib/supabase-browser";
 import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
+import { AutoSaveProvider } from "@/context/AutoSaveContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,6 +114,9 @@ function Router() {
       <Route path="/dashboard">
         <RequireAuth><Dashboard /></RequireAuth>
       </Route>
+      <Route path="/trash">
+        <RequireAuth><Trash /></RequireAuth>
+      </Route>
       <Route path="/clients">
         <RequireAuth><Clients /></RequireAuth>
       </Route>
@@ -177,16 +182,18 @@ function Router() {
 function ShellWithSession() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SessionQueryInvalidator />
-      <AiChatProvider>
-        <TooltipProvider>
-          <ErrorBoundary>
-            <Router />
-          </ErrorBoundary>
-          <Toaster />
-        </TooltipProvider>
-        <AuthenticatedAiWidgets />
-      </AiChatProvider>
+      <AutoSaveProvider>
+        <SessionQueryInvalidator />
+        <AiChatProvider>
+          <TooltipProvider>
+            <ErrorBoundary>
+              <Router />
+            </ErrorBoundary>
+            <Toaster />
+          </TooltipProvider>
+          <AuthenticatedAiWidgets />
+        </AiChatProvider>
+      </AutoSaveProvider>
     </QueryClientProvider>
   );
 }
@@ -200,15 +207,17 @@ function MissingSupabaseEnv() {
           Sull’API (Render) imposta almeno una di queste coppie:
         </p>
         <pre className="text-xs bg-muted p-3 rounded-md whitespace-pre-wrap">{`SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_ANON_KEY=eyJ... (chiave anon/public)
+SUPABASE_ANON_KEY=...   # oppure SUPABASE_PUBLISHABLE_KEY (nome nuovo dashboard)
 
-# oppure nomi espliciti:
+# oppure prefisso PUBLIC_:
 PUBLIC_SUPABASE_URL=...
-PUBLIC_SUPABASE_ANON_KEY=...`}</pre>
+PUBLIC_SUPABASE_ANON_KEY=...   # o PUBLIC_SUPABASE_PUBLISHABLE_KEY`}</pre>
         <p className="text-muted-foreground text-xs">
-          Opzionale su Vercel: <code className="font-mono">VITE_SUPABASE_URL</code> e{" "}
-          <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> (build). Su Render serve anche{" "}
-          <code className="font-mono">SUPABASE_JWT_SECRET</code> per le API autenticate.
+          Opzionale su Vercel: <code className="font-mono">VITE_SUPABASE_URL</code> +{" "}
+          <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> o{" "}
+          <code className="font-mono">VITE_SUPABASE_PUBLISHABLE_KEY</code>. Su Render: anche{" "}
+          <code className="font-mono">SUPABASE_JWT_SECRET</code> (JWT Secret del progetto) e{" "}
+          <code className="font-mono">DATABASE_URL</code> per il DB.
         </p>
       </div>
     </div>

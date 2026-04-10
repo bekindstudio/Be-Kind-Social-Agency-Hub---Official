@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db, projectsTable, clientsTable, tasksTable, teamMembersTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
 import {
   CreateProjectBody,
@@ -10,6 +10,8 @@ import {
   ListProjectsQueryParams,
 } from "@workspace/api-zod";
 import { getUserId as getUid, isEnvAdmin, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
+import { softDeleteRecord } from "../lib/trash-service";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -73,7 +75,7 @@ async function seedProjectTemplates() {
 }
 
 async function seedProjectsIfEmpty() {
-  const count = await db.select().from(projectsTable);
+  const count = await db.select().from(projectsTable).where(isNull(projectsTable.deletedAt));
   if (count.length > 0) return;
   await seedProjectTemplates();
 
@@ -96,29 +98,36 @@ async function seedProjectsIfEmpty() {
     { clientId: fiore.id, name: "Newsletter Mensile Aprile", description: "Piano newsletter e automazioni", typeJson: JSON.stringify(["Email Marketing"]), status: "active", healthStatus: "on-track", progress: 30, budget: "800", budgetSpeso: "400", deadline: d15.toISOString().slice(0, 10), color: "#d946ef", oreStimate: 16, oreLavorate: 7, paymentStructure: "Mensile ricorrente", isRecurring: true, recurrenceType: "monthly" },
   ]).returning();
 
-  const mid = members[0]?.id;
-  for (const p of [p1, p2, p3, p4]) {
-    if (mid) await db.insert(projectMembersTable).values({ projectId: p.id, userId: mid, role: "Project Manager" });
-    await db.insert(projectMilestonesTable).values({ projectId: p.id, name: "Kickoff", description: "Avvio progetto", dueDate: new Date().toISOString().slice(0, 10), status: "achieved", linkedTasksJson: "[]" });
-    await db.insert(projectActivityTable).values({ projectId: p.id, action: "Project created", detailsJson: JSON.stringify({ seed: true }) });
-  }
+  try {
+    const mid = members[0]?.id;
+    for (const p of [p1, p2, p3, p4]) {
+      if (mid) await db.insert(projectMembersTable).values({ projectId: p.id, userId: mid, role: "Project Manager" });
+      await db.insert(projectMilestonesTable).values({ projectId: p.id, name: "Kickoff", description: "Avvio progetto", dueDate: new Date().toISOString().slice(0, 10), status: "achieved", linkedTasksJson: "[]" });
+      await db.insert(projectActivityTable).values({ projectId: p.id, action: "Project created", detailsJson: JSON.stringify({ seed: true }) });
+    }
 
-  await db.insert(tasksTable).values([
-    { projectId: p1.id, title: "Calendario contenuti approvato", status: "done", priority: "high" },
-    { projectId: p1.id, title: "Produzione reels settimana 1", status: "done", priority: "medium" },
-    { projectId: p1.id, title: "Copy carosello promozionale", status: "done", priority: "medium" },
-    { projectId: p1.id, title: "Programmazione contenuti", status: "done", priority: "high" },
-    { projectId: p1.id, title: "Report metà mese", status: "in-progress", priority: "medium" },
-    { projectId: p1.id, title: "Ottimizzazione CTA", status: "in-progress", priority: "high" },
-    { projectId: p2.id, title: "Setup campaign structure", status: "done", priority: "high" },
-    { projectId: p2.id, title: "Pixel QA", status: "done", priority: "urgent" },
-    { projectId: p2.id, title: "Creative set A/B", status: "done", priority: "high" },
-    { projectId: p2.id, title: "Launch wave 1", status: "in-progress", priority: "urgent" },
-    { projectId: p2.id, title: "Google Search ad group", status: "in-progress", priority: "high" },
-    { projectId: p2.id, title: "Fix conversion API", status: "todo", priority: "urgent", dueDate: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10) },
-    { projectId: p2.id, title: "Retargeting audience sync", status: "todo", priority: "high", dueDate: new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10) },
-    { projectId: p2.id, title: "Budget pacing review", status: "todo", priority: "medium", dueDate: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10) },
-  ]);
+    await db.insert(tasksTable).values([
+      { projectId: p1.id, title: "Calendario contenuti approvato", status: "done", priority: "high" },
+      { projectId: p1.id, title: "Produzione reels settimana 1", status: "done", priority: "medium" },
+      { projectId: p1.id, title: "Copy carosello promozionale", status: "done", priority: "medium" },
+      { projectId: p1.id, title: "Programmazione contenuti", status: "done", priority: "high" },
+      { projectId: p1.id, title: "Report metà mese", status: "in-progress", priority: "medium" },
+      { projectId: p1.id, title: "Ottimizzazione CTA", status: "in-progress", priority: "high" },
+      { projectId: p2.id, title: "Setup campaign structure", status: "done", priority: "high" },
+      { projectId: p2.id, title: "Pixel QA", status: "done", priority: "urgent" },
+      { projectId: p2.id, title: "Creative set A/B", status: "done", priority: "high" },
+      { projectId: p2.id, title: "Launch wave 1", status: "in-progress", priority: "urgent" },
+      { projectId: p2.id, title: "Google Search ad group", status: "in-progress", priority: "high" },
+      { projectId: p2.id, title: "Fix conversion API", status: "todo", priority: "urgent", dueDate: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10) },
+      { projectId: p2.id, title: "Retargeting audience sync", status: "todo", priority: "high", dueDate: new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10) },
+      { projectId: p2.id, title: "Budget pacing review", status: "todo", priority: "medium", dueDate: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10) },
+    ]);
+  } catch (err) {
+    logger.warn(
+      { err },
+      "seedProjectsIfEmpty: righe collegate (members/milestones/activity/tasks) non inserite — verifica migrazione 20260410190000_satellite_tables_and_fks.sql",
+    );
+  }
 }
 
 router.get("/projects", async (req, res): Promise<void> => {
@@ -131,14 +140,18 @@ router.get("/projects", async (req, res): Promise<void> => {
 
   const userId = getUid(req);
 
-  const projects = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
-  const clients = await db.select().from(clientsTable);
+  const projects = await db
+    .select()
+    .from(projectsTable)
+    .where(isNull(projectsTable.deletedAt))
+    .orderBy(projectsTable.createdAt);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
 
   const accessible = userId ? await getAccessibleClientIds(userId) : "all" as const;
   const accessFiltered = filterByClientAccess(projects, accessible);
 
-  const allTasks = await db.select().from(tasksTable);
+  const allTasks = await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt));
   let result = accessFiltered
     .filter((p) => canViewProject(p, userId))
     .map((p) => {
@@ -231,7 +244,7 @@ router.post("/projects", async (req, res): Promise<void> => {
   }
   await db.insert(projectActivityTable).values({ projectId: project.id, userId, action: "Project created", detailsJson: JSON.stringify({ source: "modal" }) });
 
-  const clients = await db.select().from(clientsTable);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
 
   res.status(201).json(
@@ -248,7 +261,10 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
 
   const userId = getUid(req);
 
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [project] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!project) {
     res.status(404).json({ error: "Project not found" });
     return;
@@ -267,7 +283,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
     }
   }
 
-  const clients = await db.select().from(clientsTable);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
   res.json(serializeProject(project, project.clientId ? (clientMap.get(project.clientId) ?? null) : null));
 });
@@ -281,7 +297,10 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
   const userId = getUid(req);
 
   // Fetch existing project to check access
-  const [existing] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [existing] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!existing) {
     res.status(404).json({ error: "Project not found" });
     return;
@@ -324,7 +343,7 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Project not found" });
     return;
   }
-  const clients = await db.select().from(clientsTable);
+  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const clientMap = new Map(clients.map((c) => [c.id, c.name]));
   await db.insert(projectActivityTable).values({ projectId: params.data.id, userId, action: "Project updated", detailsJson: JSON.stringify({ keys: Object.keys(updates) }) });
   res.json(serializeProject(project, project.clientId ? (clientMap.get(project.clientId) ?? null) : null));
@@ -334,7 +353,11 @@ router.post("/projects/:id/archive", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const userId = getUid(req);
-  const [project] = await db.update(projectsTable).set({ status: "archived" }).where(eq(projectsTable.id, params.data.id)).returning();
+  const [project] = await db
+    .update(projectsTable)
+    .set({ status: "archived" })
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)))
+    .returning();
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   await db.insert(projectActivityTable).values({ projectId: project.id, userId, action: "Project archived", detailsJson: "{}" });
   res.json({ ok: true });
@@ -344,7 +367,10 @@ router.post("/projects/:id/duplicate", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const { copyTasks = true, clientId = null, startDate = null, endDate = null } = (req.body ?? {}) as any;
-  const [existing] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [existing] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!existing) { res.status(404).json({ error: "Project not found" }); return; }
   const [dup] = await db.insert(projectsTable).values({
     ...existing,
@@ -360,7 +386,10 @@ router.post("/projects/:id/duplicate", async (req, res): Promise<void> => {
     updatedAt: undefined as any,
   }).returning();
   if (copyTasks) {
-    const tasks = await db.select().from(tasksTable).where(eq(tasksTable.projectId, existing.id));
+    const tasks = await db
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.projectId, existing.id), isNull(tasksTable.deletedAt)));
     for (const t of tasks) {
       await db.insert(tasksTable).values({
         ...t,
@@ -384,17 +413,23 @@ router.get("/project-templates", async (_req, res): Promise<void> => {
 router.get("/projects/:id/workspace", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [project] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
   const [tasks, members, milestones, expenses, activity, templates, clients] = await Promise.all([
-    db.select().from(tasksTable).where(eq(tasksTable.projectId, project.id)),
+    db
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.projectId, project.id), isNull(tasksTable.deletedAt))),
     db.select().from(projectMembersTable).where(eq(projectMembersTable.projectId, project.id)),
     db.select().from(projectMilestonesTable).where(eq(projectMilestonesTable.projectId, project.id)),
     db.select().from(projectExpensesTable).where(eq(projectExpensesTable.projectId, project.id)),
     db.select().from(projectActivityTable).where(eq(projectActivityTable.projectId, project.id)),
     db.select().from(projectTemplatesTable),
-    db.select().from(clientsTable),
+    db.select().from(clientsTable).where(isNull(clientsTable.deletedAt)),
   ]);
   const client = clients.find((c) => c.id === project.clientId) ?? null;
   const tasksDone = tasks.filter((t) => t.status === "done").length;
@@ -436,7 +471,10 @@ router.delete("/projects/:id", async (req, res): Promise<void> => {
 
   const userId = getUid(req);
 
-  const [existing] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [existing] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!existing) {
     res.status(404).json({ error: "Project not found" });
     return;
@@ -446,12 +484,12 @@ router.delete("/projects/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [project] = await db.delete(projectsTable).where(eq(projectsTable.id, params.data.id)).returning();
-  if (!project) {
-    res.status(404).json({ error: "Project not found" });
+  const r = await softDeleteRecord("projects", String(params.data.id), { deletedBy: userId });
+  if (!r.ok) {
+    res.status(400).json({ error: r.error });
     return;
   }
-  res.sendStatus(204);
+  res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
 export default router;

@@ -76,7 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@clerk/react": "^6.1.4",
+    "@supabase/supabase-js": "^2.49.8",
     "canvas-confetti": "^1.9.4",
     "chart.js": "^4.5.1",
     "html2canvas": "^1.4.1",

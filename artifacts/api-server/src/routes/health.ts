@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
-import { getAuth } from "@clerk/express";
+import { getUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -10,12 +10,7 @@ router.get("/healthz", (_req, res) => {
 });
 
 router.get("/me", (req, res) => {
-  try {
-    const auth = getAuth(req as any);
-    res.json({ userId: auth?.userId ?? null });
-  } catch {
-    res.json({ userId: null });
-  }
+  res.json({ userId: getUserId(req as any) });
 });
 
 export default router;

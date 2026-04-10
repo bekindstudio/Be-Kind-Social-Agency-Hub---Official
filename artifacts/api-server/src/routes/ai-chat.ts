@@ -3,18 +3,9 @@ import { db } from "@workspace/db";
 import { aiConversations, aiMessages } from "@workspace/db";
 import { eq, desc, asc, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { getAuth } from "@clerk/express";
+import { getUserId } from "../lib/access-control";
 
 const router = Router();
-
-function getUserId(req: Request): string | null {
-  try {
-    const auth = getAuth(req as any);
-    return auth?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function requireUser(req: Request, res: Response): string | null {
   const userId = getUserId(req);

@@ -1,18 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { db, notifications } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getUserId } from "../lib/access-control";
 
 const router = Router();
-
-function getUserId(req: Request): string | null {
-  try {
-    const auth = getAuth(req as any);
-    return auth?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
 
 router.get("/notifications", async (req: Request, res: Response): Promise<void> => {
   const userId = getUserId(req);

@@ -21,12 +21,18 @@ Variabili ambiente consigliate (Render -> Environment):
 
 - `PORT=8080` (o lascia quella di Render se mappata automaticamente)
 - `DATABASE_URL=postgresql://...`
-- `CLERK_PUBLISHABLE_KEY=pk_...`
+- **`SUPABASE_JWT_SECRET=`** — in Supabase Dashboard → **Project Settings** → **API** → **JWT Secret** (necessario per validare il Bearer inviato dal portal).
 - `AI_INTEGRATIONS_ANTHROPIC_BASE_URL=https://api.anthropic.com`
 - `AI_INTEGRATIONS_ANTHROPIC_API_KEY=...`
 - `AI_INTEGRATIONS_OPENAI_BASE_URL=https://api.openai.com/v1`
 - `AI_INTEGRATIONS_OPENAI_API_KEY=...`
 - `FRONTEND_URLS=https://<tuo-frontend>.vercel.app`
+
+**Amministratori:** `ADMIN_SUPABASE_USER_IDS=<uuid1,uuid2>` (UUID utente Supabase da **Authentication → Users**). Opzionale: puoi unire anche `ADMIN_CLERK_USER_IDS` se hai vecchi ID.
+
+**Solo demo / senza JWT:** `API_AUTH_DISABLED=true` — l’API tratta ogni richiesta come admin (non usare in pubblico con dati reali). Con login Supabase nel portal, imposta **`API_AUTH_DISABLED=false`** (o rimuovi la variabile).
+
+Opzionale: `API_ANONYMOUS_CLERK_USER_ID` se usi ancora il bypass anonimo (default `__api_anonymous__`).
 
 Nota: `FRONTEND_URLS` accetta piu' domini separati da virgola.
 
@@ -43,27 +49,23 @@ Se invece imposti Root su `artifacts/agency-portal`, allora **Output directory**
 
 Variabili ambiente (Vercel -> Environment Variables):
 
-- `VITE_CLERK_PUBLISHABLE_KEY=pk_...`
 - `VITE_SUPABASE_URL=https://...supabase.co`
 - `VITE_SUPABASE_ANON_KEY=...`
 - `VITE_API_PROXY_TARGET=https://<tuo-backend>.onrender.com` (solo dev locale; in produzione Vercel usa i `rewrites` in `vercel.json` verso lo stesso host Render)
 
-Opzionale solo per **demo senza login** (non adatto a dati sensibili in pubblico):
-
-- `VITE_AUTH_DISABLED=true`
+Il portal nel repo **non usa più Clerk nel browser**: non serve `VITE_CLERK_PUBLISHABLE_KEY` a meno di non ripristinare il login.
 
 Se cambi URL del backend Render, aggiorna anche `rewrites` in `vercel.json` (root e/o `artifacts/agency-portal/vercel.json`) con il nuovo dominio.
 
 ## 4) Configurazioni esterne
 
-- Clerk:
-  - aggiungi dominio Vercel in allowed origins/redirect URLs.
-- Supabase:
-  - verifica policy RLS e URL progetto corretta.
+- **Supabase Auth:** crea utenti (email/password o provider). Il portal usa **sign-in email/password** con `VITE_SUPABASE_*`.
+- **Redirect URL** (se usi magic link / OAuth): aggiungi il dominio Vercel in **Authentication → URL configuration**.
+- RLS: se il browser chiama Supabase direttamente oltre all’API, verifica le policy; l’API Express usa in genere `DATABASE_URL` con privilegi da server.
 
 ## 5) Test produzione
 
-- Login funzionante.
+- Login Supabase (email/password) e caricamento dashboard.
 - Creazione cliente salvata su DB.
 - Apertura dettaglio cliente.
 - Task/Projects/Reports caricano senza errori.

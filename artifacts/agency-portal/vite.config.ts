@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -17,33 +17,11 @@ const port = rawPort ? Number(rawPort) : 3000;
 const basePath = process.env.BASE_PATH || "/";
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8080";
 
-function requireClerkPublishableKeyForCiBuild(): Plugin {
-  return {
-    name: "require-clerk-publishable-key-ci",
-    configResolved(resolved) {
-      if (resolved.command !== "build") return;
-      if (process.env.VITE_AUTH_DISABLED === "true" || process.env.VITE_AUTH_DISABLED === "1") {
-        return;
-      }
-      const key = (process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "").trim();
-      if (key) return;
-      if (process.env.VERCEL === "1" || process.env.CI === "true") {
-        throw new Error(
-          "[agency-portal] VITE_CLERK_PUBLISHABLE_KEY è vuota durante il build. " +
-            "Su Vercel: Project → Settings → Environment Variables, aggiungi VITE_CLERK_PUBLISHABLE_KEY " +
-            "(stesso valore della Publishable key in Clerk), ambienti Production/Preview, poi Redeploy.",
-        );
-      }
-    },
-  };
-}
-
 export default defineConfig(async () => {
   return {
     base: basePath,
     envDir: path.resolve(import.meta.dirname),
     plugins: [
-      requireClerkPublishableKeyForCiBuild(),
       react(),
       tailwindcss(),
       runtimeErrorOverlay(),

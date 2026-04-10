@@ -13,15 +13,16 @@ import {
   Receipt,
   FileSignature,
   BarChart2,
-  LogOut,
   Sparkles,
   Moon,
   Sun,
   Wrench,
   Timer,
+  LogOut,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
-import { useClerk, useUser } from "@clerk/react";
+import { usePortalUser } from "@/hooks/usePortalUser";
+import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { NotificationBell } from "./NotificationBell";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -92,8 +93,8 @@ const navGroups = [
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { signOut } = useClerk();
-  const { user } = useUser();
+  const { user } = usePortalUser();
+  const { authDisabled, signOut } = useSupabaseAuth();
   const { hasPermission, loading: roleLoading } = useUserRole();
   const [reportBadge, setReportBadge] = useState(0);
 
@@ -183,7 +184,6 @@ export function Sidebar() {
           </Link>
         </div>
 
-        {/* User info + logout */}
         <div className="mt-1 pt-2 border-t border-sidebar-border/50">
           <div className="px-3 py-2 flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full bg-sidebar-primary flex items-center justify-center text-xs font-bold text-sidebar-primary-foreground shrink-0 overflow-hidden">
@@ -194,20 +194,23 @@ export function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-sidebar-foreground/90 truncate">
-                {user?.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : user?.emailAddresses?.[0]?.emailAddress ?? ""}
+                {user?.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : user?.emailAddresses?.[0]?.emailAddress ?? (authDisabled ? "Ospite" : "")}
               </p>
               <p className="text-[10px] text-sidebar-foreground/40 truncate">
                 {user?.emailAddresses?.[0]?.emailAddress ?? ""}
               </p>
             </div>
             <ThemeToggle />
-            <button
-              onClick={() => signOut({ redirectUrl: "/" })}
-              title="Esci"
-              className="p-1.5 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors shrink-0"
-            >
-              <LogOut size={14} />
-            </button>
+            {!authDisabled ? (
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                title="Esci"
+                className="p-1.5 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors shrink-0"
+              >
+                <LogOut size={14} />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

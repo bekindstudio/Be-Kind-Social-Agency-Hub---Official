@@ -1,18 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { db, clientsTable, socialAccountsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getUserId } from "../lib/access-control";
 
 const router = Router();
-
-function getUserId(req: Request): string | null {
-  try {
-    const auth = getAuth(req as any);
-    return auth?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
 
 async function getGoogleAdsConfig() {
   const [agency] = await db.select().from(socialAccountsTable).where(eq(socialAccountsTable.clientId, 0));

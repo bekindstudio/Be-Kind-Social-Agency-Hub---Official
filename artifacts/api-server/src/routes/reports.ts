@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and, or, inArray, sql } from "drizzle-orm";
 import { db, clientReportsTable, reportApprovalsTable, clientsTable } from "@workspace/db";
-import { getAuth } from "@clerk/express";
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
@@ -329,7 +328,7 @@ router.get("/reports/client/:clientId", async (req, res): Promise<void> => {
 // POST /api/reports — create new report (manual or auto)
 router.post("/reports", async (req, res): Promise<void> => {
   try {
-    const auth = getAuth(req as any);
+    const authUserId = getUserId(req as any);
     const body = req.body;
     const clientId = parseInt(body.clientId);
 
@@ -379,7 +378,7 @@ router.post("/reports", async (req, res): Promise<void> => {
       topContenutiJson: body.topContenutiJson ?? (metrics?.instagram?.topPosts ?? null),
       recipientEmail: body.recipientEmail ?? client.email,
       subject: `Report ${tipoLabel} - ${client.name} - ${periodLabel}`,
-      createdBy: auth.userId ?? "system",
+      createdBy: authUserId ?? "system",
     }).returning();
 
     res.json(serializeReport(saved));
@@ -434,18 +433,18 @@ router.post("/reports/:id/submit-review", async (req, res): Promise<void> => {
 router.post("/reports/:id/approve", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
-    const auth = getAuth(req as any);
+    const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
     await db.insert(reportApprovalsTable).values({
       reportId: id,
-      reviewerId: auth.userId ?? "unknown",
+      reviewerId: authUserId ?? "unknown",
       azione: "approvato",
       nota,
     });
 
     const [updated] = await db.update(clientReportsTable)
-      .set({ status: "approvato", approvedBy: auth.userId ?? "unknown", approvedAt: new Date() })
+      .set({ status: "approvato", approvedBy: authUserId ?? "unknown", approvedAt: new Date() })
       .where(eq(clientReportsTable.id, id))
       .returning();
     if (!updated) { res.status(404).json({ error: "Report non trovato" }); return; }
@@ -459,12 +458,12 @@ router.post("/reports/:id/approve", async (req, res): Promise<void> => {
 router.post("/reports/:id/reject", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
-    const auth = getAuth(req as any);
+    const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
     await db.insert(reportApprovalsTable).values({
       reportId: id,
-      reviewerId: auth.userId ?? "unknown",
+      reviewerId: authUserId ?? "unknown",
       azione: "modifiche_richieste",
       nota,
     });
@@ -570,7 +569,7 @@ router.post("/reports/generate/:clientId", async (req, res): Promise<void> => {
   try {
     const clientId = parseInt(req.params.clientId);
     const { period, periodLabel, metrics, recipientEmail, isRealData } = req.body;
-    const auth = getAuth(req as any);
+    const authUserId = getUserId(req as any);
 
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
     if (!client) { res.status(404).json({ error: "Cliente non trovato" }); return; }
@@ -596,7 +595,7 @@ router.post("/reports/generate/:clientId", async (req, res): Promise<void> => {
       kpiGoogleJson: metrics?.googleAds ?? null,
       recipientEmail: recipientEmail ?? client.email,
       subject: `Report mensile ${periodLabel ?? period} — Be Kind Social Agency HUB`,
-      createdBy: auth.userId ?? "system",
+      createdBy: authUserId ?? "system",
     }).returning();
 
     res.json({ ...serializeReport(saved), flagged: flags.length > 0, flags });

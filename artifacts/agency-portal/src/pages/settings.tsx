@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/react";
+import { usePortalUser } from "@/hooks/usePortalUser";
 import { Layout } from "@/components/layout/Layout";
 import {
   Settings as SettingsIcon,
@@ -73,7 +73,7 @@ function IntegrationCard({ children, title, icon: Icon, status }: {
 }
 
 export default function Settings() {
-  const { user } = useUser();
+  const { user } = usePortalUser();
   const [idCopied, setIdCopied] = useState(false);
   const { isAdmin } = useUserRole();
 
@@ -185,7 +185,7 @@ export default function Settings() {
               </div>
             </div>
             <div className="border-t border-border pt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Il tuo ID utente Clerk</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Il tuo ID utente (Supabase)</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 px-3 py-2 bg-muted rounded-lg text-xs font-mono text-foreground overflow-x-auto">
                   {user?.id ?? "—"}

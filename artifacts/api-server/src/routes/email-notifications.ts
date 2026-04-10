@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { db, notifications, teamMembersTable, tasksTable, clientReportsTable, clientsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getUserId as resolveUserId } from "../lib/access-control";
 import nodemailer from "nodemailer";
 
 const router = Router();
@@ -13,15 +13,6 @@ function getEmailTransporter() {
   const port = parseInt(process.env.SMTP_PORT ?? "587");
   if (!host || !user || !pass) return null;
   return nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
-}
-
-function getUserId(req: Request): string | null {
-  try {
-    const auth = getAuth(req as any);
-    return auth?.userId ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function buildEmailTemplate(title: string, body: string): string {
@@ -38,7 +29,7 @@ function buildEmailTemplate(title: string, body: string): string {
 }
 
 router.post("/email-notifications/task-assigned", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
+  const userId = resolveUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const { taskId, assigneeEmail } = req.body;
   if (!taskId || !assigneeEmail) { res.status(400).json({ error: "taskId e assigneeEmail richiesti" }); return; }
@@ -70,7 +61,7 @@ router.post("/email-notifications/task-assigned", async (req: Request, res: Resp
 });
 
 router.post("/email-notifications/report-status", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
+  const userId = resolveUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const { reportId, recipientEmail, newStatus } = req.body;
   if (!reportId || !recipientEmail || !newStatus) { res.status(400).json({ error: "Campi richiesti mancanti" }); return; }
@@ -115,7 +106,7 @@ router.post("/email-notifications/report-status", async (req: Request, res: Resp
 });
 
 router.post("/email-notifications/contract-reminder", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
+  const userId = resolveUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const { recipientEmail, contractName, expiryDate, clientName } = req.body;
   if (!recipientEmail || !contractName) { res.status(400).json({ error: "Campi richiesti mancanti" }); return; }
@@ -144,7 +135,7 @@ router.post("/email-notifications/contract-reminder", async (req: Request, res: 
 });
 
 router.get("/email-notifications/smtp-status", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
+  const userId = resolveUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const transporter = getEmailTransporter();
   if (transporter) {

@@ -6,14 +6,14 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { ObjectPermission } from "../lib/objectAcl";
-import { getAuth } from "@clerk/express";
+import { getUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  const auth = getAuth(req as any);
-  if (!auth?.userId) {
+  const uid = getUserId(req as any);
+  if (!uid) {
     res.status(401).json({ error: "Non autenticato" });
     return;
   }

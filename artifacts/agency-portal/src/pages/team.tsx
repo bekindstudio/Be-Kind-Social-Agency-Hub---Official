@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import {
   Plus, Trash2, Pencil, X, Save, Phone, Mail, Calendar, Briefcase,
-  User, MapPin, Linkedin, FileText, Camera, ChevronDown, ChevronUp, Shield, Building,
+  User, MapPin, Linkedin, FileText, Camera, ChevronDown, ChevronUp, Shield, Building, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -103,6 +103,7 @@ export default function Team() {
   const [allClients, setAllClients] = useState<ClientOption[]>([]);
   const [memberAccess, setMemberAccess] = useState<Record<number, number[]>>({});
   const [savingAccess, setSavingAccess] = useState<number | null>(null);
+  const [invitingId, setInvitingId] = useState<number | null>(null);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -194,6 +195,24 @@ export default function Team() {
     if (!confirm("Rimuovere questo membro dal team?")) return;
     await fetch(`/api/team/${id}`, { method: "DELETE" });
     await fetchMembers();
+  };
+
+  const sendSupabaseInvite = async (e: React.MouseEvent, memberId: number) => {
+    e.stopPropagation();
+    setInvitingId(memberId);
+    try {
+      const res = await fetch(`/api/team/${memberId}/supabase-invite`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(typeof data.error === "string" ? data.error : "Invito non riuscito");
+        return;
+      }
+      window.alert("Invito inviato all’email del membro. Chiedi di controllare anche lo spam e di usare il link nell’email.");
+    } catch {
+      window.alert("Errore di rete");
+    } finally {
+      setInvitingId(null);
+    }
   };
 
   const handleCancel = () => {
@@ -327,8 +346,8 @@ export default function Team() {
                 </div>
                 {isAdmin && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Clerk User ID</label>
-                    <input type="text" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring font-mono" placeholder="user_..." value={form.clerkUserId} onChange={(e) => f("clerkUserId", e.target.value)} />
+                    <label className="text-xs font-medium text-muted-foreground">Supabase User ID (opzionale)</label>
+                    <input type="text" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring font-mono" placeholder="UUID dopo il primo accesso…" value={form.clerkUserId} onChange={(e) => f("clerkUserId", e.target.value)} />
                   </div>
                 )}
                 <div className={isAdmin ? "" : "col-span-2"}>
@@ -422,6 +441,16 @@ export default function Team() {
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      {isAdmin && m.email && (
+                        <button
+                          onClick={(e) => sendSupabaseInvite(e, m.id)}
+                          disabled={invitingId === m.id}
+                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+                          title="Invia invito email (accesso HUB)"
+                        >
+                          <Send size={14} />
+                        </button>
+                      )}
                       <button onClick={(e) => { e.stopPropagation(); handleEdit(m); }} className="p-1.5 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors" title="Modifica">
                         <Pencil size={14} />
                       </button>
@@ -481,10 +510,26 @@ export default function Team() {
                         )}
                         {m.clerkUserId && (
                           <div className="col-span-2 sm:col-span-3">
-                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Clerk User ID</p>
+                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Supabase User ID</p>
                             <p className="text-xs font-mono text-muted-foreground">{m.clerkUserId}</p>
                           </div>
                         )}
+                      {isAdmin && m.email && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <button
+                            type="button"
+                            onClick={(e) => sendSupabaseInvite(e, m.id)}
+                            disabled={invitingId === m.id}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-input bg-background hover:bg-muted disabled:opacity-50"
+                          >
+                            <Send size={14} />
+                            {invitingId === m.id ? "Invio…" : "Invia invito accesso (email)"}
+                          </button>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            L’email deve essere già quella del membro in anagrafica. Il collegamento all’account avviene automaticamente al primo login con la stessa email.
+                          </p>
+                        </div>
+                      )}
                       </div>
 
                       {isAdmin && (

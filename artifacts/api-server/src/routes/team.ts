@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, teamMembersTable } from "@workspace/db";
-import { getAuth } from "@clerk/express";
+import { isRequestAdmin } from "../lib/request-admin";
+import { getSupabaseAdmin, portalPublicOrigin } from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
 
@@ -72,6 +73,35 @@ router.delete("/team/:id", async (req, res): Promise<void> => {
   const [member] = await db.delete(teamMembersTable).where(eq(teamMembersTable.id, id)).returning();
   if (!member) { res.status(404).json({ error: "Membro non trovato" }); return; }
   res.sendStatus(204);
+});
+
+/** Invio email invito Supabase: solo se il membro esiste in team (email già censita dall’admin). */
+router.post("/team/:id/supabase-invite", async (req, res): Promise<void> => {
+  if (!(await isRequestAdmin(req))) {
+    res.status(403).json({ error: "Solo un amministratore può inviare inviti" });
+    return;
+  }
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
+  const [member] = await db.select().from(teamMembersTable).where(eq(teamMembersTable.id, id));
+  if (!member) { res.status(404).json({ error: "Membro non trovato" }); return; }
+  const email = member.email?.trim();
+  if (!email) { res.status(400).json({ error: "Email mancante" }); return; }
+  let supa;
+  try {
+    supa = getSupabaseAdmin();
+  } catch (e) {
+    res.status(503).json({ error: e instanceof Error ? e.message : "Server di invito non configurato" });
+    return;
+  }
+  const origin = portalPublicOrigin();
+  const redirectTo = `${origin}/auth/callback`;
+  const { error } = await supa.auth.admin.inviteUserByEmail(email, { redirectTo });
+  if (error) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 export default router;

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
-import { db, userRoles, teamMembersTable } from "@workspace/db";
+import { db, userRoles } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
+import { getUserId, isApiAuthBypass, isEnvAdmin } from "../lib/access-control";
+import { isRequestAdmin } from "../lib/request-admin";
 
 const router = Router();
 
@@ -21,28 +22,6 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   viewer: ["projects", "tasks", "chat"],
 };
 
-function getAdminIds(): Set<string> {
-  const raw = process.env.ADMIN_CLERK_USER_IDS ?? "";
-  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-}
-
-function getUserId(req: Request): string | null {
-  try {
-    const auth = getAuth(req as any);
-    return auth?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function isRequestAdmin(req: Request): Promise<boolean> {
-  const userId = getUserId(req);
-  if (!userId) return false;
-  if (getAdminIds().has(userId)) return true;
-  const [role] = await db.select().from(userRoles).where(eq(userRoles.clerkUserId, userId));
-  return role?.role === "admin";
-}
-
 router.get("/roles", async (req: Request, res: Response): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
@@ -53,9 +32,13 @@ router.get("/roles", async (req: Request, res: Response): Promise<void> => {
 });
 
 router.get("/roles/my-role", async (req: Request, res: Response): Promise<void> => {
+  if (isApiAuthBypass()) {
+    res.json({ role: "admin", permissions: ROLE_PERMISSIONS.admin, label: ROLE_LABELS.admin });
+    return;
+  }
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
-  if (getAdminIds().has(userId)) {
+  if (isEnvAdmin(userId)) {
     res.json({ role: "admin", permissions: ROLE_PERMISSIONS.admin, label: ROLE_LABELS.admin });
     return;
   }

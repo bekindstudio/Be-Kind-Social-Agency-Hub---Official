@@ -11,7 +11,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Send, Trash2, Hash, Users } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { useUser } from "@clerk/react";
+import { usePortalUser } from "@/hooks/usePortalUser";
 
 const AUTHOR_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#84cc16"];
 
@@ -24,7 +24,7 @@ function getColorForName(name: string): string {
 export default function Chat() {
   const qc = useQueryClient();
   const { data: projects } = useListProjects({});
-  const { user } = useUser();
+  const { user } = usePortalUser();
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const queryParams = selectedProjectId != null ? { projectId: selectedProjectId } : {};
   const { data: messages } = useListMessages(

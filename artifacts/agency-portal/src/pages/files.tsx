@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { Plus, Trash2, ExternalLink, FileText, Image, FileSpreadsheet, File, Upload, X, Download, Search } from "lucide-react";
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
-import { useUser } from "@clerk/react";
+import { usePortalUser } from "@/hooks/usePortalUser";
 
 function FileIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
@@ -37,7 +37,7 @@ export default function Files() {
   const { data: projects } = useListProjects({});
   const createFile = useCreateFile();
   const deleteFile = useDeleteFile();
-  const { user } = useUser();
+  const { user } = usePortalUser();
 
   const projectList = Array.isArray(projects)
     ? projects

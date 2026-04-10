@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useUser } from "@clerk/react";
+import { usePortalUser } from "@/hooks/usePortalUser";
 import { useLocation } from "wouter";
 import {
   X, ChevronRight, ChevronLeft, Play, SkipForward, CheckCircle2,
@@ -85,7 +85,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   onClose: () => void;
   onStartTimer?: (task: FocusTask) => void;
 }) {
-  const { user } = useUser();
+  const { user } = usePortalUser();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [tasks, setTasks] = useState<FocusTask[]>([]);

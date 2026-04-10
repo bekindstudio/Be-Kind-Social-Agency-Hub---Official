@@ -15,6 +15,9 @@ import Chat from "@/pages/chat";
 import Files from "@/pages/files";
 import Quotes from "@/pages/quotes";
 import Contracts from "@/pages/contracts";
+import ContractsNew from "@/pages/contracts-new";
+import ContractsTemplates from "@/pages/contracts-templates";
+import ContractsClassic from "@/pages/contracts-classic";
 import Settings from "@/pages/settings";
 import Reports from "@/pages/reports";
 import AiAssistant from "@/pages/ai-assistant";
@@ -135,6 +138,15 @@ function Router() {
       </Route>
       <Route path="/quotes">
         <RequireAuth><Quotes /></RequireAuth>
+      </Route>
+      <Route path="/contracts/new">
+        <RequireAuth><ContractsNew /></RequireAuth>
+      </Route>
+      <Route path="/contracts/templates">
+        <RequireAuth><ContractsTemplates /></RequireAuth>
+      </Route>
+      <Route path="/contracts/classic">
+        <RequireAuth><ContractsClassic /></RequireAuth>
       </Route>
       <Route path="/contracts">
         <RequireAuth><Contracts /></RequireAuth>

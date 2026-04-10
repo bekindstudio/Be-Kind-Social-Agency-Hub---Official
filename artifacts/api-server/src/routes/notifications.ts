@@ -1,13 +1,22 @@
 import { Router, type Request, type Response } from "express";
 import { db, notifications } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { getUserId } from "../lib/access-control";
+import { getUserId, isAnonymousApiUserId } from "../lib/access-control";
 
 const router = Router();
 
-router.get("/notifications", async (req: Request, res: Response): Promise<void> => {
+function requireNotificationUser(req: Request, res: Response): string | null {
   const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  if (!userId || isAnonymousApiUserId(userId)) {
+    res.status(401).json({ error: "Non autenticato" });
+    return null;
+  }
+  return userId;
+}
+
+router.get("/notifications", async (req: Request, res: Response): Promise<void> => {
+  const userId = requireNotificationUser(req, res);
+  if (!userId) return;
   const rows = await db.select().from(notifications)
     .where(eq(notifications.userId, userId))
     .orderBy(desc(notifications.createdAt))
@@ -16,16 +25,16 @@ router.get("/notifications", async (req: Request, res: Response): Promise<void> 
 });
 
 router.get("/notifications/unread-count", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const userId = requireNotificationUser(req, res);
+  if (!userId) return;
   const rows = await db.select().from(notifications)
     .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
   res.json({ count: rows.length });
 });
 
 router.patch("/notifications/:id/read", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const userId = requireNotificationUser(req, res);
+  if (!userId) return;
   const id = parseInt(req.params.id as string);
   const [row] = await db.update(notifications)
     .set({ isRead: true })
@@ -36,8 +45,8 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response): Pro
 });
 
 router.post("/notifications/read-all", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const userId = requireNotificationUser(req, res);
+  if (!userId) return;
   await db.update(notifications)
     .set({ isRead: true })
     .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
@@ -45,8 +54,8 @@ router.post("/notifications/read-all", async (req: Request, res: Response): Prom
 });
 
 router.delete("/notifications/:id", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const userId = requireNotificationUser(req, res);
+  if (!userId) return;
   const id = parseInt(req.params.id as string);
   await db.delete(notifications)
     .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));

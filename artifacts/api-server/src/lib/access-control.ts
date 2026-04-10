@@ -22,14 +22,21 @@ function getAdminIds(): Set<string> {
 }
 
 /**
- * Identità principale: JWT Supabase (`sub`) dopo `supabaseAuthMiddleware`, oppure bypass anonimo.
- * Il campo `team_members.clerk_user_id` / `user_roles.clerk_user_id` può contenere lo stesso UUID Supabase.
+ * Identità: prima il JWT Supabase (`sub`) se il middleware ha valorizzato `req.supabaseUserId`;
+ * solo se manca e `API_AUTH_DISABLED` è attivo → utente sintetico per compat demo/server.
+ * Così con Bearer + bypass si ottiene l’UUID reale, non `__api_anonymous__`.
  */
 export function getUserId(req: Request): string | null {
-  if (isApiAuthBypass()) return getAnonymousApiUserId();
   const sid = req.supabaseUserId;
   if (sid) return sid;
+  if (isApiAuthBypass()) return getAnonymousApiUserId();
   return null;
+}
+
+/** True se l’ID è il placeholder usato solo senza JWT in modalità bypass. */
+export function isAnonymousApiUserId(userId: string | null | undefined): boolean {
+  if (userId == null || userId === "") return false;
+  return userId === getAnonymousApiUserId();
 }
 
 export function isEnvAdmin(userId: string | null): boolean {

@@ -5,6 +5,7 @@ import {
   CreateContractTemplateBody,
   UpdateContractTemplateBody,
 } from "@workspace/api-zod";
+import { z } from "zod";
 
 const router: IRouter = Router();
 
@@ -13,9 +14,19 @@ function parseId(raw: string): number | null {
   return isNaN(n) || n <= 0 ? null : n;
 }
 
+const variablesSchema = z.array(z.string());
+
+function parseVariables(body: unknown): string[] {
+  const v = (body as { variables?: unknown })?.variables;
+  const r = variablesSchema.safeParse(v);
+  return r.success ? r.data : [];
+}
+
 function serializeContract(c: typeof contractTemplatesTable.$inferSelect) {
+  const vars = Array.isArray(c.variables) ? c.variables : [];
   return {
     ...c,
+    variables: vars,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -33,11 +44,13 @@ router.post("/contracts", async (req, res): Promise<void> => {
     return;
   }
   const d = parsed.data;
+  const variables = parseVariables(req.body);
   const [row] = await db.insert(contractTemplatesTable).values({
     name: d.name,
     type: d.type ?? "Servizi",
     content: d.content ?? "",
     status: d.status ?? "bozza",
+    variables,
   }).returning();
   res.status(201).json(serializeContract(row));
 });
@@ -62,6 +75,10 @@ router.patch("/contracts/:id", async (req, res): Promise<void> => {
   if (d.type != null) updates.type = d.type;
   if (d.content != null) updates.content = d.content;
   if (d.status != null) updates.status = d.status;
+  const vars = parseVariables(req.body);
+  if ((req.body as { variables?: unknown }).variables !== undefined) {
+    updates.variables = vars;
+  }
 
   const [row] = await db.update(contractTemplatesTable).set(updates).where(eq(contractTemplatesTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }

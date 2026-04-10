@@ -6,6 +6,7 @@ export * from "./messages";
 export * from "./files";
 export * from "./quote-templates";
 export * from "./contract-templates";
+export * from "./contract-documents";
 export * from "./contracts";
 export * from "./social_accounts";
 export * from "./client-reports";

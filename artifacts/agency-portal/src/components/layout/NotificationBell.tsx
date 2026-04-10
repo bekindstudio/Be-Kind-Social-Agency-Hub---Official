@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { Bell, Check, CheckCheck, Trash2, X, CheckSquare, FileText, FileSignature, MessageCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
+
+function notifFetchInit(session: Session | null, init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  if (session?.access_token) {
+    headers.set("Authorization", `Bearer ${session.access_token}`);
+  }
+  return { ...init, headers, credentials: "include" };
+}
 
 interface Notification {
   id: number;
@@ -40,6 +50,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export function NotificationBell() {
+  const { session } = useSupabaseAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -48,16 +59,24 @@ export function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     try {
       const [notifRes, countRes] = await Promise.all([
-        fetch("/api/notifications"),
-        fetch("/api/notifications/unread-count"),
+        fetch("/api/notifications", notifFetchInit(session)),
+        fetch("/api/notifications/unread-count", notifFetchInit(session)),
       ]);
+      if (notifRes.status === 401 || countRes.status === 401) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
+      }
       if (notifRes.ok) setNotifications(await notifRes.json());
       if (countRes.ok) {
         const { count } = await countRes.json();
         setUnreadCount(count);
       }
-    } catch {}
-  }, []);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
+  }, [session]);
 
   useEffect(() => {
     fetchNotifications();
@@ -74,17 +93,17 @@ export function NotificationBell() {
   }, []);
 
   const markRead = async (id: number) => {
-    await fetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+    await fetch(`/api/notifications/${id}/read`, notifFetchInit(session, { method: "PATCH" }));
     fetchNotifications();
   };
 
   const markAllRead = async () => {
-    await fetch("/api/notifications/read-all", { method: "POST" });
+    await fetch("/api/notifications/read-all", notifFetchInit(session, { method: "POST" }));
     fetchNotifications();
   };
 
   const deleteNotif = async (id: number) => {
-    await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+    await fetch(`/api/notifications/${id}`, notifFetchInit(session, { method: "DELETE" }));
     fetchNotifications();
   };
 

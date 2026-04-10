@@ -1,6 +1,6 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -28,6 +28,8 @@ import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
+import { initSupabaseFromEnvOrApi } from "@/lib/supabase-browser";
+import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,8 +46,6 @@ const queryClient = new QueryClient({
 });
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const authDisabled =
-  import.meta.env.VITE_AUTH_DISABLED === "true" || import.meta.env.VITE_AUTH_DISABLED === "1";
 
 function SessionQueryInvalidator() {
   const { session } = useSupabaseAuth();
@@ -185,23 +185,47 @@ function MissingSupabaseEnv() {
       <div className="max-w-md rounded-xl border bg-card p-6 text-sm space-y-2">
         <h1 className="text-lg font-semibold">Configurazione Supabase mancante</h1>
         <p className="text-muted-foreground">
-          Aggiungi in <code className="font-mono text-xs">artifacts/agency-portal/.env.local</code>:
+          Sull’API (Render) imposta almeno una di queste coppie:
         </p>
-        <pre className="text-xs bg-muted p-3 rounded-md whitespace-pre-wrap">{`VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...`}</pre>
+        <pre className="text-xs bg-muted p-3 rounded-md whitespace-pre-wrap">{`SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_ANON_KEY=eyJ... (chiave anon/public)
+
+# oppure nomi espliciti:
+PUBLIC_SUPABASE_URL=...
+PUBLIC_SUPABASE_ANON_KEY=...`}</pre>
         <p className="text-muted-foreground text-xs">
-          Su Render imposta <code className="font-mono">SUPABASE_JWT_SECRET</code> (JWT Secret del progetto Supabase) per validare il token in API.
+          Opzionale su Vercel: <code className="font-mono">VITE_SUPABASE_URL</code> e{" "}
+          <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> (build). Su Render serve anche{" "}
+          <code className="font-mono">SUPABASE_JWT_SECRET</code> per le API autenticate.
         </p>
       </div>
     </div>
   );
 }
 
-function App() {
-  const hasSupabaseEnv =
-    !!(import.meta.env.VITE_SUPABASE_URL?.trim() && import.meta.env.VITE_SUPABASE_ANON_KEY?.trim());
+function AppBootLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[hsl(83,15%,96%)]">
+      <p className="text-sm text-muted-foreground">Caricamento…</p>
+    </div>
+  );
+}
 
-  if (!authDisabled && !hasSupabaseEnv) {
+function App() {
+  const [boot, setBoot] = useState<"loading" | "ready" | "error">(() =>
+    authDisabled ? "ready" : "loading",
+  );
+
+  useEffect(() => {
+    if (authDisabled) return;
+    void initSupabaseFromEnvOrApi().then((ok) => setBoot(ok ? "ready" : "error"));
+  }, []);
+
+  if (!authDisabled && boot === "loading") {
+    return <AppBootLoading />;
+  }
+
+  if (!authDisabled && boot === "error") {
     return <MissingSupabaseEnv />;
   }
 

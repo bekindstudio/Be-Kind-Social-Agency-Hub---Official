@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import publicConfigRouter from "./public-config";
 import clientsRouter from "./clients";
 import projectsRouter from "./projects";
 import tasksRouter from "./tasks";
@@ -30,6 +31,7 @@ import timeTrackerRouter from "./time-tracker";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(publicConfigRouter);
 router.use(clientsRouter);
 router.use(projectsRouter);
 router.use(tasksRouter);

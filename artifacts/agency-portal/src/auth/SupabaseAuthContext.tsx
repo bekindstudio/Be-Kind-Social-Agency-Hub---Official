@@ -11,6 +11,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 
 type AuthState = {
   session: Session | null;
@@ -21,9 +22,6 @@ type AuthState = {
 };
 
 const Ctx = createContext<AuthState | null>(null);
-
-const authDisabled =
-  import.meta.env.VITE_AUTH_DISABLED === "true" || import.meta.env.VITE_AUTH_DISABLED === "1";
 
 export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);

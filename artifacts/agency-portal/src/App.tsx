@@ -24,7 +24,6 @@ import TimeTracker from "@/pages/time-tracker";
 import NotFound from "@/pages/not-found";
 import SignInPage from "@/pages/sign-in";
 import AuthCallbackPage from "@/pages/auth-callback";
-import UnlockPage from "@/pages/unlock";
 import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
@@ -216,35 +215,10 @@ function App() {
   const [boot, setBoot] = useState<"loading" | "ready" | "error">(() =>
     authDisabled ? "ready" : "loading",
   );
-  const [access, setAccess] = useState<"checking" | "granted" | "locked" | "error">("checking");
 
   useEffect(() => {
     if (authDisabled) return;
     void initSupabaseFromEnvOrApi().then((ok) => setBoot(ok ? "ready" : "error"));
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/public/access-status", { credentials: "include" })
-      .then(async (r) => {
-        const data = (await r.json().catch(() => ({}))) as { enabled?: boolean; granted?: boolean };
-        if (cancelled) return;
-        if (!r.ok) {
-          setAccess("error");
-          return;
-        }
-        if (!data.enabled || data.granted) {
-          setAccess("granted");
-          return;
-        }
-        setAccess("locked");
-      })
-      .catch(() => {
-        if (!cancelled) setAccess("error");
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   if (!authDisabled && boot === "loading") {
@@ -253,27 +227,6 @@ function App() {
 
   if (!authDisabled && boot === "error") {
     return <MissingSupabaseEnv />;
-  }
-
-  if (access === "checking") {
-    return <AppBootLoading />;
-  }
-
-  if (access === "locked") {
-    return <UnlockPage onUnlocked={() => setAccess("granted")} />;
-  }
-
-  if (access === "error") {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        <div className="max-w-md rounded-xl border bg-card p-6 text-sm space-y-2">
-          <h1 className="text-lg font-semibold">Accesso non disponibile</h1>
-          <p className="text-muted-foreground">
-            Non riesco a verificare la password del portale. Controlla che l'API sia online e riprova.
-          </p>
-        </div>
-      </div>
-    );
   }
 
   return (

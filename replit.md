@@ -53,8 +53,8 @@ The Agency Hub is built as a monorepo using `pnpm workspaces`.
 - **PDF Export**: Professional formatting for quotes, reports, and editorial plans using `jsPDF` and `html2canvas`.
 
 **Core Features & Implementations:**
-- **Authentication**: Clerk (`@clerk/react`, `@clerk/express`) for user authentication and authorization, with `RequireAuth` middleware on all routes.
-- **Roles & Permissions**: Four defined roles (admin, account_manager, creative, viewer) with granular access control. Admin access is controlled via `ADMIN_CLERK_USER_IDS` environment variable and `user_roles` table.
+- **Authentication**: Supabase Auth in the portal; API verifies JWT (`SUPABASE_JWT_SECRET`) and links `team_members` by email. Optional demo bypass via `API_AUTH_DISABLED`.
+- **Roles & Permissions**: Four defined roles (admin, account_manager, creative, viewer) with granular access control. Admin access via `ADMIN_SUPABASE_USER_IDS` (and `user_roles` / env admin list).
 - **Client-Level Access Control**: Team members can only view assigned clients, implemented via `team_client_access` table and helper functions (`getAccessibleClientIds()`, `filterByClientAccess()`).
 - **Activity Log**: Tracks user actions (`activity_log` table) with API for recording and listing activities.
 - **File Management**: Direct upload to Object Storage (Google Cloud Storage) using presigned URLs, with drag-and-drop, multi-file support, progress bars, and search/filter capabilities.
@@ -69,7 +69,7 @@ The Agency Hub is built as a monorepo using `pnpm workspaces`.
 
 - **Database**: PostgreSQL
 - **Object Storage**: Google Cloud Storage (for file uploads)
-- **Authentication**: Clerk (for user management)
+- **Authentication**: Supabase (Auth + Postgres)
 - **AI Integration**: Anthropic Claude (via Replit AI Integrations proxy)
 - **Social Media APIs**:
     - Meta Graph API (for Instagram profile data, Meta Ads data)

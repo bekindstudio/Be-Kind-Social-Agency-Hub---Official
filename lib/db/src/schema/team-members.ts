@@ -4,7 +4,8 @@ import { z } from "zod/v4";
 
 export const teamMembersTable = pgTable("team_members", {
   id: serial("id").primaryKey(),
-  clerkUserId: text("clerk_user_id"),
+  /** UUID Supabase Auth (`sub`); colonna DB legacy `clerk_user_id`. */
+  authUserId: text("clerk_user_id"),
   name: text("name").notNull(),
   surname: text("surname").notNull().default(""),
   email: text("email").notNull(),

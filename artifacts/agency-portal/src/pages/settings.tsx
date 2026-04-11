@@ -196,7 +196,7 @@ export default function Settings() {
                 </button>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Copia questo ID e aggiungilo alla variabile d'ambiente <code className="bg-muted px-1 rounded">ADMIN_CLERK_USER_IDS</code> per ottenere i privilegi di amministratore.
+                Copia questo ID e aggiungilo alla variabile d'ambiente <code className="bg-muted px-1 rounded">ADMIN_SUPABASE_USER_IDS</code> sull&apos;API (Render) per ottenere i privilegi di amministratore.
               </p>
             </div>
           </div>
@@ -519,10 +519,10 @@ function RoleManagement() {
 
   useEffect(() => { fetchRoles(); }, [fetchRoles]);
 
-  const handleRoleChange = async (clerkUserId: string, role: string) => {
-    setSaving(clerkUserId);
+  const handleRoleChange = async (authUserId: string, role: string) => {
+    setSaving(authUserId);
     try {
-      await portalFetch(`/api/roles/${clerkUserId}`, {
+      await portalFetch(`/api/roles/${encodeURIComponent(authUserId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
@@ -534,11 +534,11 @@ function RoleManagement() {
   };
 
   const handleAdd = async () => {
-    if (!newUserId.trim()) { setAddError("Inserisci un Clerk User ID"); return; }
+    if (!newUserId.trim()) { setAddError("Inserisci l'UUID utente Supabase (Authentication → Users)"); return; }
     setAddError("");
     setSaving("new");
     try {
-      const res = await portalFetch(`/api/roles/${newUserId.trim()}`, {
+      const res = await portalFetch(`/api/roles/${encodeURIComponent(newUserId.trim())}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
@@ -554,9 +554,9 @@ function RoleManagement() {
     } catch { setAddError("Errore di rete"); } finally { setSaving(null); }
   };
 
-  const handleRemove = async (clerkUserId: string) => {
+  const handleRemove = async (authUserId: string) => {
     if (!confirm("Rimuovere questo ruolo? L'utente tornerà al ruolo Osservatore.")) return;
-    await portalFetch(`/api/roles/${clerkUserId}`, { method: "DELETE" });
+    await portalFetch(`/api/roles/${encodeURIComponent(authUserId)}`, { method: "DELETE" });
     await fetchRoles();
   };
 
@@ -580,19 +580,21 @@ function RoleManagement() {
       {expanded && (
         <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm">
           <p className="text-xs text-muted-foreground mb-4">
-            Assegna ruoli agli utenti tramite il loro Clerk User ID. Ogni utente puo' copiare il proprio ID dalla sezione Profilo sopra.
+            Assegna ruoli tramite l&apos;UUID Supabase (stesso valore mostrato in Profilo sopra). Ogni utente può copiare il proprio ID da lì.
           </p>
 
           {roles.length > 0 && (
             <div className="mb-4">
               <div className="grid grid-cols-3 gap-2 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2">
-                <span>Clerk User ID</span>
+                <span>User ID (Supabase)</span>
                 <span>Ruolo</span>
                 <span>Azioni</span>
               </div>
-              {roles.map((r: any) => (
+              {roles.map((r: any) => {
+                const uid = (r.authUserId ?? r.clerkUserId) as string;
+                return (
                 <div key={r.id} className="grid grid-cols-3 gap-2 items-center py-2.5 border-b border-border/50 last:border-0">
-                  <code className="text-xs font-mono text-muted-foreground truncate">{r.clerkUserId}</code>
+                  <code className="text-xs font-mono text-muted-foreground truncate">{uid}</code>
                   <div className="flex items-center gap-2">
                     <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", roleBadgeClass(r.role))}>
                       {roleDefinitions[r.role] ?? r.role}
@@ -601,20 +603,21 @@ function RoleManagement() {
                   <div className="flex items-center gap-2">
                     <select
                       value={r.role}
-                      onChange={(e) => handleRoleChange(r.clerkUserId, e.target.value)}
-                      disabled={saving === r.clerkUserId}
+                      onChange={(e) => handleRoleChange(uid, e.target.value)}
+                      disabled={saving === uid}
                       className="text-xs border border-input rounded-lg px-2 py-1.5 bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                     >
                       {Object.entries(roleDefinitions).map(([key, label]) => (
                         <option key={key} value={key}>{label as string}</option>
                       ))}
                     </select>
-                    <button onClick={() => handleRemove(r.clerkUserId)} className="text-xs text-destructive hover:underline">
+                    <button onClick={() => handleRemove(uid)} className="text-xs text-destructive hover:underline">
                       Rimuovi
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
 
@@ -622,12 +625,12 @@ function RoleManagement() {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Aggiungi ruolo utente</p>
             <div className="flex items-end gap-2">
               <div className="flex-1">
-                <label className="text-[11px] text-muted-foreground">Clerk User ID</label>
+                <label className="text-[11px] text-muted-foreground">UUID Supabase</label>
                 <input
                   type="text"
                   value={newUserId}
                   onChange={(e) => setNewUserId(e.target.value)}
-                  placeholder="user_2x..."
+                  placeholder="es. a1b2c3d4-…"
                   className="w-full mt-1 px-3 py-2 text-xs font-mono border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>

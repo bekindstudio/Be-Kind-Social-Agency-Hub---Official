@@ -1,7 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 
-/** Shape usato da Sidebar / Settings / Chat (compatibile con il vecchio profilo Clerk). */
+/** Shape usato da Sidebar / Settings / Chat (campi mappati da Supabase Auth). */
 export type PortalUserInfo = {
   id?: string;
   firstName?: string | null;

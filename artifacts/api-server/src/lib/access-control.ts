@@ -13,11 +13,18 @@ export function isApiAuthBypass(): boolean {
 
 /** ID sintetico quando `API_AUTH_DISABLED` è attivo. */
 export function getAnonymousApiUserId(): string {
-  return (process.env.API_ANONYMOUS_CLERK_USER_ID ?? "__api_anonymous__").trim() || "__api_anonymous__";
+  return (
+    (process.env.API_ANONYMOUS_USER_ID ?? process.env.API_ANONYMOUS_CLERK_USER_ID ?? "__api_anonymous__").trim() ||
+    "__api_anonymous__"
+  );
 }
 
 function getAdminIds(): Set<string> {
-  const merged = [process.env.ADMIN_CLERK_USER_IDS ?? "", process.env.ADMIN_SUPABASE_USER_IDS ?? ""].join(",");
+  const merged = [
+    process.env.ADMIN_SUPABASE_USER_IDS ?? "",
+    process.env.ADMIN_AUTH_USER_IDS ?? "",
+    process.env.ADMIN_CLERK_USER_IDS ?? "",
+  ].join(",");
   return new Set(merged.split(",").map((s) => s.trim()).filter(Boolean));
 }
 
@@ -48,10 +55,10 @@ export function isEnvAdmin(userId: string | null): boolean {
 export async function getAccessibleClientIds(userId: string): Promise<number[] | "all"> {
   if (isEnvAdmin(userId)) return "all";
 
-  const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.clerkUserId, userId));
+  const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.authUserId, userId));
   if (roleRow?.role === "admin") return "all";
 
-  const [member] = await db.select().from(teamMembersTable).where(eq(teamMembersTable.clerkUserId, userId));
+  const [member] = await db.select().from(teamMembersTable).where(eq(teamMembersTable.authUserId, userId));
   if (!member) return [];
 
   const accessRows = await db.select().from(teamClientAccessTable).where(eq(teamClientAccessTable.teamMemberId, member.id));

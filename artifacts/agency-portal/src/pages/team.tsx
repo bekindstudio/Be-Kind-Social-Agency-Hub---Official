@@ -43,7 +43,7 @@ const DEPARTMENTS = [
 
 type TeamMember = {
   id: number;
-  clerkUserId: string | null;
+  authUserId: string | null;
   name: string;
   surname: string;
   email: string;
@@ -87,7 +87,7 @@ const EMPTY_FORM = {
   avatarColor: "#6366f1",
   linkedin: "",
   notes: "",
-  clerkUserId: "",
+  authUserId: "",
 };
 
 export default function Team() {
@@ -109,7 +109,21 @@ export default function Team() {
   const fetchMembers = useCallback(async () => {
     try {
       const res = await portalFetch("/api/team");
-      if (res.ok) setMembers(await res.json());
+      if (res.ok) {
+        const raw: unknown[] = await res.json();
+        setMembers(
+          raw.map((row) => {
+            const o = row as Record<string, unknown>;
+            return {
+              ...o,
+              authUserId:
+                (typeof o.authUserId === "string" && o.authUserId) ||
+                (typeof o.clerkUserId === "string" && o.clerkUserId) ||
+                null,
+            } as TeamMember;
+          }),
+        );
+      }
     } catch {} finally { setLoading(false); }
   }, []);
 
@@ -186,7 +200,7 @@ export default function Team() {
       avatarColor: m.avatarColor,
       linkedin: m.linkedin ?? "",
       notes: m.notes ?? "",
-      clerkUserId: m.clerkUserId ?? "",
+      authUserId: m.authUserId ?? "",
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -348,7 +362,7 @@ export default function Team() {
                 {isAdmin && (
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">Supabase User ID (opzionale)</label>
-                    <input type="text" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring font-mono" placeholder="UUID dopo il primo accesso…" value={form.clerkUserId} onChange={(e) => f("clerkUserId", e.target.value)} />
+                    <input type="text" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring font-mono" placeholder="UUID dopo il primo accesso…" value={form.authUserId} onChange={(e) => f("authUserId", e.target.value)} />
                   </div>
                 )}
                 <div className={isAdmin ? "" : "col-span-2"}>
@@ -509,10 +523,10 @@ export default function Team() {
                             <p className="text-xs text-muted-foreground whitespace-pre-line">{m.notes}</p>
                           </div>
                         )}
-                        {m.clerkUserId && (
+                        {m.authUserId && (
                           <div className="col-span-2 sm:col-span-3">
                             <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Supabase User ID</p>
-                            <p className="text-xs font-mono text-muted-foreground">{m.clerkUserId}</p>
+                            <p className="text-xs font-mono text-muted-foreground">{m.authUserId}</p>
                           </div>
                         )}
                       {isAdmin && m.email && (

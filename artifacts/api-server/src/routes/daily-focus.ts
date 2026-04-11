@@ -77,7 +77,7 @@ router.get("/daily-focus", async (req, res): Promise<void> => {
   const teamMember = await db
     .select()
     .from(teamMembersTable)
-    .where(eq(teamMembersTable.clerkUserId, userId));
+    .where(eq(teamMembersTable.authUserId, userId));
   const memberId = teamMember[0]?.id ?? null;
   const memberName =
     teamMember[0]
@@ -327,7 +327,7 @@ router.post("/daily-focus/action", async (req, res): Promise<void> => {
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, Number(taskId)));
   if (!task) { res.status(404).json({ error: "Task non trovata" }); return; }
 
-  const teamMember = await db.select().from(teamMembersTable).where(eq(teamMembersTable.clerkUserId, userId));
+  const teamMember = await db.select().from(teamMembersTable).where(eq(teamMembersTable.authUserId, userId));
   const memberId = teamMember[0]?.id ?? null;
   if (memberId && task.assigneeId && task.assigneeId !== memberId && !isEnvAdmin(userId)) {
     res.status(403).json({ error: "Non puoi modificare task assegnate ad altri" }); return;
@@ -381,7 +381,7 @@ router.get("/daily-focus/should-open", async (req, res): Promise<void> => {
     res.json({ shouldOpen: true, reason: "first_open_today", highlightUrgentOnly: false });
     return;
   }
-  const teamMember = await db.select().from(teamMembersTable).where(eq(teamMembersTable.clerkUserId, userId));
+  const teamMember = await db.select().from(teamMembersTable).where(eq(teamMembersTable.authUserId, userId));
   const memberId = teamMember[0]?.id ?? null;
   let openTasks = await db.select().from(tasksTable).where(sql`${tasksTable.status} != 'done'`);
   if (memberId) openTasks = openTasks.filter((t) => t.assigneeId === memberId);

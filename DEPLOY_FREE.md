@@ -41,11 +41,11 @@ Variabili ambiente consigliate (Render -> Environment):
 - `AI_INTEGRATIONS_OPENAI_API_KEY=...`
 - `FRONTEND_URLS=https://<tuo-frontend>.vercel.app`
 
-**Amministratori:** `ADMIN_SUPABASE_USER_IDS=<uuid1,uuid2>` (UUID utente Supabase da **Authentication → Users**). Opzionale: puoi unire anche `ADMIN_CLERK_USER_IDS` se hai vecchi ID.
+**Amministratori:** `ADMIN_SUPABASE_USER_IDS=<uuid1,uuid2>` (UUID da **Authentication → Users**). Opzionale (stesso effetto, nomi legacy): `ADMIN_AUTH_USER_IDS` o `ADMIN_CLERK_USER_IDS`.
 
 **Solo demo / senza JWT:** `API_AUTH_DISABLED=true` — l’API tratta ogni richiesta come admin (non usare in pubblico con dati reali). Con login Supabase nel portal, imposta **`API_AUTH_DISABLED=false`** (o rimuovi la variabile).
 
-Opzionale: `API_ANONYMOUS_CLERK_USER_ID` se usi ancora il bypass anonimo (default `__api_anonymous__`).
+Opzionale: `API_ANONYMOUS_USER_ID` per il bypass anonimo (default `__api_anonymous__`). Legacy: `API_ANONYMOUS_CLERK_USER_ID`.
 
 Nota: `FRONTEND_URLS` accetta piu' domini separati da virgola.
 
@@ -66,7 +66,7 @@ Variabili ambiente (Vercel -> Environment Variables):
 - `VITE_SUPABASE_ANON_KEY=...`
 - `VITE_API_PROXY_TARGET=https://<tuo-backend>.onrender.com` (solo dev locale; in produzione Vercel usa i `rewrites` in `vercel.json` verso lo stesso host Render)
 
-Il portal nel repo **non usa più Clerk nel browser**: non serve `VITE_CLERK_PUBLISHABLE_KEY` a meno di non ripristinare il login.
+Il portal usa **Supabase Auth** nel browser (`VITE_SUPABASE_*` o config via API `/api/public/supabase-config`).
 
 Se cambi URL del backend Render, aggiorna anche `rewrites` in `vercel.json` (root e/o `artifacts/agency-portal/vercel.json`) con il nuovo dominio.
 

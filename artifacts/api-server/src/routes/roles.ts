@@ -42,12 +42,12 @@ router.get("/roles/my-role", async (req: Request, res: Response): Promise<void> 
     res.json({ role: "admin", permissions: ROLE_PERMISSIONS.admin, label: ROLE_LABELS.admin });
     return;
   }
-  const [role] = await db.select().from(userRoles).where(eq(userRoles.clerkUserId, userId));
+  const [role] = await db.select().from(userRoles).where(eq(userRoles.authUserId, userId));
   const userRole = role?.role ?? "admin";
   res.json({ role: userRole, permissions: ROLE_PERMISSIONS[userRole] ?? ROLE_PERMISSIONS.admin, label: ROLE_LABELS[userRole] ?? "Membro" });
 });
 
-router.put("/roles/:clerkUserId", async (req: Request, res: Response): Promise<void> => {
+router.put("/roles/:userId", async (req: Request, res: Response): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const isAdm = await isRequestAdmin(req);
@@ -57,23 +57,23 @@ router.put("/roles/:clerkUserId", async (req: Request, res: Response): Promise<v
     res.status(400).json({ error: `Ruolo non valido. Valori accettati: ${VALID_ROLES.join(", ")}` });
     return;
   }
-  const targetUserId = req.params.clerkUserId as string;
-  const existing = await db.select().from(userRoles).where(eq(userRoles.clerkUserId, targetUserId));
+  const targetUserId = decodeURIComponent(req.params.userId as string);
+  const existing = await db.select().from(userRoles).where(eq(userRoles.authUserId, targetUserId));
   if (existing.length > 0) {
-    const [updated] = await db.update(userRoles).set({ role }).where(eq(userRoles.clerkUserId, targetUserId)).returning();
+    const [updated] = await db.update(userRoles).set({ role }).where(eq(userRoles.authUserId, targetUserId)).returning();
     res.json(updated);
   } else {
-    const [created] = await db.insert(userRoles).values({ clerkUserId: targetUserId, role }).returning();
+    const [created] = await db.insert(userRoles).values({ authUserId: targetUserId, role }).returning();
     res.status(201).json(created);
   }
 });
 
-router.delete("/roles/:clerkUserId", async (req: Request, res: Response): Promise<void> => {
+router.delete("/roles/:userId", async (req: Request, res: Response): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const isAdm = await isRequestAdmin(req);
   if (!isAdm) { res.status(403).json({ error: "Accesso negato" }); return; }
-  await db.delete(userRoles).where(eq(userRoles.clerkUserId, req.params.clerkUserId as string));
+  await db.delete(userRoles).where(eq(userRoles.authUserId, decodeURIComponent(req.params.userId as string)));
   res.sendStatus(204);
 });
 

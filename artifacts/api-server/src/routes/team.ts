@@ -28,22 +28,29 @@ router.get("/team/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/team", async (req, res): Promise<void> => {
-  const { name, surname, email, phone, role, department, birthDate, hireDate, photoUrl, avatarColor, linkedin, notes, clerkUserId } = req.body;
+  const b = req.body as Record<string, unknown>;
+  const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : "");
+  const name = str("name");
+  const email = str("email");
+  const authUserId =
+    (typeof b.authUserId === "string" && b.authUserId.trim()) ||
+    (typeof b.clerkUserId === "string" && b.clerkUserId.trim()) ||
+    null;
   if (!name || !email) { res.status(400).json({ error: "Nome e email sono obbligatori" }); return; }
   const [member] = await db.insert(teamMembersTable).values({
     name,
-    surname: surname ?? "",
+    surname: str("surname") || "",
     email,
-    phone: phone ?? "",
-    role: role || "Collaboratore",
-    department: department ?? "",
-    birthDate: birthDate || null,
-    hireDate: hireDate || null,
-    photoUrl: photoUrl ?? "",
-    avatarColor: avatarColor || "#6366f1",
-    linkedin: linkedin ?? "",
-    notes: notes ?? "",
-    clerkUserId: clerkUserId || null,
+    phone: str("phone") || "",
+    role: str("role") || "Collaboratore",
+    department: str("department") || "",
+    birthDate: (typeof b.birthDate === "string" && b.birthDate) || null,
+    hireDate: (typeof b.hireDate === "string" && b.hireDate) || null,
+    photoUrl: str("photoUrl") || "",
+    avatarColor: str("avatarColor") || "#6366f1",
+    linkedin: str("linkedin") || "",
+    notes: str("notes") || "",
+    authUserId: authUserId || null,
   }).returning();
   res.status(201).json(serializeMember(member));
 });
@@ -52,12 +59,16 @@ router.patch("/team/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
-  const allowedFields = ["name", "surname", "email", "phone", "role", "department", "birthDate", "hireDate", "photoUrl", "avatarColor", "linkedin", "notes", "isActive", "clerkUserId"];
+  const allowedFields = ["name", "surname", "email", "phone", "role", "department", "birthDate", "hireDate", "photoUrl", "avatarColor", "linkedin", "notes", "isActive", "authUserId", "clerkUserId"];
   const updates: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (req.body[key] !== undefined) {
       updates[key] = req.body[key];
     }
+  }
+  if (updates.clerkUserId !== undefined && updates.authUserId === undefined) {
+    updates.authUserId = updates.clerkUserId;
+    delete updates.clerkUserId;
   }
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nessun campo da aggiornare" }); return; }

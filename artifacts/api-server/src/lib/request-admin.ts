@@ -8,6 +8,6 @@ export async function isRequestAdmin(req: Request): Promise<boolean> {
   const userId = getUserId(req);
   if (!userId) return false;
   if (isEnvAdmin(userId)) return true;
-  const [role] = await db.select().from(userRoles).where(eq(userRoles.clerkUserId, userId));
+  const [role] = await db.select().from(userRoles).where(eq(userRoles.authUserId, userId));
   return role?.role === "admin";
 }

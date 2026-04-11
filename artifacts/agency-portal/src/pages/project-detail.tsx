@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 import { portalFetch } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout/Layout";
 import { ChevronLeft, CalendarDays, BarChart2, Download, Share2, Copy, Archive, Plus } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
@@ -22,25 +23,30 @@ function HealthBadge({ health }: { health: string }) {
 
 export default function ProjectDetail({ id }: Props) {
   const projectId = Number(id);
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [tab, setTab] = useState<(typeof TABS)[number]>("panoramica");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", description: "", deadline: "", budget: "" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await portalFetch(`/api/projects/${projectId}/workspace`);
+      const json = await res.json();
+      setData(json);
+      setNotes(json?.project?.notes ?? "");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await portalFetch(`/api/projects/${projectId}/workspace`);
-        const json = await res.json();
-        setData(json);
-        setNotes(json?.project?.notes ?? "");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [projectId]);
+    void load();
+  }, [load]);
 
   const project = data?.project;
   const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
@@ -83,9 +89,57 @@ export default function ProjectDetail({ id }: Props) {
           </div>
           <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden"><div className={cn("h-full", budgetPct > 95 ? "bg-red-500" : budgetPct >= 80 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, budgetPct)}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className="px-3 py-1.5 text-xs border border-input rounded-lg">Edit</button>
-            <button onClick={() => portalFetch(`/api/projects/${project.id}/archive`, { method: "POST" })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
-            <button onClick={() => portalFetch(`/api/projects/${project.id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ copyTasks: true }) })} className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Copy size={12} /> Duplicate</button>
+            <button
+              type="button"
+              className="px-3 py-1.5 text-xs border border-input rounded-lg"
+              onClick={() => {
+                setEditForm({
+                  name: project.name ?? "",
+                  description: project.description ?? "",
+                  deadline: project.deadline ? String(project.deadline).slice(0, 10) : "",
+                  budget: project.budget != null ? String(project.budget) : "",
+                });
+                setEditOpen(true);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await portalFetch(`/api/projects/${project.id}/archive`, { method: "POST" });
+                if (!res.ok) {
+                  toast({ variant: "destructive", title: "Archiviazione non riuscita" });
+                  return;
+                }
+                toast({ title: "Progetto archiviato" });
+                navigate("/projects");
+              }}
+              className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"
+            >
+              <Archive size={12} /> Archive
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await portalFetch(`/api/projects/${project.id}/duplicate`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ copyTasks: true }),
+                });
+                if (!res.ok) {
+                  toast({ variant: "destructive", title: "Duplicazione non riuscita" });
+                  return;
+                }
+                const dup = await res.json();
+                toast({ title: "Progetto duplicato" });
+                if (dup?.id) navigate(`/projects/${dup.id}`);
+                else navigate("/projects");
+              }}
+              className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"
+            >
+              <Copy size={12} /> Duplicate
+            </button>
             <button className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Download size={12} /> Export</button>
             <button className="px-3 py-1.5 text-xs border border-input rounded-lg inline-flex items-center gap-1"><Share2 size={12} /> Share brief</button>
           </div>
@@ -147,7 +201,7 @@ export default function ProjectDetail({ id }: Props) {
 
         {tab === "task" && (
           <div className="bg-card border border-card-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">Task progetto</h3><button onClick={() => (window.location.href = "/tasks")} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded inline-flex items-center gap-1"><Plus size={12} /> Nuova Task</button></div>
+            <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">Task progetto</h3><button type="button" onClick={() => navigate("/tasks")} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded inline-flex items-center gap-1"><Plus size={12} /> Nuova Task</button></div>
             <p className="text-sm text-muted-foreground mb-2">{data?.stats?.tasksDone ?? 0} task completate su {data?.stats?.tasksTotal ?? 0} totali</p>
             <div className="space-y-2">{tasks.map((t: any) => <div key={t.id} className="border border-border rounded-lg px-3 py-2 text-sm flex items-center justify-between"><span>{t.title}</span><span className="text-xs text-muted-foreground">{t.status}</span></div>)}</div>
           </div>
@@ -155,7 +209,7 @@ export default function ProjectDetail({ id }: Props) {
 
         {tab === "piano-editoriale" && (
           <div className="bg-card border border-card-border rounded-xl p-4">
-            {types.includes("Social Media") ? <div><h3 className="font-semibold mb-2">Piano editoriale</h3><p className="text-sm text-muted-foreground">Contenuti: Da creare / In lavorazione / Pronto / Approvato / Pubblicato</p><a href="/tools" className="text-primary text-sm hover:underline mt-2 inline-block">Apri tool piano editoriale</a></div> : <p className="text-sm text-muted-foreground">Tab visibile solo per progetti Social Media.</p>}
+            {types.includes("Social Media") ? <div><h3 className="font-semibold mb-2">Piano editoriale</h3><p className="text-sm text-muted-foreground">Contenuti: Da creare / In lavorazione / Pronto / Approvato / Pubblicato</p><Link href="/tools" className="text-primary text-sm hover:underline mt-2 inline-block">Apri tool piano editoriale</Link></div> : <p className="text-sm text-muted-foreground">Tab visibile solo per progetti Social Media.</p>}
           </div>
         )}
 
@@ -170,6 +224,50 @@ export default function ProjectDetail({ id }: Props) {
         {tab === "timeline" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-3">Timeline / Gantt</h3><div className="h-40 border rounded-lg bg-muted/30 relative"><div className="absolute left-2 right-2 top-8 h-2 bg-primary/40 rounded" /><div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-red-500" /><p className="absolute left-2 top-2 text-xs text-muted-foreground">Today line</p></div><div className="mt-3 text-sm">{milestones.map((m: any) => <div key={m.id} className="py-1">{m.name} · {m.status} · {m.dueDate ? formatDate(m.dueDate) : "—"}</div>)}</div></div>}
         {tab === "report" && <div className="bg-card border border-card-border rounded-xl p-4 text-sm text-muted-foreground">Report progetto: Bozza / Approvato / Inviato.</div>}
         {tab === "storico" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-2">Audit log</h3>{activity.map((a: any) => <div key={a.id} className="text-xs py-1 border-b border-border/50">{a.action} · {formatDate(a.createdAt)}</div>)}</div>}
+
+        {editOpen && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-card border border-card-border rounded-xl w-full max-w-md p-5 space-y-3">
+              <h3 className="font-semibold">Modifica progetto</h3>
+              <label className="block text-xs text-muted-foreground">Nome</label>
+              <input className="w-full px-2 py-1.5 border border-input rounded-lg bg-background text-sm" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground">Descrizione</label>
+              <textarea rows={3} className="w-full px-2 py-1.5 border border-input rounded-lg bg-background text-sm" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground">Scadenza</label>
+              <input type="date" className="w-full px-2 py-1.5 border border-input rounded-lg bg-background text-sm" value={editForm.deadline} onChange={(e) => setEditForm((f) => ({ ...f, deadline: e.target.value }))} />
+              <label className="block text-xs text-muted-foreground">Budget (€)</label>
+              <input className="w-full px-2 py-1.5 border border-input rounded-lg bg-background text-sm" value={editForm.budget} onChange={(e) => setEditForm((f) => ({ ...f, budget: e.target.value }))} />
+              <div className="flex gap-2 justify-end pt-2">
+                <button type="button" className="px-3 py-1.5 text-xs border border-input rounded-lg" onClick={() => setEditOpen(false)}>Annulla</button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg"
+                  onClick={async () => {
+                    const res = await portalFetch(`/api/projects/${project.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        name: editForm.name.trim() || project.name,
+                        description: editForm.description || null,
+                        deadline: editForm.deadline ? new Date(editForm.deadline).toISOString() : null,
+                        budget: editForm.budget.trim() ? Number(editForm.budget) : null,
+                      }),
+                    });
+                    if (!res.ok) {
+                      toast({ variant: "destructive", title: "Salvataggio non riuscito" });
+                      return;
+                    }
+                    toast({ title: "Progetto aggiornato" });
+                    setEditOpen(false);
+                    await load();
+                  }}
+                >
+                  Salva
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-card border border-card-border rounded-xl p-4">
           <h3 className="font-semibold mb-2 inline-flex items-center gap-2"><BarChart2 size={15} /> Milestones & Budget alerts</h3>

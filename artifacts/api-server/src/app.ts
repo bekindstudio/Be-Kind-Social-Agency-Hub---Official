@@ -28,6 +28,16 @@ const allowedOrigins = [
     .filter(Boolean),
 ];
 
+/** Vercel (deploy, preview, branch): accetta qualsiasi sottodominio *.vercel.app (il regex [a-z0-9-]+ escludeva alcuni host validi). */
+function isAllowedVercelOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return protocol === "https:" && hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+}
+
 app.use(
   pinoHttp({
     logger,
@@ -57,7 +67,7 @@ app.use(
         return;
       }
 
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin) || isAllowedVercelOrigin(origin)) {
         callback(null, true);
         return;
       }

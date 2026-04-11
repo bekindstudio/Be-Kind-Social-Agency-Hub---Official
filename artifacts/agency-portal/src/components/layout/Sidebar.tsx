@@ -125,8 +125,15 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
-  const isActive = (href: string) =>
-    location === href || (href !== "/dashboard" && location.startsWith(href));
+  const isActive = (href: string) => {
+    if (href === "/dashboard") return location === "/dashboard";
+    if (href === "/tools/time-tracker") return location === "/tools/time-tracker";
+    if (href === "/tools") {
+      return location === "/tools" || location.startsWith("/tools/piano-editoriale");
+    }
+    if (location === href) return true;
+    return location.startsWith(`${href}/`);
+  };
 
   return (
     <div className="flex flex-col w-60 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0">

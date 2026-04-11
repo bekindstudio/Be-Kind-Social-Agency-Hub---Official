@@ -1,6 +1,6 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -32,7 +32,6 @@ import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
-import { initSupabaseFromEnvOrApi } from "@/lib/supabase-browser";
 import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 import { AutoSaveProvider } from "@/context/AutoSaveContext";
 
@@ -100,7 +99,13 @@ function AuthenticatedAiWidgets() {
 function HomeRoute() {
   const { authDisabled: off, session, loading } = useSupabaseAuth();
   if (off) return <Redirect to="/dashboard" />;
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[hsl(83,15%,96%)]">
+        <p className="text-sm text-muted-foreground">Caricamento…</p>
+      </div>
+    );
+  }
   if (session) return <Redirect to="/dashboard" />;
   return <Redirect to="/sign-in" />;
 }
@@ -233,20 +238,13 @@ function AppBootLoading() {
 }
 
 function App() {
-  const [boot, setBoot] = useState<"loading" | "ready" | "error">(() =>
-    authDisabled ? "ready" : "loading",
-  );
+  const { authDisabled: off, loading: authLoading, supabaseConfigMissing } = useSupabaseAuth();
 
-  useEffect(() => {
-    if (authDisabled) return;
-    void initSupabaseFromEnvOrApi().then((ok) => setBoot(ok ? "ready" : "error"));
-  }, []);
-
-  if (!authDisabled && boot === "loading") {
+  if (!off && authLoading) {
     return <AppBootLoading />;
   }
 
-  if (!authDisabled && boot === "error") {
+  if (!off && supabaseConfigMissing) {
     return <MissingSupabaseEnv />;
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetDashboardSummary,
   useGetRecentActivity,
@@ -8,7 +9,11 @@ import {
   useListTasks,
   useListClients,
   portalFetch,
+  getListTasksQueryKey,
+  getGetRecentActivityQueryKey,
+  getGetDashboardSummaryQueryKey,
 } from "@workspace/api-client-react";
+import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { Layout } from "@/components/layout/Layout";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
@@ -103,6 +108,8 @@ type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
+  const { signOut, authDisabled } = useSupabaseAuth();
   const { data: summary } = useGetDashboardSummary();
   const { data: activityRaw } = useGetRecentActivity();
   const { data: statusRaw } = useGetProjectStatusBreakdown();
@@ -136,6 +143,55 @@ export default function Dashboard() {
   });
   const [showDashPrefs, setShowDashPrefs] = useState(false);
 
+  const { data: taskTrends } = useQuery({
+    queryKey: ["/api/dashboard/task-trends"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/task-trends");
+      if (!r.ok) return null;
+      return r.json() as Promise<Array<{ month: string; creati: number; completati: number }>>;
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: revenueData } = useQuery({
+    queryKey: ["/api/dashboard/revenue"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/revenue");
+      if (!r.ok) return null;
+      return r.json() as Promise<{
+        totalQuotes?: number;
+        totalRevenue?: number;
+        approvedQuotes?: number;
+      }>;
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: timeStats } = useQuery({
+    queryKey: ["/api/time-tracker/stats"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/time-tracker/stats");
+      if (!r.ok) return null;
+      return r.json() as Promise<{
+        thisWeek: number;
+        billableMonth: number;
+        thisMonth: number;
+        clientBreakdown: Array<{ name: string; seconds: number }>;
+      }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const { data: reportCounts } = useQuery({
+    queryKey: ["/api/reports/counts"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/reports/counts");
+      if (!r.ok) return null;
+      return r.json() as Promise<Record<string, number>>;
+    },
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
     localStorage.setItem("dashboard-widgets-order-v1", JSON.stringify(widgets));
   }, [widgets]);
@@ -165,6 +221,13 @@ export default function Dashboard() {
   const valueInCourse = activeProjects.reduce((acc: number, p: AnyObj) => acc + Number(p.budget ?? 0), 0);
   const clientsAtRisk = clients.filter((c: AnyObj) => Number(c.healthScore ?? 0) < 60);
 
+  const y = now.getFullYear();
+  const mo = now.getMonth();
+  const newClientsMonth = clients.filter((c: AnyObj) => {
+    const d = c.createdAt ? new Date(c.createdAt as string) : null;
+    return d && d.getMonth() === mo && d.getFullYear() === y;
+  }).length;
+
   const upcomingDeadlines = [
     ...tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate) <= in14).map((t: AnyObj) => ({ type: "task", title: t.title, when: t.dueDate, priority: t.priority, ref: `/tasks` })),
     ...projects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= in14).map((p: AnyObj) => ({ type: "deadline", title: p.name, when: p.deadline, priority: "high", ref: `/projects/${p.id}` })),
@@ -191,19 +254,61 @@ export default function Dashboard() {
 
   const shownAlerts = showAlertsAll ? alerts : alerts.slice(0, 5);
   const pieData = statusBreakdown.map((s: AnyObj) => ({ name: s.status, value: s.count }));
-  const trendData = [
-    { week: "Set 1", done: 28, byType: 20 },
-    { week: "Set 2", done: 34, byType: 24 },
-    { week: "Set 3", done: 31, byType: 22 },
-    { week: "Set 4", done: 39, byType: 26 },
-  ];
-  const hoursDonut = clients.slice(0, 5).map((c: AnyObj, i) => ({ name: c.name, value: 10 + i * 7 }));
-  const projectLine = [
-    { period: "Gen", avviati: 4, completati: 2 },
-    { period: "Feb", avviati: 5, completati: 3 },
-    { period: "Mar", avviati: 6, completati: 4 },
-    { period: "Apr", avviati: 5, completati: 5 },
-  ];
+
+  const trendData = useMemo(() => {
+    const rows = Array.isArray(taskTrends) ? taskTrends : [];
+    if (rows.length === 0) {
+      return [{ week: "—", done: 0, creati: 0 }];
+    }
+    return rows.map((m: AnyObj) => ({
+      week: m.month,
+      done: Number(m.completati ?? 0),
+      creati: Number(m.creati ?? 0),
+    }));
+  }, [taskTrends]);
+
+  const hoursDonut = useMemo(() => {
+    const breakdown = timeStats?.clientBreakdown;
+    if (Array.isArray(breakdown) && breakdown.length > 0) {
+      const vals = breakdown.slice(0, 5).map((c: AnyObj) => ({
+        name: c.name,
+        value: Math.round(((c.seconds ?? 0) / 3600) * 100) / 100,
+      }));
+      if (vals.some((v) => v.value > 0)) return vals;
+    }
+    return clients.slice(0, 5).map((c: AnyObj, i) => ({ name: c.name, value: 10 + i * 7 }));
+  }, [timeStats, clients]);
+
+  const projectLine = useMemo(() => {
+    const rows = Array.isArray(taskTrends) ? taskTrends : [];
+    if (rows.length === 0) {
+      return [{ period: "—", avviati: 0, completati: 0 }];
+    }
+    return rows.map((m: AnyObj) => ({
+      period: m.month,
+      avviati: Number(m.creati ?? 0),
+      completati: Number(m.completati ?? 0),
+    }));
+  }, [taskTrends]);
+
+  const weekHoursDisplay = useMemo(() => {
+    if (timeStats?.thisWeek != null && timeStats.thisWeek > 0) {
+      return Math.round((timeStats.thisWeek / 3600) * 10) / 10;
+    }
+    if (timeStats?.thisWeek === 0) return 0;
+    return null;
+  }, [timeStats]);
+
+  const oreMeseDisplay = useMemo(() => {
+    if (timeStats?.thisMonth == null) return null;
+    return Math.round((timeStats.thisMonth / 3600) * 10) / 10;
+  }, [timeStats]);
+
+  const reportsInviatiCount = useMemo(() => {
+    if (!reportCounts) return null;
+    const inv = (reportCounts.inviato ?? 0) + (reportCounts.inviato_al_cliente ?? 0);
+    return inv;
+  }, [reportCounts]);
   const editorialWeek = [
     { day: "Lun", post: 1, reel: 1, story: 1, carousel: 0 },
     { day: "Mar", post: 0, reel: 1, story: 1, carousel: 1 },
@@ -232,12 +337,20 @@ export default function Dashboard() {
     setWidgets(next);
   };
 
-  const onToggleTaskDone = (task: AnyObj) => {
-    portalFetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
-    }).catch(() => {});
+  const onToggleTaskDone = async (task: AnyObj) => {
+    try {
+      const res = await portalFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
+      });
+      if (!res.ok) return;
+      await queryClient.invalidateQueries({ queryKey: getListTasksQueryKey({}) });
+      await queryClient.invalidateQueries({ queryKey: getGetRecentActivityQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+    } catch {
+      /* ignore */
+    }
   };
 
   const filteredGlobal = [
@@ -289,7 +402,9 @@ export default function Dashboard() {
                 <div className="absolute right-0 mt-1 w-44 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
                   <button className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">Profile</button>
                   <button onClick={() => navigate("/settings")} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><Settings size={13} /> Settings</button>
-                  <button className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><LogOut size={13} /> Logout</button>
+                  {!authDisabled ? (
+                    <button type="button" onClick={() => void signOut()} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><LogOut size={13} /> Logout</button>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -301,7 +416,17 @@ export default function Dashboard() {
           <KpiCard title="Progetti Attivi" value={activeProjects.length} sub={`${dueWeekProjects.length} in scadenza questa settimana`} trend="+2 vs mese scorso" color={KPI_COLORS[0]} onClick={() => navigate("/projects")} />
           <KpiCard title="Task di Oggi" value={tasksTodayTotal} sub={`${tasksTodayDone} completate oggi`} progress={tasksTodayTotal ? (tasksTodayDone / tasksTodayTotal) * 100 : 0} color={KPI_COLORS[1]} onClick={() => navigate("/tasks")} />
           <KpiCard title="Clienti Attivi" value={clients.length} sub={`${clients.filter((c: AnyObj) => c.contractStatus === "in_scadenza").length} contratti in scadenza (30gg)`} trend={`${clientsAtRisk.length} clienti a rischio`} color={KPI_COLORS[2]} onClick={() => navigate("/clients")} />
-          <KpiCard title="Ore Questa Settimana" value={Math.max(12, (summary as AnyObj)?.pendingTasks ?? 0)} sub="8 ore fatturabili" color={KPI_COLORS[3]} onClick={() => navigate("/tools/time-tracker")} />
+          <KpiCard
+            title="Ore Questa Settimana"
+            value={weekHoursDisplay ?? "—"}
+            sub={
+              timeStats
+                ? `${Math.round((timeStats.billableMonth / 3600) * 10) / 10} h fatturabili (mese)`
+                : `${(summary as AnyObj)?.pendingTasks ?? 0} task in sospeso`
+            }
+            color={KPI_COLORS[3]}
+            onClick={() => navigate("/tools/time-tracker")}
+          />
         </div>
 
         {/* Alerts */}
@@ -466,19 +591,20 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="h-64">
-              <p className="text-xs text-muted-foreground mb-1">Task completate per settimana</p>
+              <p className="text-xs text-muted-foreground mb-1">Task create e completate (ultimi 6 mesi)</p>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="week" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="done" fill="#7a8f5c" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="creati" fill="#c4d4a8" radius={[4, 4, 0, 0]} name="Create" />
+                  <Bar dataKey="done" fill="#7a8f5c" radius={[4, 4, 0, 0]} name="Completate" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div className="h-64">
-              <p className="text-xs text-muted-foreground mb-1">Distribuzione ore per cliente</p>
+              <p className="text-xs text-muted-foreground mb-1">Ore per cliente (mese corrente, time tracker)</p>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={hoursDonut} dataKey="value" nameKey="name" outerRadius={85}>
@@ -489,26 +615,26 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
             <div className="h-64">
-              <p className="text-xs text-muted-foreground mb-1">Andamento progetti</p>
+              <p className="text-xs text-muted-foreground mb-1">Andamento task (create vs completate)</p>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={projectLine}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="period" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="avviati" stroke="#8b5cf6" strokeWidth={2} />
-                  <Line type="monotone" dataKey="completati" stroke="#14b8a6" strokeWidth={2} />
+                  <Line type="monotone" dataKey="avviati" name="Create" stroke="#8b5cf6" strokeWidth={2} />
+                  <Line type="monotone" dataKey="completati" name="Completate" stroke="#14b8a6" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3">
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Ore totali</p><p className="font-semibold">126</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Ore totali (mese)</p><p className="font-semibold">{oreMeseDisplay != null ? `${oreMeseDisplay} h` : "—"}</p></div>
             <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Nuovi clienti</p><p className="font-semibold">3</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Preventivi inviati</p><p className="font-semibold">11</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Valore contratti</p><p className="font-semibold">€ 18.500</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Report inviati</p><p className="font-semibold">9</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Nuovi clienti (mese)</p><p className="font-semibold">{newClientsMonth}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Preventivi (template)</p><p className="font-semibold">{revenueData?.totalQuotes ?? "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Valore preventivi accettati</p><p className="font-semibold">{revenueData?.totalRevenue != null ? `€ ${Number(revenueData.totalRevenue).toLocaleString("it-IT")}` : "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Report inviati</p><p className="font-semibold">{reportsInviatiCount != null ? reportsInviatiCount : "—"}</p></div>
           </div>
         </div>
 

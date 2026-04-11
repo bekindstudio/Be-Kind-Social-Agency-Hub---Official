@@ -8,7 +8,22 @@ import { cn, formatDate } from "@/lib/utils";
 
 interface Props { id: string; }
 
+const JSON_HEADERS = { "Content-Type": "application/json" } as const;
+
+async function patchProject(projectId: number, body: Record<string, unknown>) {
+  return portalFetch(`/api/projects/${projectId}`, {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
 const TABS = ["panoramica", "task", "piano-editoriale", "adv-campagne", "file", "comunicazioni", "timeline", "report", "storico"] as const;
+
+type WorkspaceTask = { id: number | string; title: string; status: string; dueDate?: string | null };
+type WorkspaceMember = { id: number | string; role: string; userId: number | string };
+type WorkspaceMilestone = { id: number | string; name: string; status: string; dueDate?: string | null };
+type ActivityRow = { id: number | string; action: string; createdAt: string };
 
 function HealthBadge({ health }: { health: string }) {
   const map: Record<string, string> = {
@@ -49,11 +64,10 @@ export default function ProjectDetail({ id }: Props) {
   }, [load]);
 
   const project = data?.project;
-  const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
-  const activity = Array.isArray(data?.activity) ? data.activity : [];
-  const members = Array.isArray(data?.members) ? data.members : [];
-  const milestones = Array.isArray(data?.milestones) ? data.milestones : [];
-  const expenses = Array.isArray(data?.expenses) ? data.expenses : [];
+  const tasks: WorkspaceTask[] = Array.isArray(data?.tasks) ? data.tasks : [];
+  const activity: ActivityRow[] = Array.isArray(data?.activity) ? data.activity : [];
+  const members: WorkspaceMember[] = Array.isArray(data?.members) ? data.members : [];
+  const milestones: WorkspaceMilestone[] = Array.isArray(data?.milestones) ? data.milestones : [];
   const types = useMemo(() => {
     try { return JSON.parse(project?.typeJson ?? "[]") as string[]; } catch { return []; }
   }, [project?.typeJson]);
@@ -64,7 +78,7 @@ export default function ProjectDetail({ id }: Props) {
   const budget = Number(data?.stats?.budget ?? project.budget ?? 0);
   const spent = Number(data?.stats?.spent ?? project.budgetSpeso ?? 0);
   const budgetPct = budget > 0 ? Math.round((spent / budget) * 100) : 0;
-  const overdueTasks = tasks.filter((t: any) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date());
+  const overdueTasks = tasks.filter((t) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date());
 
   return (
     <Layout>
@@ -178,22 +192,35 @@ export default function ProjectDetail({ id }: Props) {
               </div>
               <div className="bg-card border border-card-border rounded-xl p-4">
                 <h3 className="font-semibold mb-2">Team members</h3>
-                <div className="flex flex-wrap gap-2">{members.map((m: any) => <span key={m.id} className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{m.role} · {m.userId}</span>)}</div>
+                <div className="flex flex-wrap gap-2">{members.map((m) => <span key={m.id} className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">{m.role} · {m.userId}</span>)}</div>
               </div>
             </div>
             <div className="space-y-4">
               <div className="bg-card border border-card-border rounded-xl p-4">
                 <h3 className="font-semibold mb-2">Activity feed</h3>
-                <div className="space-y-2">{activity.slice(0, 10).map((a: any) => <div key={a.id} className="text-xs bg-muted/40 rounded px-2 py-1.5"><strong>{a.action}</strong> · {formatDate(a.createdAt)}</div>)}</div>
+                <div className="space-y-2">{activity.slice(0, 10).map((a) => <div key={a.id} className="text-xs bg-muted/40 rounded px-2 py-1.5"><strong>{a.action}</strong> · {formatDate(a.createdAt)}</div>)}</div>
               </div>
               <div className="bg-card border border-card-border rounded-xl p-4">
                 <h3 className="font-semibold mb-2">Upcoming deadlines</h3>
-                <div className="space-y-1">{tasks.filter((t: any) => t.dueDate).slice(0, 7).map((t: any) => <p key={t.id} className="text-xs">{t.title} · <span className={cn(t.status !== "done" && new Date(t.dueDate) < new Date() ? "text-red-600" : "text-muted-foreground")}>{formatDate(t.dueDate)}</span></p>)}</div>
+                <div className="space-y-1">{tasks.filter((t) => t.dueDate).slice(0, 7).map((t) => <p key={t.id} className="text-xs">{t.title} · <span className={cn(t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date() ? "text-red-600" : "text-muted-foreground")}>{formatDate(t.dueDate!)}</span></p>)}</div>
               </div>
               <div className="bg-card border border-card-border rounded-xl p-4">
                 <h3 className="font-semibold mb-2">Quick notes</h3>
                 <textarea rows={4} className="w-full px-2.5 py-2 border border-input rounded-lg bg-background text-sm" value={notes} onChange={(e) => setNotes(e.target.value)} />
-                <button onClick={() => portalFetch(`/api/projects/${project.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes, lastActivityAt: new Date().toISOString() }) })} className="mt-2 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded">Salva note</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await patchProject(project.id, { notes, lastActivityAt: new Date().toISOString() });
+                    if (!res.ok) {
+                      toast({ variant: "destructive", title: "Salvataggio note non riuscito" });
+                      return;
+                    }
+                    toast({ title: "Note salvate" });
+                  }}
+                  className="mt-2 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded"
+                >
+                  Salva note
+                </button>
               </div>
             </div>
           </div>
@@ -203,7 +230,7 @@ export default function ProjectDetail({ id }: Props) {
           <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">Task progetto</h3><button type="button" onClick={() => navigate("/tasks")} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded inline-flex items-center gap-1"><Plus size={12} /> Nuova Task</button></div>
             <p className="text-sm text-muted-foreground mb-2">{data?.stats?.tasksDone ?? 0} task completate su {data?.stats?.tasksTotal ?? 0} totali</p>
-            <div className="space-y-2">{tasks.map((t: any) => <div key={t.id} className="border border-border rounded-lg px-3 py-2 text-sm flex items-center justify-between"><span>{t.title}</span><span className="text-xs text-muted-foreground">{t.status}</span></div>)}</div>
+            <div className="space-y-2">{tasks.map((t) => <div key={t.id} className="border border-border rounded-lg px-3 py-2 text-sm flex items-center justify-between"><span>{t.title}</span><span className="text-xs text-muted-foreground">{t.status}</span></div>)}</div>
           </div>
         )}
 
@@ -221,9 +248,9 @@ export default function ProjectDetail({ id }: Props) {
 
         {tab === "file" && <div className="bg-card border border-card-border rounded-xl p-4 text-sm text-muted-foreground">Cartelle: Brief e strategia, Contenuti, Approvazioni, Report, Contratti/Preventivi, Altro.</div>}
         {tab === "comunicazioni" && <div className="bg-card border border-card-border rounded-xl p-4 text-sm text-muted-foreground">Canale messaggi progetto + meeting notes + client log.</div>}
-        {tab === "timeline" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-3">Timeline / Gantt</h3><div className="h-40 border rounded-lg bg-muted/30 relative"><div className="absolute left-2 right-2 top-8 h-2 bg-primary/40 rounded" /><div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-red-500" /><p className="absolute left-2 top-2 text-xs text-muted-foreground">Today line</p></div><div className="mt-3 text-sm">{milestones.map((m: any) => <div key={m.id} className="py-1">{m.name} · {m.status} · {m.dueDate ? formatDate(m.dueDate) : "—"}</div>)}</div></div>}
+        {tab === "timeline" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-3">Timeline / Gantt</h3><div className="h-40 border rounded-lg bg-muted/30 relative"><div className="absolute left-2 right-2 top-8 h-2 bg-primary/40 rounded" /><div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-red-500" /><p className="absolute left-2 top-2 text-xs text-muted-foreground">Today line</p></div><div className="mt-3 text-sm">{milestones.map((m) => <div key={m.id} className="py-1">{m.name} · {m.status} · {m.dueDate ? formatDate(m.dueDate) : "—"}</div>)}</div></div>}
         {tab === "report" && <div className="bg-card border border-card-border rounded-xl p-4 text-sm text-muted-foreground">Report progetto: Bozza / Approvato / Inviato.</div>}
-        {tab === "storico" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-2">Audit log</h3>{activity.map((a: any) => <div key={a.id} className="text-xs py-1 border-b border-border/50">{a.action} · {formatDate(a.createdAt)}</div>)}</div>}
+        {tab === "storico" && <div className="bg-card border border-card-border rounded-xl p-4"><h3 className="font-semibold mb-2">Audit log</h3>{activity.map((a) => <div key={a.id} className="text-xs py-1 border-b border-border/50">{a.action} · {formatDate(a.createdAt)}</div>)}</div>}
 
         {editOpen && (
           <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -243,15 +270,11 @@ export default function ProjectDetail({ id }: Props) {
                   type="button"
                   className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg"
                   onClick={async () => {
-                    const res = await portalFetch(`/api/projects/${project.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        name: editForm.name.trim() || project.name,
-                        description: editForm.description || null,
-                        deadline: editForm.deadline ? new Date(editForm.deadline).toISOString() : null,
-                        budget: editForm.budget.trim() ? Number(editForm.budget) : null,
-                      }),
+                    const res = await patchProject(project.id, {
+                      name: editForm.name.trim() || project.name,
+                      description: editForm.description || null,
+                      deadline: editForm.deadline ? new Date(editForm.deadline).toISOString() : null,
+                      budget: editForm.budget.trim() ? Number(editForm.budget) : null,
                     });
                     if (!res.ok) {
                       toast({ variant: "destructive", title: "Salvataggio non riuscito" });

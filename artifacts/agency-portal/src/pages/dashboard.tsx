@@ -106,6 +106,27 @@ const DEFAULT_WIDGETS = [
 
 type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
+function usePortalJsonQuery<T>(path: string, staleTime: number) {
+  return useQuery({
+    queryKey: [path],
+    queryFn: async () => {
+      const r = await portalFetch(path);
+      if (!r.ok) return null;
+      return r.json() as Promise<T>;
+    },
+    staleTime,
+  });
+}
+
+type TaskTrendRow = { month: string; creati: number; completati: number };
+type TimeTrackerStats = {
+  thisWeek: number;
+  billableMonth: number;
+  thisMonth: number;
+  clientBreakdown: Array<{ name: string; seconds: number }>;
+};
+type RevenuePayload = { totalQuotes?: number; totalRevenue?: number; approvedQuotes?: number };
+
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -122,7 +143,6 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [showAlertsAll, setShowAlertsAll] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const [insightTab, setInsightTab] = useState<"mese" | "scorso" | "3mesi">("mese");
   const [tasksTab, setTasksTab] = useState<"oggi" | "settimana" | "scadute">("oggi");
   const [widgets, setWidgets] = useState<WidgetKey[]>(() => {
     try {
@@ -143,54 +163,10 @@ export default function Dashboard() {
   });
   const [showDashPrefs, setShowDashPrefs] = useState(false);
 
-  const { data: taskTrends } = useQuery({
-    queryKey: ["/api/dashboard/task-trends"],
-    queryFn: async () => {
-      const r = await portalFetch("/api/dashboard/task-trends");
-      if (!r.ok) return null;
-      return r.json() as Promise<Array<{ month: string; creati: number; completati: number }>>;
-    },
-    staleTime: 60_000,
-  });
-
-  const { data: revenueData } = useQuery({
-    queryKey: ["/api/dashboard/revenue"],
-    queryFn: async () => {
-      const r = await portalFetch("/api/dashboard/revenue");
-      if (!r.ok) return null;
-      return r.json() as Promise<{
-        totalQuotes?: number;
-        totalRevenue?: number;
-        approvedQuotes?: number;
-      }>;
-    },
-    staleTime: 60_000,
-  });
-
-  const { data: timeStats } = useQuery({
-    queryKey: ["/api/time-tracker/stats"],
-    queryFn: async () => {
-      const r = await portalFetch("/api/time-tracker/stats");
-      if (!r.ok) return null;
-      return r.json() as Promise<{
-        thisWeek: number;
-        billableMonth: number;
-        thisMonth: number;
-        clientBreakdown: Array<{ name: string; seconds: number }>;
-      }>;
-    },
-    staleTime: 30_000,
-  });
-
-  const { data: reportCounts } = useQuery({
-    queryKey: ["/api/reports/counts"],
-    queryFn: async () => {
-      const r = await portalFetch("/api/reports/counts");
-      if (!r.ok) return null;
-      return r.json() as Promise<Record<string, number>>;
-    },
-    staleTime: 60_000,
-  });
+  const { data: taskTrends } = usePortalJsonQuery<TaskTrendRow[]>("/api/dashboard/task-trends", 60_000);
+  const { data: revenueData } = usePortalJsonQuery<RevenuePayload>("/api/dashboard/revenue", 60_000);
+  const { data: timeStats } = usePortalJsonQuery<TimeTrackerStats>("/api/time-tracker/stats", 30_000);
+  const { data: reportCounts } = usePortalJsonQuery<Record<string, number>>("/api/reports/counts", 60_000);
 
   useEffect(() => {
     localStorage.setItem("dashboard-widgets-order-v1", JSON.stringify(widgets));
@@ -206,8 +182,10 @@ export default function Dashboard() {
   const statusBreakdown = arr(statusRaw);
 
   const now = new Date();
-  const weekEnd = new Date(); weekEnd.setDate(now.getDate() + 7);
-  const in14 = new Date(); in14.setDate(now.getDate() + 14);
+  const weekEnd = new Date();
+  weekEnd.setDate(now.getDate() + 7);
+  const in14 = new Date();
+  in14.setDate(now.getDate() + 14);
 
   const tasksDueToday = tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate).toDateString() === now.toDateString());
   const tasksOverdue = tasks.filter((t: AnyObj) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < now);
@@ -217,8 +195,6 @@ export default function Dashboard() {
 
   const activeProjects = projects.filter((p: AnyObj) => p.status === "active");
   const dueWeekProjects = activeProjects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= weekEnd);
-  const completedThisMonth = projects.filter((p: AnyObj) => p.status === "completed" && new Date(p.updatedAt ?? p.createdAt).getMonth() === now.getMonth());
-  const valueInCourse = activeProjects.reduce((acc: number, p: AnyObj) => acc + Number(p.budget ?? 0), 0);
   const clientsAtRisk = clients.filter((c: AnyObj) => Number(c.healthScore ?? 0) < 60);
 
   const y = now.getFullYear();
@@ -255,41 +231,37 @@ export default function Dashboard() {
   const shownAlerts = showAlertsAll ? alerts : alerts.slice(0, 5);
   const pieData = statusBreakdown.map((s: AnyObj) => ({ name: s.status, value: s.count }));
 
-  const trendData = useMemo(() => {
+  const { trendData, projectLine } = useMemo(() => {
     const rows = Array.isArray(taskTrends) ? taskTrends : [];
     if (rows.length === 0) {
-      return [{ week: "—", done: 0, creati: 0 }];
+      return {
+        trendData: [{ week: "—", done: 0, creati: 0 }],
+        projectLine: [{ period: "—", avviati: 0, completati: 0 }],
+      };
     }
-    return rows.map((m: AnyObj) => ({
-      week: m.month,
-      done: Number(m.completati ?? 0),
-      creati: Number(m.creati ?? 0),
-    }));
+    return {
+      trendData: rows.map((m) => ({
+        week: m.month,
+        done: Number(m.completati ?? 0),
+        creati: Number(m.creati ?? 0),
+      })),
+      projectLine: rows.map((m) => ({
+        period: m.month,
+        avviati: Number(m.creati ?? 0),
+        completati: Number(m.completati ?? 0),
+      })),
+    };
   }, [taskTrends]);
 
   const hoursDonut = useMemo(() => {
     const breakdown = timeStats?.clientBreakdown;
-    if (Array.isArray(breakdown) && breakdown.length > 0) {
-      const vals = breakdown.slice(0, 5).map((c: AnyObj) => ({
-        name: c.name,
-        value: Math.round(((c.seconds ?? 0) / 3600) * 100) / 100,
-      }));
-      if (vals.some((v) => v.value > 0)) return vals;
-    }
-    return clients.slice(0, 5).map((c: AnyObj, i) => ({ name: c.name, value: 10 + i * 7 }));
-  }, [timeStats, clients]);
-
-  const projectLine = useMemo(() => {
-    const rows = Array.isArray(taskTrends) ? taskTrends : [];
-    if (rows.length === 0) {
-      return [{ period: "—", avviati: 0, completati: 0 }];
-    }
-    return rows.map((m: AnyObj) => ({
-      period: m.month,
-      avviati: Number(m.creati ?? 0),
-      completati: Number(m.completati ?? 0),
+    if (!Array.isArray(breakdown) || breakdown.length === 0) return [];
+    const vals = breakdown.slice(0, 5).map((c) => ({
+      name: c.name,
+      value: Math.round(((c.seconds ?? 0) / 3600) * 100) / 100,
     }));
-  }, [taskTrends]);
+    return vals.some((v) => v.value > 0) ? vals : [];
+  }, [timeStats]);
 
   const weekHoursDisplay = useMemo(() => {
     if (timeStats?.thisWeek != null && timeStats.thisWeek > 0) {
@@ -345,9 +317,11 @@ export default function Dashboard() {
         body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
       });
       if (!res.ok) return;
-      await queryClient.invalidateQueries({ queryKey: getListTasksQueryKey({}) });
-      await queryClient.invalidateQueries({ queryKey: getGetRecentActivityQueryKey() });
-      await queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey({}) }),
+        queryClient.invalidateQueries({ queryKey: getGetRecentActivityQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+      ]);
     } catch {
       /* ignore */
     }
@@ -587,7 +561,6 @@ export default function Dashboard() {
         <div className="bg-card border border-card-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <p className="font-semibold text-sm">Monthly Performance Overview</p>
-            <div className="flex gap-1">{(["mese", "scorso", "3mesi"] as const).map((t) => <button key={t} onClick={() => setInsightTab(t)} className={cn("px-2 py-1 text-xs rounded", insightTab === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{t === "mese" ? "Questo mese" : t === "scorso" ? "Mese scorso" : "Ultimi 3 mesi"}</button>)}</div>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="h-64">
@@ -605,14 +578,20 @@ export default function Dashboard() {
             </div>
             <div className="h-64">
               <p className="text-xs text-muted-foreground mb-1">Ore per cliente (mese corrente, time tracker)</p>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={hoursDonut} dataKey="value" nameKey="name" outerRadius={85}>
-                    {hoursDonut.map((_, i) => <Cell key={i} fill={["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#84cc16"][i % 5]} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {hoursDonut.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={hoursDonut} dataKey="value" nameKey="name" outerRadius={85}>
+                      {hoursDonut.map((_, i) => <Cell key={i} fill={["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#84cc16"][i % 5]} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
+                  Nessuna ora registrata nel time tracker
+                </div>
+              )}
             </div>
             <div className="h-64">
               <p className="text-xs text-muted-foreground mb-1">Andamento task (create vs completate)</p>

@@ -30,6 +30,18 @@ function canViewProject(
   return false;
 }
 
+function coerceDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function toIso(value: Date | string | null | undefined): string {
+  const d = coerceDate(value);
+  return d ? d.toISOString() : new Date(0).toISOString();
+}
+
 function serializeProject(
   project: typeof projectsTable.$inferSelect,
   clientName: string | null,
@@ -37,25 +49,34 @@ function serializeProject(
 ) {
   return {
     ...project,
-    createdAt: project.createdAt.toISOString(),
-    updatedAt: project.updatedAt.toISOString(),
+    createdAt: toIso(project.createdAt),
+    updatedAt: toIso(project.updatedAt),
     clientName,
     typeJson: project.typeJson ?? "[]",
     budget: project.budget != null ? Number(project.budget) : null,
     budgetSpeso: project.budgetSpeso != null ? Number(project.budgetSpeso) : null,
     billingRate: project.billingRate != null ? Number(project.billingRate) : null,
-    lastActivityAt: project.lastActivityAt?.toISOString?.() ?? null,
+    lastActivityAt: coerceDate(project.lastActivityAt)?.toISOString() ?? null,
     ...extra,
   };
 }
 
-function calcHealth(input: { status: string; overdueTasks: number; budget: number; spent: number; deadline: string | null; progress: number; lastActivityAt: Date | null; }): "on-track" | "at-risk" | "delayed" | "completed" | "paused" {
+function calcHealth(input: {
+  status: string;
+  overdueTasks: number;
+  budget: number;
+  spent: number;
+  deadline: string | null;
+  progress: number;
+  lastActivityAt: Date | string | null;
+}): "on-track" | "at-risk" | "delayed" | "completed" | "paused" {
   if (input.status === "completed") return "completed";
   if (input.status === "on-hold") return "paused";
   const now = new Date();
   const daysToDeadline = input.deadline ? Math.ceil((new Date(input.deadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : 999;
   const usagePct = input.budget > 0 ? (input.spent / input.budget) * 100 : 0;
-  const inactiveDays = input.lastActivityAt ? Math.floor((now.getTime() - input.lastActivityAt.getTime()) / (1000 * 60 * 60 * 24)) : 999;
+  const last = coerceDate(input.lastActivityAt);
+  const inactiveDays = last ? Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)) : 999;
   if (input.overdueTasks > 3 || usagePct > 95 || (daysToDeadline < 0 && input.progress < 100)) return "delayed";
   if (input.overdueTasks >= 1 || (usagePct >= 80 && usagePct <= 95) || (daysToDeadline <= 7 && input.progress < 70) || inactiveDays >= 7) return "at-risk";
   return "on-track";
@@ -131,60 +152,74 @@ async function seedProjectsIfEmpty() {
 }
 
 router.get("/projects", async (req, res): Promise<void> => {
-  await seedProjectsIfEmpty();
   const query = ListProjectsQueryParams.safeParse(req.query);
   if (!query.success) {
     res.status(400).json({ error: query.error.message });
     return;
   }
 
-  const userId = getUid(req);
+  try {
+    await seedProjectsIfEmpty();
 
-  const projects = await db
-    .select()
-    .from(projectsTable)
-    .where(isNull(projectsTable.deletedAt))
-    .orderBy(projectsTable.createdAt);
-  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
-  const clientMap = new Map(clients.map((c) => [c.id, c.name]));
+    const userId = getUid(req);
 
-  const accessible = userId ? await getAccessibleClientIds(userId) : "all" as const;
-  const accessFiltered = filterByClientAccess(projects, accessible);
+    const projects = await db
+      .select()
+      .from(projectsTable)
+      .where(isNull(projectsTable.deletedAt))
+      .orderBy(projectsTable.createdAt);
+    const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
+    const clientMap = new Map(clients.map((c) => [c.id, c.name]));
 
-  const allTasks = await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt));
-  let result = accessFiltered
-    .filter((p) => canViewProject(p, userId))
-    .map((p) => {
-      const projectTasks = allTasks.filter((t) => t.projectId === p.id);
-      const done = projectTasks.filter((t) => t.status === "done").length;
-      const total = projectTasks.length;
-      const computedProgress = total > 0 ? Math.round((done / total) * 100) : (p.progress ?? 0);
-      const overdue = projectTasks.filter((t) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date()).length;
-      const health = calcHealth({
-        status: p.status,
-        overdueTasks: overdue,
-        budget: Number(p.budget ?? 0),
-        spent: Number(p.budgetSpeso ?? 0),
-        deadline: p.deadline ?? p.endDate ?? null,
-        progress: computedProgress,
-        lastActivityAt: p.lastActivityAt ?? p.updatedAt ?? null,
+    const accessible = userId ? await getAccessibleClientIds(userId) : ("all" as const);
+    const accessFiltered = filterByClientAccess(projects, accessible);
+
+    const allTasks = await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt));
+    let result = accessFiltered
+      .filter((p) => canViewProject(p, userId))
+      .map((p) => {
+        const projectTasks = allTasks.filter((t) => t.projectId === p.id);
+        const done = projectTasks.filter((t) => t.status === "done").length;
+        const total = projectTasks.length;
+        const computedProgress = total > 0 ? Math.round((done / total) * 100) : (p.progress ?? 0);
+        const overdue = projectTasks.filter((t) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date()).length;
+        const health = calcHealth({
+          status: p.status,
+          overdueTasks: overdue,
+          budget: Number(p.budget ?? 0),
+          spent: Number(p.budgetSpeso ?? 0),
+          deadline: p.deadline ?? p.endDate ?? null,
+          progress: computedProgress,
+          lastActivityAt: p.lastActivityAt ?? p.updatedAt ?? null,
+        });
+        return serializeProject(p, p.clientId ? (clientMap.get(p.clientId) ?? null) : null, {
+          progress: computedProgress,
+          healthStatus: health,
+          tasksTotal: total,
+          tasksDone: done,
+        });
       });
-      return serializeProject(p, p.clientId ? (clientMap.get(p.clientId) ?? null) : null, {
-        progress: computedProgress,
-        healthStatus: health,
-        tasksTotal: total,
-        tasksDone: done,
+
+    if (query.data.clientId != null) {
+      result = result.filter((p) => p.clientId === query.data.clientId);
+    }
+    if (query.data.status != null) {
+      result = result.filter((p) => p.status === query.data.status);
+    }
+
+    res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err }, "GET /projects failed");
+    if (msg.includes("deleted_at") || msg.includes("deletedAt")) {
+      res.status(503).json({
+        error: "Schema database non aggiornato",
+        hint: "Aggiungi le colonne soft-delete (deleted_at) su projects, tasks, clients, ecc.: esegui supabase/migrations/20260410210000_soft_delete_trash_log.sql sul DB oppure dalla root `pnpm run db:push`.",
       });
-    });
-
-  if (query.data.clientId != null) {
-    result = result.filter((p) => p.clientId === query.data.clientId);
+      return;
+    }
+    res.status(500).json({ error: "Errore caricamento progetti", detail: msg });
   }
-  if (query.data.status != null) {
-    result = result.filter((p) => p.status === query.data.status);
-  }
-
-  res.json(result);
 });
 
 router.post("/projects", async (req, res): Promise<void> => {

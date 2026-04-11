@@ -1,13 +1,21 @@
 import { Router, type Request, type Response } from "express";
 import { db, notifications } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { getUserId, isAnonymousApiUserId } from "../lib/access-control";
+import { getUserId, isAnonymousApiUserId, isApiAuthBypass } from "../lib/access-control";
 
 const router = Router();
 
 function requireNotificationUser(req: Request, res: Response): string | null {
   const userId = getUserId(req);
-  if (!userId || isAnonymousApiUserId(userId)) {
+  if (!userId) {
+    res.status(401).json({ error: "Non autenticato" });
+    return null;
+  }
+  // Con API_AUTH_DISABLED il portale usa un id sintetico: le query ritornano liste vuote invece di 401.
+  if (isAnonymousApiUserId(userId) && isApiAuthBypass()) {
+    return userId;
+  }
+  if (isAnonymousApiUserId(userId)) {
     res.status(401).json({ error: "Non autenticato" });
     return null;
   }

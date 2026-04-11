@@ -12,6 +12,7 @@ import {
 import { getUserId as getUid, isEnvAdmin, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
 import { logger } from "../lib/logger";
+import { collectPgErrorMeta, isUndefinedColumnError, isUndefinedTableError } from "../lib/pg-error";
 
 const router: IRouter = Router();
 
@@ -200,25 +201,48 @@ router.get("/projects", async (req, res): Promise<void> => {
         });
       });
 
-    if (query.data.clientId != null) {
-      result = result.filter((p) => p.clientId === query.data.clientId);
+    if (query.data.clientId != null && !Number.isNaN(Number(query.data.clientId))) {
+      const cid = Number(query.data.clientId);
+      result = result.filter((p) => p.clientId != null && Number(p.clientId) === cid);
     }
     if (query.data.status != null) {
       result = result.filter((p) => p.status === query.data.status);
     }
 
-    res.json(result);
+    const safeJson = JSON.parse(
+      JSON.stringify(result, (_k, v) => (typeof v === "bigint" ? Number(v) : v)),
+    );
+    res.json(safeJson);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err }, "GET /projects failed");
-    if (msg.includes("deleted_at") || msg.includes("deletedAt")) {
+    const meta = collectPgErrorMeta(err);
+    logger.error({ err, pg: meta }, "GET /projects failed");
+    if (
+      isUndefinedColumnError(meta) ||
+      meta.text.toLowerCase().includes("deleted_at") ||
+      meta.text.toLowerCase().includes("deletedat")
+    ) {
       res.status(503).json({
         error: "Schema database non aggiornato",
-        hint: "Aggiungi le colonne soft-delete (deleted_at) su projects, tasks, clients, ecc.: esegui supabase/migrations/20260410210000_soft_delete_trash_log.sql sul DB oppure dalla root `pnpm run db:push`.",
+        hint: "Sul database PostgreSQL (es. Supabase → SQL Editor) esegui il file `supabase/migrations/20260410210000_soft_delete_trash_log.sql`, oppure dalla root del repo con `DATABASE_URL` impostato: `pnpm run db:push`. Servono le colonne `deleted_at` su projects, tasks, clients, ecc.",
+        pgCode: meta.code,
+        detail: meta.text.slice(0, 600),
       });
       return;
     }
-    res.status(500).json({ error: "Errore caricamento progetti", detail: msg });
+    if (isUndefinedTableError(meta)) {
+      res.status(503).json({
+        error: "Migrazioni database mancanti",
+        hint: "Esegui in ordine le migrazioni in `supabase/migrations/` oppure `pnpm run db:push`.",
+        pgCode: meta.code,
+        detail: meta.text.slice(0, 600),
+      });
+      return;
+    }
+    res.status(500).json({
+      error: "Errore caricamento progetti",
+      detail: meta.text.slice(0, 800),
+      pgCode: meta.code,
+    });
   }
 });
 

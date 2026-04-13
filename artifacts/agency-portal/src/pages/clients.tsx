@@ -49,6 +49,7 @@ export default function Clients() {
   const [filterContract, setFilterContract] = useState("");
   const [filterSector, setFilterSector] = useState("");
   const [filterHealth, setFilterHealth] = useState("");
+  const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
 
   const readLocalClients = () => {
     try {
@@ -245,15 +246,19 @@ export default function Clients() {
     if (r.ok) setClients(await r.json());
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirm("Eliminare questo cliente? Verrà spostato nel cestino.")) return;
+  const deleteClientById = async (id: number, showToast = true) => {
+    if (id < 0) {
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      const nextLocal = readLocalClients().filter((c: any) => Number(c?.id) !== id);
+      localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(nextLocal));
+      return { ok: true, trashLogId: null as string | null };
+    }
     const res = await portalFetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { trashLogId?: string };
-    if (res.ok) {
-      setClients((prev) => prev.filter((c) => c.id !== id));
-      const trashLogId = typeof data.trashLogId === "string" ? data.trashLogId : null;
+    if (!res.ok) return { ok: false, trashLogId: null as string | null };
+    setClients((prev) => prev.filter((c) => c.id !== id));
+    const trashLogId = typeof data.trashLogId === "string" ? data.trashLogId : null;
+    if (showToast) {
       toast({
         title: "Spostato nel cestino",
         action: trashLogId ? (
@@ -269,6 +274,50 @@ export default function Clients() {
         ) : undefined,
       });
     }
+    return { ok: true, trashLogId };
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Eliminare questo cliente? Verrà spostato nel cestino.")) return;
+    await deleteClientById(id, true);
+  };
+
+  const allFilteredClientIds = filtered.map((c) => Number(c.id)).filter((id) => Number.isFinite(id));
+  const allClientsSelected = allFilteredClientIds.length > 0 && allFilteredClientIds.every((id) => selectedClientIds.includes(id));
+
+  const toggleClientSelection = (id: number, checked: boolean) => {
+    setSelectedClientIds((prev) => checked ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id));
+  };
+
+  const toggleSelectAllClients = (checked: boolean) => {
+    if (!checked) {
+      setSelectedClientIds((prev) => prev.filter((id) => !allFilteredClientIds.includes(id)));
+      return;
+    }
+    setSelectedClientIds((prev) => Array.from(new Set([...prev, ...allFilteredClientIds])));
+  };
+
+  const handleBulkDeleteClients = async () => {
+    if (selectedClientIds.length === 0) return;
+    const ok = confirm(`Eliminare ${selectedClientIds.length} clienti selezionati?`);
+    if (!ok) return;
+
+    const results = await Promise.allSettled(selectedClientIds.map((id) => deleteClientById(id, false)));
+    const success = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+    const failed = selectedClientIds.length - success;
+    setSelectedClientIds([]);
+
+    if (failed > 0) {
+      toast({
+        variant: "destructive",
+        title: "Eliminazione parziale",
+        description: `${success} eliminati, ${failed} non eliminati.`,
+      });
+      return;
+    }
+    toast({ title: `${success} clienti eliminati` });
   };
 
   return (
@@ -353,11 +402,34 @@ export default function Clients() {
           <button onClick={() => setViewMode(viewMode === "card" ? "table" : "card")} className="px-3 py-2 border border-input rounded-lg bg-background">{viewMode === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
         </div>
 
+        {selectedClientIds.length > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-900">{selectedClientIds.length} clienti selezionati</p>
+            <button onClick={handleBulkDeleteClients} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+              <Trash2 size={13} />
+              Elimina selezionati
+            </button>
+          </div>
+        )}
+
         {isLoading ? <div className="text-center text-muted-foreground py-12">Caricamento...</div> : filtered.length === 0 ? <div className="text-center text-muted-foreground py-12">Nessun cliente trovato</div> : viewMode === "card" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((client) => (
               <Link key={client.id} href={`/clients/${client.id}`}>
                 <div className="group bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer relative">
+                  <label className="absolute top-2 left-2 z-10 inline-flex items-center rounded bg-white/85 px-1.5 py-1 shadow-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedClientIds.includes(Number(client.id))}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleClientSelection(Number(client.id), e.target.checked);
+                      }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      className="h-4 w-4 accent-primary"
+                      aria-label={`Seleziona cliente ${client.name}`}
+                    />
+                  </label>
                   <div className="p-4 flex items-center gap-3">
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/clients/${client.id}`); }}
@@ -391,8 +463,8 @@ export default function Clients() {
         ) : (
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-left">Contratto</th><th className="px-3 py-2 text-left">Valore mensile</th><th className="px-3 py-2 text-left">Ultima attività</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
-              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><button onClick={() => navigate(`/clients/${c.id}`)} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{(JSON.parse(c.tagsJson ?? "[]") as string[]).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => navigate(`/clients/${c.id}`)} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
+              <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allClientsSelected} onChange={(e) => toggleSelectAllClients(e.target.checked)} className="h-4 w-4 accent-primary" aria-label="Seleziona tutti i clienti filtrati" /></th><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-left">Contratto</th><th className="px-3 py-2 text-left">Valore mensile</th><th className="px-3 py-2 text-left">Ultima attività</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
+              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => navigate(`/clients/${c.id}`)} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{(JSON.parse(c.tagsJson ?? "[]") as string[]).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => navigate(`/clients/${c.id}`)} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
             </table>
           </div>
         )}

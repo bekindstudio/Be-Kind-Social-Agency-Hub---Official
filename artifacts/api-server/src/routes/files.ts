@@ -6,6 +6,7 @@ import {
   DeleteFileParams,
   ListFilesQueryParams,
 } from "@workspace/api-zod";
+import { syncFileToGoogleDrive } from "../lib/googleDriveSync";
 
 const router: IRouter = Router();
 
@@ -42,9 +43,26 @@ router.post("/files", async (req, res): Promise<void> => {
   const [file] = await db.insert(filesTable).values(parsed.data).returning();
   const projects = await db.select().from(projectsTable);
   const projectMap = new Map(projects.map((p) => [p.id, p.name]));
+
+  // Best effort sync to Google Drive for cloud backup.
+  // This must never block primary app flow.
+  let driveSync: { synced: boolean; driveFileId?: string; reason?: string } | null = null;
+  try {
+    driveSync = await syncFileToGoogleDrive({
+      fileName: file.name,
+      objectUrl: file.url,
+      projectId: file.projectId ?? null,
+      section: "files",
+    });
+  } catch (err) {
+    req.log.warn({ err, fileId: file.id }, "Google Drive sync failed");
+    driveSync = { synced: false, reason: "sync-error" };
+  }
+
   res.status(201).json({
     ...file,
     projectName: file.projectId ? (projectMap.get(file.projectId) ?? null) : null,
+    driveSync,
   });
 });
 

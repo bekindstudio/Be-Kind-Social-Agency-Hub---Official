@@ -11,6 +11,31 @@ import { getUserId } from "../lib/access-control";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+router.get("/storage/drive/status", async (req: Request, res: Response) => {
+  const uid = getUserId(req as any);
+  if (!uid) {
+    res.status(401).json({ error: "Non autenticato" });
+    return;
+  }
+  const enabled = ["1", "true", "yes", "on"].includes((process.env.GOOGLE_DRIVE_SYNC_ENABLED ?? "").trim().toLowerCase());
+  const rootFolderConfigured = Boolean(process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim());
+  const serviceAccountConfigured = Boolean(
+    process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL?.trim() &&
+      process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_PRIVATE_KEY?.trim(),
+  );
+  const sections = (process.env.GOOGLE_DRIVE_SYNC_SECTIONS ?? "files")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  res.json({
+    enabled,
+    rootFolderConfigured,
+    serviceAccountConfigured,
+    sections,
+    ready: enabled && rootFolderConfigured && serviceAccountConfigured,
+  });
+});
+
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   const uid = getUserId(req as any);
   if (!uid) {

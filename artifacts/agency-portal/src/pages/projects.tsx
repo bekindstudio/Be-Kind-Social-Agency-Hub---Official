@@ -4,7 +4,7 @@ import { useListProjects, useListClients, useCreateProject, getListProjectsQuery
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays } from "lucide-react";
+import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays, Trash2 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
 const TYPE_OPTIONS = ["Social Media", "ADV Meta", "ADV Google", "Web", "Branding", "SEO", "Email Marketing", "Altro"];
@@ -41,6 +41,7 @@ export default function Projects() {
   const [sortBy, setSortBy] = useState("dueDate");
   const [showCreate, setShowCreate] = useState(false);
   const [step, setStep] = useState(1);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [form, setForm] = useState<any>({
     name: "", clientId: "", projectTypes: [], description: "", color: "#7a8f5c",
     startDate: "", endDate: "", oreStimate: "", budget: "", paymentStructure: "Una tantum", billingRate: "",
@@ -137,6 +138,53 @@ export default function Projects() {
     });
   };
 
+  const allFilteredProjectIds = filtered.map((p: any) => Number(p.id)).filter((id: number) => Number.isFinite(id));
+  const allSelected = allFilteredProjectIds.length > 0 && allFilteredProjectIds.every((id: number) => selectedProjectIds.includes(id));
+
+  const toggleProjectSelection = (id: number, checked: boolean) => {
+    setSelectedProjectIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  };
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    if (!checked) {
+      setSelectedProjectIds((prev) => prev.filter((id) => !allFilteredProjectIds.includes(id)));
+      return;
+    }
+    setSelectedProjectIds((prev) => Array.from(new Set([...prev, ...allFilteredProjectIds])));
+  };
+
+  const handleBulkDeleteProjects = async () => {
+    if (selectedProjectIds.length === 0) return;
+    const ok = confirm(`Eliminare ${selectedProjectIds.length} progetti selezionati? Verranno spostati nel cestino.`);
+    if (!ok) return;
+
+    const results = await Promise.allSettled(
+      selectedProjectIds.map((id) =>
+        portalFetch(`/api/projects/${id}`, { method: "DELETE", credentials: "include" })
+      )
+    );
+    const success = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+    const failed = selectedProjectIds.length - success;
+
+    if (success > 0) {
+      await qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+      setSelectedProjectIds([]);
+    }
+
+    if (failed > 0) {
+      toast({
+        variant: "destructive",
+        title: `Eliminazione parziale`,
+        description: `${success} eliminati, ${failed} non eliminati.`,
+      });
+      return;
+    }
+    toast({ title: `${success} progetti spostati nel cestino` });
+  };
+
   return (
     <Layout>
       <div className="p-8">
@@ -161,10 +209,29 @@ export default function Projects() {
           <button onClick={() => setView(view === "card" ? "table" : "card")} className="px-2.5 py-2 border border-input rounded-lg bg-background">{view === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
         </div>
 
+        {selectedProjectIds.length > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-900">{selectedProjectIds.length} progetti selezionati</p>
+            <button onClick={handleBulkDeleteProjects} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+              <Trash2 size={13} />
+              Elimina selezionati
+            </button>
+          </div>
+        )}
+
         {isLoading ? <div className="text-center text-muted-foreground py-12">Caricamento...</div> : view === "card" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((p: any) => (
               <div key={p.id} className="bg-card border border-card-border rounded-xl p-4 shadow-sm group relative overflow-hidden">
+                <label className="absolute top-3 right-3 z-10 inline-flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedProjectIds.includes(Number(p.id))}
+                    onChange={(e) => toggleProjectSelection(Number(p.id), e.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                    aria-label={`Seleziona progetto ${p.name}`}
+                  />
+                </label>
                 <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ background: p.color ?? (clientMap.get(String(p.clientId)) as any)?.brandColor ?? "#7a8f5c" }} />
                 <div className="pl-2">
                   <div className="flex items-start justify-between">
@@ -203,8 +270,8 @@ export default function Projects() {
         ) : (
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="bg-muted/30 border-b border-card-border"><th className="px-3 py-2 text-left">Project</th><th className="px-3 py-2 text-left">Client</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Progress</th><th className="px-3 py-2 text-left">Budget</th><th className="px-3 py-2 text-left">Due date</th><th className="px-3 py-2 text-left">Last activity</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
-              <tbody>{filtered.map((p: any) => <tr key={p.id} className="border-b border-card-border/50"><td className="px-3 py-2 font-medium">{p.name}</td><td className="px-3 py-2">{p.clientName ?? "—"}</td><td className="px-3 py-2 text-xs">{(() => { try { return (JSON.parse(p.typeJson ?? "[]") as string[]).join(", ") || "Altro"; } catch { return "Altro"; } })()}</td><td className="px-3 py-2">{STATUS_OPTIONS.find((s) => s.value === p.status)?.label ?? p.status}</td><td className="px-3 py-2">{p.progress ?? 0}%</td><td className="px-3 py-2">€ {Number(p.budget ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{p.deadline ? formatDate(p.deadline) : "—"}</td><td className="px-3 py-2">{p.lastActivityAt ? formatDate(p.lastActivityAt) : formatDate(p.updatedAt)}</td><td className="px-3 py-2 text-right"><Link href={`/projects/${p.id}`} className="text-xs px-2 py-1 rounded border border-input">Open</Link></td></tr>)}</tbody>
+              <thead><tr className="bg-muted/30 border-b border-card-border"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allSelected} onChange={(e) => toggleSelectAllFiltered(e.target.checked)} aria-label="Seleziona tutti i progetti filtrati" className="h-4 w-4 accent-primary" /></th><th className="px-3 py-2 text-left">Project</th><th className="px-3 py-2 text-left">Client</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Progress</th><th className="px-3 py-2 text-left">Budget</th><th className="px-3 py-2 text-left">Due date</th><th className="px-3 py-2 text-left">Last activity</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
+              <tbody>{filtered.map((p: any) => <tr key={p.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedProjectIds.includes(Number(p.id))} onChange={(e) => toggleProjectSelection(Number(p.id), e.target.checked)} aria-label={`Seleziona progetto ${p.name}`} className="h-4 w-4 accent-primary" /></td><td className="px-3 py-2 font-medium">{p.name}</td><td className="px-3 py-2">{p.clientName ?? "—"}</td><td className="px-3 py-2 text-xs">{(() => { try { return (JSON.parse(p.typeJson ?? "[]") as string[]).join(", ") || "Altro"; } catch { return "Altro"; } })()}</td><td className="px-3 py-2">{STATUS_OPTIONS.find((s) => s.value === p.status)?.label ?? p.status}</td><td className="px-3 py-2">{p.progress ?? 0}%</td><td className="px-3 py-2">€ {Number(p.budget ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{p.deadline ? formatDate(p.deadline) : "—"}</td><td className="px-3 py-2">{p.lastActivityAt ? formatDate(p.lastActivityAt) : formatDate(p.updatedAt)}</td><td className="px-3 py-2 text-right"><Link href={`/projects/${p.id}`} className="text-xs px-2 py-1 rounded border border-input">Open</Link></td></tr>)}</tbody>
             </table>
           </div>
         )}

@@ -7,6 +7,7 @@ import {
   useUpdateTask,
   useDeleteTask,
   getListTasksQueryKey,
+  portalFetch,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
+import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type ChecklistItem = {
@@ -422,6 +424,7 @@ const EMPTY_FORM = {
 
 export default function Tasks() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: tasks, isLoading } = useListTasks({});
   const { data: projects } = useListProjects({});
   const { data: members } = useListTeamMembers();
@@ -447,6 +450,7 @@ export default function Tasks() {
   const [commentsByTask, setCommentsByTask] = useState<Record<number, TaskComment[]>>({});
   const [activityByTask, setActivityByTask] = useState<Record<number, TaskActivityItem[]>>({});
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => (localStorage.getItem("tasks-view") as any) || "list");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const draggedTaskRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -526,7 +530,7 @@ export default function Tasks() {
   };
 
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
-  const STATUS_ORDER: Record<string, number> = { todo: 0, "in-progress": 1, done: 2 };
+  const STATUS_ORDER: Record<string, number> = { todo: 0, "in-progress": 1, review: 2, done: 3 };
 
   const filtered = useMemo(() => {
     const list = taskList.filter((t) => {
@@ -550,6 +554,11 @@ export default function Tasks() {
       return prioA - prioB;
     });
   }, [taskList, search, filterStatus, filterPriority, filterTipo, filterCategory, filterProject, filterAssignee, filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    const validIds = new Set(taskList.map((t) => t.id));
+    setSelectedTaskIds((prev) => prev.filter((id) => validIds.has(id)));
+  }, [taskList]);
 
   const handleOpenEdit = (task: TaskRow) => {
     setEditId(task.id);
@@ -627,7 +636,74 @@ export default function Tasks() {
 
   const handleDelete = (id: number) => {
     if (!confirm("Eliminare questo task?")) return;
-    deleteTask.mutate({ id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListTasksQueryKey() }) });
+    deleteTask.mutate(
+      { id },
+      {
+        onSuccess: async () => {
+          await qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          setSelectedTaskIds((prev) => prev.filter((x) => x !== id));
+          toast({ title: "Task spostato nel cestino" });
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Eliminazione task non riuscita",
+          });
+        },
+      },
+    );
+  };
+
+  const allFilteredTaskIds = filtered.map((t) => Number(t.id)).filter((id) => Number.isFinite(id));
+  const allTasksSelected = allFilteredTaskIds.length > 0 && allFilteredTaskIds.every((id) => selectedTaskIds.includes(id));
+
+  const toggleTaskSelection = (id: number, checked: boolean) => {
+    setSelectedTaskIds((prev) => checked ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id));
+  };
+
+  const toggleSelectAllTasks = (checked: boolean) => {
+    if (!checked) {
+      setSelectedTaskIds((prev) => prev.filter((id) => !allFilteredTaskIds.includes(id)));
+      return;
+    }
+    setSelectedTaskIds((prev) => Array.from(new Set([...prev, ...allFilteredTaskIds])));
+  };
+
+  const handleBulkDeleteTasks = async () => {
+    if (selectedTaskIds.length === 0) return;
+    const ok = confirm(`Eliminare ${selectedTaskIds.length} task selezionati?`);
+    if (!ok) return;
+
+    const idsToDelete = [...selectedTaskIds];
+    const results = await Promise.allSettled(
+      idsToDelete.map((id) => portalFetch(`/api/tasks/${id}`, { method: "DELETE", credentials: "include" }))
+    );
+    const failedIds: number[] = [];
+    let success = 0;
+    results.forEach((r, idx) => {
+      if (r.status === "fulfilled" && r.value.ok) {
+        success += 1;
+      } else {
+        failedIds.push(idsToDelete[idx]);
+      }
+    });
+    const failed = failedIds.length;
+
+    if (success > 0) {
+      await qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+    }
+
+    if (failed > 0) {
+      setSelectedTaskIds(failedIds);
+      toast({
+        variant: "destructive",
+        title: "Eliminazione parziale task",
+        description: `${success} eliminati, ${failed} non eliminati. Ho lasciato selezionati quelli falliti.`,
+      });
+      return;
+    }
+    setSelectedTaskIds([]);
+    toast({ title: `${success} task eliminati` });
   };
 
   const handleToggleChecklistItem = (task: TaskRow, itemId: string) => {
@@ -870,6 +946,16 @@ export default function Tasks() {
           )}
         </div>
 
+        {selectedTaskIds.length > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-900">{selectedTaskIds.length} task selezionati</p>
+            <button onClick={handleBulkDeleteTasks} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+              <Trash2 size={13} />
+              Elimina selezionati
+            </button>
+          </div>
+        )}
+
         {/* Task list / Kanban */}
         {isLoading ? (
           <div className="text-center text-muted-foreground py-12">Caricamento...</div>
@@ -925,6 +1011,17 @@ export default function Tasks() {
                           onDragEnd={() => { draggedTaskRef.current = null; }}
                           className="bg-card border border-card-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
                         >
+                          <div className="mb-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedTaskIds.includes(task.id)}
+                              onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
+                              onClick={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              className="h-4 w-4 accent-primary"
+                              aria-label={`Seleziona task ${task.title}`}
+                            />
+                          </div>
                           <p onClick={() => handleOpenEdit(task)} className="text-sm font-medium cursor-pointer hover:text-primary transition-colors line-clamp-2">{task.title}</p>
                           <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                             <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", task.tipo === "avanzata" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
@@ -967,6 +1064,15 @@ export default function Tasks() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-card-border bg-muted/30">
+                  <th className="px-3 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allTasksSelected}
+                      onChange={(e) => toggleSelectAllTasks(e.target.checked)}
+                      className="h-4 w-4 accent-primary"
+                      aria-label="Seleziona tutti i task filtrati"
+                    />
+                  </th>
                   <th className="px-3 py-2 text-left">Title</th>
                   <th className="px-3 py-2 text-left">Type</th>
                   <th className="px-3 py-2 text-left">Category</th>
@@ -985,6 +1091,15 @@ export default function Tasks() {
                   const { done, total, pct } = calcProgress(items);
                   return (
                     <tr key={task.id} className="border-b border-card-border/50">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedTaskIds.includes(task.id)}
+                          onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
+                          className="h-4 w-4 accent-primary"
+                          aria-label={`Seleziona task ${task.title}`}
+                        />
+                      </td>
                       <td className="px-3 py-2 max-w-[280px]">
                         <button onClick={() => handleOpenEdit(task as TaskRow)} className="font-medium hover:text-primary text-left truncate">
                           {task.title}

@@ -7,6 +7,12 @@ import { getUserId } from "../lib/access-control";
 
 const router = Router();
 
+function parsePositiveInt(value: string): number | null {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function requireUser(req: Request, res: Response): string | null {
   const userId = getUserId(req);
   if (!userId) {
@@ -91,7 +97,8 @@ router.post("/anthropic/conversations", async (req, res): Promise<void> => {
 router.get("/anthropic/conversations/:id", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const id = parseInt(req.params.id);
+  const id = parsePositiveInt(req.params.id);
+  if (!id) { res.status(400).json({ error: "ID conversazione non valido" }); return; }
   const [conv] = await db.select().from(aiConversations)
     .where(and(eq(aiConversations.id, id), eq(aiConversations.userId, userId)));
   if (!conv) { res.status(404).json({ error: "Not found" }); return; }
@@ -102,7 +109,8 @@ router.get("/anthropic/conversations/:id", async (req, res): Promise<void> => {
 router.patch("/anthropic/conversations/:id", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const id = parseInt(req.params.id);
+  const id = parsePositiveInt(req.params.id);
+  if (!id) { res.status(400).json({ error: "ID conversazione non valido" }); return; }
   const updates: any = {};
   if (req.body.title !== undefined) updates.title = req.body.title;
   if (req.body.isStarred !== undefined) updates.isStarred = req.body.isStarred;
@@ -117,7 +125,8 @@ router.patch("/anthropic/conversations/:id", async (req, res): Promise<void> => 
 router.delete("/anthropic/conversations/:id", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const id = parseInt(req.params.id);
+  const id = parsePositiveInt(req.params.id);
+  if (!id) { res.status(400).json({ error: "ID conversazione non valido" }); return; }
   const [row] = await db.delete(aiConversations)
     .where(and(eq(aiConversations.id, id), eq(aiConversations.userId, userId)))
     .returning();
@@ -128,7 +137,8 @@ router.delete("/anthropic/conversations/:id", async (req, res): Promise<void> =>
 router.get("/anthropic/conversations/:id/messages", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const id = parseInt(req.params.id);
+  const id = parsePositiveInt(req.params.id);
+  if (!id) { res.status(400).json({ error: "ID conversazione non valido" }); return; }
   const [conv] = await db.select().from(aiConversations)
     .where(and(eq(aiConversations.id, id), eq(aiConversations.userId, userId)));
   if (!conv) { res.status(404).json({ error: "Not found" }); return; }
@@ -139,9 +149,10 @@ router.get("/anthropic/conversations/:id/messages", async (req, res): Promise<vo
 router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const convId = parseInt(req.params.id);
+  const convId = parsePositiveInt(req.params.id);
+  if (!convId) { res.status(400).json({ error: "ID conversazione non valido" }); return; }
   const { content, context } = req.body;
-  if (!content) { res.status(400).json({ error: "content is required" }); return; }
+  if (!String(content ?? "").trim()) { res.status(400).json({ error: "content is required" }); return; }
 
   const [conv] = await db.select().from(aiConversations)
     .where(and(eq(aiConversations.id, convId), eq(aiConversations.userId, userId)));
@@ -225,8 +236,13 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
 router.patch("/anthropic/messages/:messageId/feedback", async (req, res): Promise<void> => {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const messageId = parseInt(req.params.messageId);
+  const messageId = parsePositiveInt(req.params.messageId);
+  if (!messageId) { res.status(400).json({ error: "ID messaggio non valido" }); return; }
   const { feedback } = req.body;
+  if (feedback !== "positive" && feedback !== "negative" && feedback !== null) {
+    res.status(400).json({ error: "feedback non valido" });
+    return;
+  }
   const [msg] = await db.select({ conversationId: aiMessages.conversationId }).from(aiMessages).where(eq(aiMessages.id, messageId));
   if (!msg) { res.status(404).json({ error: "Not found" }); return; }
   const [conv] = await db.select({ userId: aiConversations.userId }).from(aiConversations).where(eq(aiConversations.id, msg.conversationId));

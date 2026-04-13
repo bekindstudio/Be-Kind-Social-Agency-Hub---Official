@@ -92,6 +92,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
   const [isStreaming, setIsStreaming] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -104,8 +105,13 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
+        setApiError(null);
+      } else {
+        setApiError("Non riesco a caricare le conversazioni AI.");
       }
-    } catch {}
+    } catch {
+      setApiError("Connessione AI non disponibile al momento.");
+    }
   }, []);
 
   useEffect(() => {
@@ -123,57 +129,83 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
         const data = await res.json();
         setActiveConvId(id);
         setMessages(data.messages ?? []);
+        setApiError(null);
+      } else {
+        setApiError("Impossibile aprire questa conversazione.");
       }
-    } catch {}
+    } catch {
+      setApiError("Impossibile aprire questa conversazione.");
+    }
   }, []);
 
   const createConversation = useCallback(async (title: string) => {
     try {
+      const safeTitle = title.trim();
+      if (!safeTitle) return null;
       const res = await portalFetch("/api/anthropic/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, contextType, contextId: context?.data?.id?.toString() }),
+        body: JSON.stringify({ title: safeTitle, contextType, contextId: context?.data?.id?.toString() }),
       });
       if (res.ok) {
         const conv = await res.json();
         setActiveConvId(conv.id);
         setMessages([]);
         fetchConversations();
+        setApiError(null);
         return conv.id;
       }
-    } catch {}
+      setApiError("Impossibile creare una nuova conversazione.");
+    } catch {
+      setApiError("Impossibile creare una nuova conversazione.");
+    }
     return null;
   }, [contextType, context, fetchConversations]);
 
   const deleteConversation = useCallback(async (id: number) => {
     try {
-      await portalFetch(`/api/anthropic/conversations/${id}`, { method: "DELETE" });
+      const res = await portalFetch(`/api/anthropic/conversations/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) {
+        setApiError("Impossibile eliminare la conversazione.");
+        return;
+      }
       if (activeConvId === id) {
         setActiveConvId(null);
         setMessages([]);
       }
       fetchConversations();
-    } catch {}
+      setApiError(null);
+    } catch {
+      setApiError("Impossibile eliminare la conversazione.");
+    }
   }, [activeConvId, fetchConversations]);
 
   const toggleStar = useCallback(async (id: number, current: boolean) => {
     try {
-      await portalFetch(`/api/anthropic/conversations/${id}`, {
+      const res = await portalFetch(`/api/anthropic/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isStarred: !current }),
       });
+      if (!res.ok) {
+        setApiError("Impossibile aggiornare la conversazione.");
+        return;
+      }
       fetchConversations();
-    } catch {}
+      setApiError(null);
+    } catch {
+      setApiError("Impossibile aggiornare la conversazione.");
+    }
   }, [fetchConversations]);
 
   const sendFeedback = useCallback(async (messageId: number, feedback: string) => {
     try {
-      await portalFetch(`/api/anthropic/messages/${messageId}/feedback`, {
+      const res = await portalFetch(`/api/anthropic/messages/${messageId}/feedback`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feedback }),
       });
+      if (!res.ok) return;
       setMessages((prev) =>
         prev.map((m) => (m.id === messageId ? { ...m, feedback } : m))
       );
@@ -181,11 +213,14 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
   }, []);
 
   const copyToClipboard = useCallback((text: string, id?: number) => {
-    navigator.clipboard.writeText(text);
-    if (id) {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }
+    void navigator.clipboard.writeText(text).then(() => {
+      if (id) {
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
+    }).catch(() => {
+      setApiError("Copia non riuscita. Verifica i permessi del browser.");
+    });
   }, []);
 
   const stopGeneration = useCallback(() => {
@@ -195,6 +230,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isStreaming) return;
+    setApiError(null);
 
     let convId = activeConvId;
     if (!convId) {
@@ -266,6 +302,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
+        setApiError("AI non disponibile al momento. Riprova tra poco.");
         setMessages((prev) => {
           const copy = [...prev];
           if (copy.length > 0 && copy[copy.length - 1].role === "assistant") {
@@ -291,8 +328,15 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
     setActiveConvId(null);
     setMessages([]);
     setInput("");
+    setApiError(null);
     inputRef.current?.focus();
   };
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const filteredConversations = conversations.filter((c) =>
     !searchTerm || c.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -326,6 +370,11 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        {apiError && (
+          <div className="mb-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+            {apiError}
+          </div>
+        )}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <div className="w-14 h-14 rounded-2xl bg-violet-100 flex items-center justify-center">

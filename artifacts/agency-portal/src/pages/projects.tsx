@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useListProjects, useListClients, useCreateProject, getListProjectsQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
+import { useToast } from "@/hooks/use-toast";
 import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -27,6 +28,7 @@ function healthStyle(h: string) {
 export default function Projects() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const { data: projects, isLoading } = useListProjects({});
   const { data: clients } = useListClients();
   const createProject = useCreateProject();
@@ -83,7 +85,14 @@ export default function Projects() {
   }, [projectList]);
 
   const create = () => {
-    if (!form.name || !form.clientId) return;
+    if (!form.name || !form.clientId) {
+      toast({
+        variant: "destructive",
+        title: "Dati mancanti",
+        description: "Inserisci almeno nome progetto e cliente.",
+      });
+      return;
+    }
     createProject.mutate({
       data: {
         name: form.name,
@@ -111,6 +120,19 @@ export default function Projects() {
         qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
         setShowCreate(false);
         setStep(1);
+        toast({ title: "Progetto creato con successo" });
+      },
+      onError: (err: any) => {
+        const base =
+          err?.data?.error ||
+          err?.data?.message ||
+          "Impossibile creare il progetto";
+        const hint = err?.data?.hint;
+        toast({
+          variant: "destructive",
+          title: "Creazione progetto non riuscita",
+          description: hint ? `${base}. ${hint}` : base,
+        });
       },
     });
   };

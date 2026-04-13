@@ -26,7 +26,14 @@ const TYPE_BG: Record<string, string> = {
   report: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
   contract: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   message: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  deadline: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
   system: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
+};
+
+type NotificationBellProps = {
+  buttonClassName?: string;
+  iconClassName?: string;
+  panelClassName?: string;
 };
 
 function timeAgo(dateStr: string): string {
@@ -40,14 +47,44 @@ function timeAgo(dateStr: string): string {
   return `${days}g fa`;
 }
 
-export function NotificationBell() {
+export function NotificationBell({ buttonClassName, iconClassName, panelClassName }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const prevUnreadCount = useRef<number | null>(null);
+  const soundEnabled = useRef(false);
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      const Ctx =
+        window.AudioContext ??
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.035, ctx.currentTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+      osc.onended = () => {
+        void ctx.close();
+      };
+    } catch {
+      // ignore audio failures (autoplay policy / unsupported browser)
+    }
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     try {
+      // Genera/aggiorna gli avvisi di scadenza prima di leggere il feed notifiche.
+      await portalFetch("/api/deadlines/check", { method: "POST" }).catch(() => null);
       const [notifRes, countRes] = await Promise.all([
         portalFetch("/api/notifications"),
         portalFetch("/api/notifications/unread-count"),
@@ -73,6 +110,30 @@ export function NotificationBell() {
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
+
+  useEffect(() => {
+    const enableSound = () => {
+      soundEnabled.current = true;
+    };
+    window.addEventListener("pointerdown", enableSound, { once: true });
+    window.addEventListener("keydown", enableSound, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", enableSound);
+      window.removeEventListener("keydown", enableSound);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (prevUnreadCount.current == null) {
+      prevUnreadCount.current = unreadCount;
+      return;
+    }
+    const increased = unreadCount > prevUnreadCount.current;
+    if (increased && soundEnabled.current && document.visibilityState === "visible") {
+      playNotificationSound();
+    }
+    prevUnreadCount.current = unreadCount;
+  }, [unreadCount, playNotificationSound]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -101,9 +162,9 @@ export function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => { setOpen(!open); if (!open) fetchNotifications(); }}
-        className="relative p-2 rounded-lg hover:bg-sidebar-accent transition-colors"
+        className={cn("relative p-2 rounded-lg hover:bg-sidebar-accent transition-colors", buttonClassName)}
       >
-        <Bell size={18} className="text-sidebar-foreground/70" />
+        <Bell size={18} className={cn("text-sidebar-foreground/70", iconClassName)} />
         {unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center min-w-[18px] h-[18px]">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -112,7 +173,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute left-full ml-2 bottom-0 w-80 bg-card border border-border rounded-xl shadow-xl z-50 max-h-[460px] flex flex-col">
+        <div className={cn("absolute left-full ml-2 bottom-0 w-80 bg-card border border-border rounded-xl shadow-xl z-50 max-h-[460px] flex flex-col", panelClassName)}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground">Notifiche</h3>
             <div className="flex items-center gap-1">

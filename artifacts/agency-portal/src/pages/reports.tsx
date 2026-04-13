@@ -957,10 +957,43 @@ export default function Reports() {
     { id: "strategy", label: "10. Strategia Prossimo Periodo" },
     { id: "notes", label: "11. Note Aggiuntive" },
   ];
+  const [activeTocId, setActiveTocId] = useState<string>("cover");
+  const qualitySignals = [
+    Boolean(r.riepilogoEsecutivo || r.aiSummary),
+    Boolean(topPosts.length > 0),
+    Boolean(hasIg),
+    Boolean(hasMeta),
+    Boolean(hasGoogle),
+    Boolean(r.analisiInsights),
+    Boolean(r.strategiaProssimoPeriodo),
+    Boolean(r.noteAggiuntive),
+  ];
+  const qualityScore = Math.round((qualitySignals.filter(Boolean).length / qualitySignals.length) * 100);
+
+  useEffect(() => {
+    const ids = tocSections.map((s) => s.id);
+    const elements = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => Boolean(el));
+    if (elements.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target?.id) {
+          setActiveTocId(visible.target.id);
+        }
+      },
+      { rootMargin: "-25% 0px -55% 0px", threshold: [0.2, 0.4, 0.7] },
+    );
+
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [r.id, liveData, liveDateFrom, liveDateTo]);
 
   return (
     <Layout>
-      <div className="p-8 max-w-5xl">
+      <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
           <button onClick={() => { setView("list"); setSelectedReport(null); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
@@ -968,18 +1001,26 @@ export default function Reports() {
           </button>
         </div>
 
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between mb-6 rounded-2xl border border-card-border bg-gradient-to-br from-primary/10 via-background to-background p-5">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-xl font-bold tracking-tight">{r.titolo ?? "Report"}</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{r.titolo ?? "Report"}</h1>
               <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[r.status])}>{STATUS_LABELS[r.status]}</span>
             </div>
             <p className="text-sm text-muted-foreground">
               {r.clientName} · {TIPO_LABELS[r.tipo]} · {r.periodLabel}
               {r.createdAt && <> · Creato il {new Date(r.createdAt).toLocaleDateString("it-IT")}</>}
             </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] px-2 py-1 rounded-md bg-primary/15 text-primary font-medium">Qualita report {qualityScore}%</span>
+              {isLive ? (
+                <span className="text-[11px] px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 font-medium">Live data attivi</span>
+              ) : (
+                <span className="text-[11px] px-2 py-1 rounded-md bg-muted text-muted-foreground font-medium">Dati salvati</span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canEdit && !isEditing && (
               <button onClick={() => setView("edit")} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium hover:opacity-90">
                 <Pencil size={12} /> Modifica
@@ -1102,7 +1143,12 @@ export default function Reports() {
             <div className="space-y-1">
               {tocSections.map((s) => (
                 <button key={s.id} onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  className="w-full text-left text-xs px-2 py-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground">
+                  className={cn(
+                    "w-full text-left text-xs px-2 py-1.5 rounded-md transition-colors",
+                    activeTocId === s.id
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground",
+                  )}>
                   {s.label}
                 </button>
               ))}
@@ -1499,6 +1545,13 @@ export default function Reports() {
 
           <aside className="hidden lg:block sticky top-6 bg-card border border-card-border rounded-xl p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Strumenti</p>
+            <div className="mb-3 rounded-lg border border-primary/15 bg-primary/5 p-2.5">
+              <p className="text-[11px] font-semibold text-primary mb-1">Stato report</p>
+              <div className="h-1.5 rounded-full bg-primary/20 overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${qualityScore}%` }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">{qualityScore}% contenuti compilati e dati disponibili</p>
+            </div>
             <div className="space-y-2">
               <button onClick={handleRefreshLive} disabled={liveLoading} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-secondary rounded-lg text-xs">
                 {liveLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh dati

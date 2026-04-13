@@ -25,7 +25,6 @@ import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { useTheme } from "@/hooks/useTheme";
-import { NotificationBell } from "./NotificationBell";
 import { useUserRole } from "@/hooks/useUserRole";
 import { portalFetch } from "@workspace/api-client-react";
 
@@ -57,7 +56,6 @@ const navGroups = [
     label: "Principale",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/trash", label: "Cestino", icon: Trash2 },
       { href: "/clients", label: "Clienti", icon: Users },
       { href: "/projects", label: "Progetti", icon: FolderKanban },
       { href: "/tasks", label: "Task", icon: CheckSquare },
@@ -198,7 +196,25 @@ export function Sidebar() {
 
       <div className="px-3 py-3 border-t border-sidebar-border space-y-1">
         <div className="flex items-center gap-1 mb-1">
-          <NotificationBell />
+          <Link href="/trash">
+            <div
+              className={cn(
+                "relative p-2 rounded-lg cursor-pointer transition-colors",
+                isActive("/trash")
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+              title="Cestino"
+              aria-label="Cestino"
+            >
+              <Trash2 size={17} strokeWidth={1.8} />
+              {trashBadge > 0 && (
+                <span className="absolute -top-1 -right-1 text-[10px] font-bold bg-amber-500 text-white rounded-full w-4.5 h-4.5 min-w-[18px] flex items-center justify-center px-1">
+                  {trashBadge}
+                </span>
+              )}
+            </div>
+          </Link>
           <Link href="/settings" className="flex-1">
             <div className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors",

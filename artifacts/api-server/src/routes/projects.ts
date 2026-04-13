@@ -216,6 +216,15 @@ router.get("/projects", async (req, res): Promise<void> => {
   } catch (err) {
     const meta = collectPgErrorMeta(err);
     logger.error({ err, pg: meta }, "GET /projects failed");
+    if (meta.code === "ENOTFOUND" || meta.text.toLowerCase().includes("getaddrinfo enotfound")) {
+      res.status(503).json({
+        error: "Database non raggiungibile",
+        hint: "Il server API non riesce a risolvere l'host del DATABASE_URL. Verifica che DATABASE_URL punti a un host valido e che l'ambiente abbia accesso DNS/rete verso Supabase.",
+        pgCode: meta.code,
+        detail: meta.text.slice(0, 600),
+      });
+      return;
+    }
     if (
       isUndefinedColumnError(meta) ||
       meta.text.toLowerCase().includes("deleted_at") ||
@@ -251,64 +260,101 @@ router.post("/projects", async (req, res): Promise<void> => {
   if (!body?.name?.trim()) { res.status(400).json({ error: "name required" }); return; }
   const userId = getUid(req);
 
-  const [project] = await db.insert(projectsTable).values({
-    name: body.name,
-    description: body.description ?? null,
-    clientId: body.clientId ?? null,
-    status: body.status ?? "planning",
-    progress: Number(body.progress ?? 0),
-    deadline: body.deadline ?? null,
-    budget: body.budget != null ? String(body.budget) : null,
-    budgetSpeso: body.budgetSpeso != null ? String(body.budgetSpeso) : "0",
-    category: body.category ?? null,
-    color: body.color ?? null,
-    typeJson: JSON.stringify(Array.isArray(body.projectTypes) ? body.projectTypes : Array.isArray(body.typeJson) ? body.typeJson : []),
-    startDate: body.startDate ?? null,
-    endDate: body.endDate ?? body.deadline ?? null,
-    oreStimate: body.oreStimate ?? null,
-    paymentStructure: body.paymentStructure ?? null,
-    billingRate: body.billingRate != null ? String(body.billingRate) : null,
-    isRecurring: Boolean(body.isRecurring),
-    recurrenceType: body.recurrenceType ?? null,
-    templateId: body.templateId ?? null,
-    notes: body.notes ?? null,
-    createdBy: userId,
-  }).returning();
+  try {
+    const [project] = await db.insert(projectsTable).values({
+      name: body.name,
+      description: body.description ?? null,
+      clientId: body.clientId ?? null,
+      status: body.status ?? "planning",
+      progress: Number(body.progress ?? 0),
+      deadline: body.deadline ?? null,
+      budget: body.budget != null ? String(body.budget) : null,
+      budgetSpeso: body.budgetSpeso != null ? String(body.budgetSpeso) : "0",
+      category: body.category ?? null,
+      color: body.color ?? null,
+      typeJson: JSON.stringify(Array.isArray(body.projectTypes) ? body.projectTypes : Array.isArray(body.typeJson) ? body.typeJson : []),
+      startDate: body.startDate ?? null,
+      endDate: body.endDate ?? body.deadline ?? null,
+      oreStimate: body.oreStimate ?? null,
+      paymentStructure: body.paymentStructure ?? null,
+      billingRate: body.billingRate != null ? String(body.billingRate) : null,
+      isRecurring: Boolean(body.isRecurring),
+      recurrenceType: body.recurrenceType ?? null,
+      templateId: body.templateId ?? null,
+      notes: body.notes ?? null,
+      createdBy: userId,
+    }).returning();
 
-  if (body.projectManagerId) {
-    await db.insert(projectMembersTable).values({ projectId: project.id, userId: Number(body.projectManagerId), role: "Project Manager" });
-  }
-  if (Array.isArray(body.members)) {
-    for (const m of body.members) {
-      if (!m?.userId) continue;
-      await db.insert(projectMembersTable).values({ projectId: project.id, userId: Number(m.userId), role: String(m.role ?? "Altro") });
+    // Operazioni di supporto: non devono bloccare il salvataggio del progetto.
+    try {
+      if (body.projectManagerId) {
+        await db.insert(projectMembersTable).values({ projectId: project.id, userId: Number(body.projectManagerId), role: "Project Manager" });
+      }
+      if (Array.isArray(body.members)) {
+        for (const m of body.members) {
+          if (!m?.userId) continue;
+          await db.insert(projectMembersTable).values({ projectId: project.id, userId: Number(m.userId), role: String(m.role ?? "Altro") });
+        }
+      }
+      if (body.autoCreateOnboardingTask) {
+        await db.insert(tasksTable).values({
+          projectId: project.id,
+          clientId: project.clientId ?? null,
+          title: `Onboarding progetto - ${project.name}`,
+          description: "Checklist setup rapido progetto",
+          status: "todo",
+          priority: "high",
+          tipo: "avanzata",
+          categoria: "Personalizzata",
+          checklistJson: JSON.stringify([
+            { id: "pob1", testo: "Kickoff meeting", completato: false, gruppo: "" },
+            { id: "pob2", testo: "Allineamento obiettivi", completato: false, gruppo: "" },
+            { id: "pob3", testo: "Setup strumenti", completato: false, gruppo: "" },
+          ]),
+        });
+      }
+      await db.insert(projectActivityTable).values({ projectId: project.id, userId, action: "Project created", detailsJson: JSON.stringify({ source: "modal" }) });
+    } catch (err) {
+      const meta = collectPgErrorMeta(err);
+      logger.warn(
+        { err, pg: meta, projectId: project.id },
+        "POST /projects: side-effects non bloccanti falliti (members/activity/onboarding)",
+      );
     }
-  }
-  if (body.autoCreateOnboardingTask) {
-    await db.insert(tasksTable).values({
-      projectId: project.id,
-      clientId: project.clientId ?? null,
-      title: `Onboarding progetto - ${project.name}`,
-      description: "Checklist setup rapido progetto",
-      status: "todo",
-      priority: "high",
-      tipo: "avanzata",
-      categoria: "Personalizzata",
-      checklistJson: JSON.stringify([
-        { id: "pob1", testo: "Kickoff meeting", completato: false, gruppo: "" },
-        { id: "pob2", testo: "Allineamento obiettivi", completato: false, gruppo: "" },
-        { id: "pob3", testo: "Setup strumenti", completato: false, gruppo: "" },
-      ]),
+
+    const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
+    const clientMap = new Map(clients.map((c) => [c.id, c.name]));
+
+    res.status(201).json(
+      serializeProject(project, project.clientId ? (clientMap.get(project.clientId) ?? null) : null)
+    );
+  } catch (err) {
+    const meta = collectPgErrorMeta(err);
+    logger.error({ err, pg: meta }, "POST /projects failed");
+    if (meta.code === "ENOTFOUND" || meta.text.toLowerCase().includes("getaddrinfo enotfound")) {
+      res.status(503).json({
+        error: "Database non raggiungibile",
+        hint: "Il server API non riesce a risolvere l'host del DATABASE_URL. Verifica variabile DATABASE_URL, DNS/rete del servizio (Render) e che il progetto Supabase sia raggiungibile.",
+        pgCode: meta.code,
+        detail: meta.text.slice(0, 600),
+      });
+      return;
+    }
+    if (isUndefinedColumnError(meta) || isUndefinedTableError(meta)) {
+      res.status(503).json({
+        error: "Schema database non allineato",
+        hint: "Sul database PostgreSQL (Supabase) esegui le migrazioni in `supabase/migrations/` oppure `pnpm run db:push` con DATABASE_URL corretto.",
+        pgCode: meta.code,
+        detail: meta.text.slice(0, 600),
+      });
+      return;
+    }
+    res.status(500).json({
+      error: "Errore creazione progetto",
+      pgCode: meta.code,
+      detail: meta.text.slice(0, 800),
     });
   }
-  await db.insert(projectActivityTable).values({ projectId: project.id, userId, action: "Project created", detailsJson: JSON.stringify({ source: "modal" }) });
-
-  const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
-  const clientMap = new Map(clients.map((c) => [c.id, c.name]));
-
-  res.status(201).json(
-    serializeProject(project, project.clientId ? (clientMap.get(project.clientId) ?? null) : null)
-  );
 });
 
 router.get("/projects/:id", async (req, res): Promise<void> => {

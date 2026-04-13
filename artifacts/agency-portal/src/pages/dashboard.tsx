@@ -15,10 +15,10 @@ import {
 } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { Layout } from "@/components/layout/Layout";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
   Search,
-  Bell,
   Plus,
   ChevronDown,
   FolderKanban,
@@ -359,7 +359,11 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-            <button className="relative p-2 rounded-lg border border-input bg-background"><Bell size={16} />{alerts.length > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center">{Math.min(alerts.length, 9)}</span>}</button>
+            <NotificationBell
+              buttonClassName="border border-input bg-background hover:bg-muted"
+              iconClassName="text-foreground"
+              panelClassName="right-0 left-auto ml-0 bottom-auto top-full mt-2"
+            />
             <div className="relative">
               <button onClick={() => setShowQuick((s) => !s)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg inline-flex items-center gap-1"><Plus size={14} /> Nuovo <ChevronDown size={14} /></button>
               {showQuick && (

@@ -22,6 +22,7 @@ import {
   Trash2,
   FileText,
   CalendarDays,
+  Calendar,
   Target,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
@@ -88,6 +89,7 @@ const navGroups = [
       { href: "/tools", label: "Tools", icon: Wrench },
       { href: "/tools/brief", label: "Brief", icon: FileText },
       { href: "/tools/calendar", label: "Calendario", icon: CalendarDays },
+      { href: "/tools/events", label: "Eventi Clienti", icon: Calendar },
       { href: "/tools/caption-ai", label: "Caption AI", icon: Sparkles },
       { href: "/tools/competitors", label: "Competitors", icon: Target },
       { href: "/tools/time-tracker", label: "Time Tracker", icon: Timer },

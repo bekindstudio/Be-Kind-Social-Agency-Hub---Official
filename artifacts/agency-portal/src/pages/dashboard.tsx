@@ -22,6 +22,8 @@ import {
   Search,
   Plus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   FolderKanban,
   CheckSquare,
   Users,
@@ -71,6 +73,22 @@ function italianDate() {
     month: "long",
     year: "numeric",
   }).format(new Date());
+}
+
+function buildMonthDays(current: Date): Date[] {
+  const first = new Date(current.getFullYear(), current.getMonth(), 1);
+  const startOffset = (first.getDay() + 6) % 7;
+  const start = new Date(current.getFullYear(), current.getMonth(), 1 - startOffset);
+  return Array.from({ length: 42 }, (_, idx) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + idx);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+}
+
+function dayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 const KPI_COLORS = ["bg-indigo-500", "bg-amber-500", "bg-emerald-500", "bg-violet-500"];
@@ -132,7 +150,7 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { signOut, authDisabled } = useSupabaseAuth();
-  const { activeClient } = useClientContext();
+  const { activeClient, clients: contextClients, allClientEvents } = useClientContext();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
   const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
@@ -167,6 +185,12 @@ export default function Dashboard() {
     }
   });
   const [showDashPrefs, setShowDashPrefs] = useState(false);
+  const [eventsMonthCursor, setEventsMonthCursor] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
 
   const { data: taskTrends } = usePortalJsonQuery<TaskTrendRow[]>("/api/dashboard/task-trends", 60_000);
   const { data: revenueData } = usePortalJsonQuery<RevenuePayload>("/api/dashboard/revenue", 60_000);
@@ -344,6 +368,25 @@ export default function Dashboard() {
 
   const taskListByTab = tasksTab === "oggi" ? [...tasksOverdue, ...tasksDueToday] : tasksTab === "settimana" ? tasksDueWeek : tasksOverdue;
   const riskProjects = projects.filter((p: AnyObj) => p.healthStatus === "at-risk" || p.healthStatus === "delayed").slice(0, 5);
+  const eventDays = useMemo(() => buildMonthDays(eventsMonthCursor), [eventsMonthCursor]);
+  const eventMonth = eventsMonthCursor.getMonth();
+  const eventYear = eventsMonthCursor.getFullYear();
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, typeof allClientEvents>();
+    for (const event of allClientEvents) {
+      const key = dayKey(new Date(event.date));
+      const current = map.get(key) ?? [];
+      map.set(key, [...current, event]);
+    }
+    return map;
+  }, [allClientEvents]);
+  const clientNameById = useMemo(
+    () =>
+      new Map(
+        contextClients.map((client) => [client.id, client.name]),
+      ),
+    [contextClients],
+  );
 
   return (
     <Layout>
@@ -509,6 +552,64 @@ export default function Dashboard() {
           </div>
 
           <div className="xl:col-span-2 space-y-4">
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-semibold text-sm">Calendario Eventi (tutti i clienti)</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEventsMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                    className="rounded border border-input p-1"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <p className="text-xs font-medium capitalize min-w-[120px] text-center">
+                    {eventsMonthCursor.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setEventsMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                    className="rounded border border-input p-1"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 border-b border-border bg-muted/30">
+                {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((label) => (
+                  <div key={label} className="px-1 py-1 text-center text-[10px] font-semibold text-muted-foreground">
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {eventDays.map((date) => {
+                  const key = dayKey(date);
+                  const inMonth = date.getMonth() === eventMonth && date.getFullYear() === eventYear;
+                  const items = eventsByDay.get(key) ?? [];
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "min-h-[72px] border-b border-r border-border p-1",
+                        inMonth ? "bg-background" : "bg-muted/20 text-muted-foreground",
+                      )}
+                    >
+                      <p className="text-[10px] font-medium">{date.getDate()}</p>
+                      <div className="space-y-0.5">
+                        {items.slice(0, 2).map((event) => (
+                          <div key={event.id} className="truncate rounded bg-violet-100 px-1 py-0.5 text-[10px] text-violet-800" title={event.title}>
+                            {event.title} - {clientNameById.get(event.clientId) ?? "Cliente"}
+                          </div>
+                        ))}
+                        {items.length > 2 && <p className="text-[10px] text-muted-foreground">+{items.length - 2}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="bg-card border border-card-border rounded-xl p-4">
               <p className="font-semibold text-sm mb-2">Scadenze imminenti</p>
               <div className="space-y-2">

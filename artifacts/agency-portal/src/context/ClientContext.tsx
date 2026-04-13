@@ -5,6 +5,7 @@ import type {
   Client,
   ClientAnalytics,
   ClientBrief,
+  ClientEvent,
   ClientContextType,
   Competitor,
   EditorialPost,
@@ -20,6 +21,7 @@ type ClientStore = {
   posts: Record<string, EditorialPost[]>;
   analytics: Record<string, ClientAnalytics>;
   competitors: Record<string, Competitor[]>;
+  events: Record<string, ClientEvent[]>;
 };
 
 const ClientContext = createContext<ClientContextType | null>(null);
@@ -514,6 +516,48 @@ function seedStore(): ClientStore {
     ],
   };
 
+  const events: Record<string, ClientEvent[]> = {
+    [ristoranteId]: [
+      {
+        id: makeId(),
+        clientId: ristoranteId,
+        title: "Degustazione vini primaverile",
+        date: new Date(new Date().getFullYear(), new Date().getMonth(), 18, 18, 30).toISOString(),
+        type: "campaign",
+        priority: "high",
+        note: "Reminder: preparare stories teaser 5 giorni prima.",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+    [dentistaId]: [
+      {
+        id: makeId(),
+        clientId: dentistaId,
+        title: "Open day prevenzione",
+        date: new Date(new Date().getFullYear(), new Date().getMonth(), 24, 9, 0).toISOString(),
+        type: "launch",
+        priority: "medium",
+        note: "Confermare materiale promo e CTA.",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+    [modaId]: [
+      {
+        id: makeId(),
+        clientId: modaId,
+        title: "Lancio capsule summer",
+        date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 5, 10, 0).toISOString(),
+        type: "campaign",
+        priority: "high",
+        note: "Allineare shooting, ads e countdown.",
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
+  };
+
   return {
     clients,
     activeClientId: ristoranteId,
@@ -526,6 +570,7 @@ function seedStore(): ClientStore {
     posts,
     analytics,
     competitors,
+    events,
   };
 }
 
@@ -538,6 +583,7 @@ function loadStore(): ClientStore {
     return {
       ...parsed,
       metaAccountIds: parsed.metaAccountIds ?? {},
+      events: parsed.events ?? {},
     };
   } catch {
     return seedStore();
@@ -563,6 +609,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const posts = activeClientId ? store.posts[activeClientId] ?? [] : [];
   const analytics = activeClientId ? store.analytics[activeClientId] ?? null : null;
   const competitors = activeClientId ? store.competitors[activeClientId] ?? [] : [];
+  const clientEvents = activeClientId ? store.events[activeClientId] ?? [] : [];
+  const allClientEvents = useMemo(
+    () => Object.values(store.events ?? {}).flat().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [store.events],
+  );
   const metaAccountId = activeClientId ? store.metaAccountIds[activeClientId] ?? null : null;
 
   const setActiveClient = useCallback((client: Client) => {
@@ -688,6 +739,59 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         competitors: {
           ...prev.competitors,
           [prev.activeClientId]: current.filter((competitor) => competitor.id !== id),
+        },
+      };
+    });
+  }, []);
+
+  const addClientEvent = useCallback((eventInput: Omit<ClientEvent, "id" | "createdAt" | "updatedAt">): ClientEvent => {
+    const timestamp = nowIso();
+    const nextEvent: ClientEvent = {
+      ...eventInput,
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    setStore((prev) => {
+      const current = prev.events[eventInput.clientId] ?? [];
+      return {
+        ...prev,
+        events: {
+          ...prev.events,
+          [eventInput.clientId]: [...current, nextEvent].sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+          ),
+        },
+      };
+    });
+    return nextEvent;
+  }, []);
+
+  const updateClientEvent = useCallback((id: string, updates: Partial<ClientEvent>) => {
+    setStore((prev) => {
+      if (!prev.activeClientId) return prev;
+      const current = prev.events[prev.activeClientId] ?? [];
+      return {
+        ...prev,
+        events: {
+          ...prev.events,
+          [prev.activeClientId]: current
+            .map((event) => (event.id === id ? { ...event, ...updates, id: event.id, updatedAt: nowIso() } : event))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+        },
+      };
+    });
+  }, []);
+
+  const deleteClientEvent = useCallback((id: string) => {
+    setStore((prev) => {
+      if (!prev.activeClientId) return prev;
+      const current = prev.events[prev.activeClientId] ?? [];
+      return {
+        ...prev,
+        events: {
+          ...prev.events,
+          [prev.activeClientId]: current.filter((event) => event.id !== id),
         },
       };
     });
@@ -893,6 +997,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         ...prev.competitors,
         [newClient.id]: [],
       },
+      events: {
+        ...prev.events,
+        [newClient.id]: [],
+      },
     }));
     // TODO: Replace local client creation with POST /clients backend endpoint.
   }, []);
@@ -966,6 +1074,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     posts,
     analytics,
     competitors,
+    clientEvents,
+    allClientEvents,
     metaAccountId,
     isLoading,
     setActiveClient,
@@ -976,6 +1086,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     addCompetitor,
     updateCompetitor,
     removeCompetitor,
+    addClientEvent,
+    updateClientEvent,
+    deleteClientEvent,
     refreshAnalytics,
     setMetaAccountId,
     createClient,

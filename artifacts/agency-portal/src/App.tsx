@@ -25,6 +25,7 @@ import BriefPage from "@/pages/tools/BriefPage";
 import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
 import TimeTracker from "@/pages/time-tracker";
 import CalendarPage from "@/pages/tools/CalendarPage";
+import EventsPage from "@/pages/tools/EventsPage";
 import CompetitorsPage from "@/pages/tools/CompetitorsPage";
 import AnalyticsPage from "@/pages/tools/AnalyticsPage";
 import ReportsPage from "@/pages/tools/ReportsPage";
@@ -210,6 +211,9 @@ function Router() {
       </Route>
       <Route path="/tools/calendar">
         <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/events">
+        <RequireAuth><RequireActiveClient><EventsPage /></RequireActiveClient></RequireAuth>
       </Route>
       <Route path="/tools/competitors">
         <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>

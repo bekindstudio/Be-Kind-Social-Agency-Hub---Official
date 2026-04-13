@@ -141,6 +141,18 @@ export interface Competitor {
   updatedAt: string;
 }
 
+export interface ClientEvent {
+  id: string;
+  clientId: string;
+  title: string;
+  date: string;
+  type: "campaign" | "launch" | "deadline" | "meeting" | "other";
+  priority: "low" | "medium" | "high";
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientContextType {
   clients: Client[];
   activeClient: Client | null;
@@ -148,6 +160,8 @@ export interface ClientContextType {
   posts: EditorialPost[];
   analytics: ClientAnalytics | null;
   competitors: Competitor[];
+  clientEvents: ClientEvent[];
+  allClientEvents: ClientEvent[];
   metaAccountId: string | null;
   isLoading: boolean;
   setActiveClient: (client: Client) => void;
@@ -158,6 +172,9 @@ export interface ClientContextType {
   addCompetitor: (competitor: Omit<Competitor, "id">) => void;
   updateCompetitor: (id: string, updates: Partial<Competitor>) => void;
   removeCompetitor: (id: string) => void;
+  addClientEvent: (event: Omit<ClientEvent, "id" | "createdAt" | "updatedAt">) => ClientEvent;
+  updateClientEvent: (id: string, updates: Partial<ClientEvent>) => void;
+  deleteClientEvent: (id: string) => void;
   refreshAnalytics: (period?: AnalyticsPeriod) => Promise<void>;
   setMetaAccountId: (id: string | null) => void;
   createClient: (input: { name: string; industry: string; color?: string }) => void;

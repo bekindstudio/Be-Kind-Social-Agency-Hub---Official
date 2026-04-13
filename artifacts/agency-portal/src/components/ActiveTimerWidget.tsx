@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { portalFetch } from "@workspace/api-client-react";
 import { Clock, Pause, Play, Square, Timer } from "lucide-react";
+import { useClientContext } from "@/context/ClientContext";
+import { useToast } from "@/hooks/use-toast";
 
 const API = "/api";
 
@@ -48,6 +50,10 @@ function formatDuration(seconds: number): string {
 }
 
 export function ActiveTimerWidget() {
+  const { activeClient } = useClientContext();
+  const { toast } = useToast();
+  const activeClientId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const scopedClientId = Number.isFinite(activeClientId) ? activeClientId : null;
   const [session, setSession] = useState<ActiveSession | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showStopModal, setShowStopModal] = useState(false);
@@ -102,17 +108,23 @@ export function ActiveTimerWidget() {
 
   const handlePause = useCallback(async () => {
     try {
-      await portalFetch(`${API}/timer/pause`, { method: "POST", credentials: "include" });
+      const res = await portalFetch(`${API}/timer/pause`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("pause_failed");
       fetchSession();
-    } catch {}
-  }, [fetchSession]);
+    } catch {
+      toast({ title: "Pausa timer non riuscita", variant: "destructive" });
+    }
+  }, [fetchSession, toast]);
 
   const handleResume = useCallback(async () => {
     try {
-      await portalFetch(`${API}/timer/resume`, { method: "POST", credentials: "include" });
+      const res = await portalFetch(`${API}/timer/resume`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("resume_failed");
       fetchSession();
-    } catch {}
-  }, [fetchSession]);
+    } catch {
+      toast({ title: "Ripresa timer non riuscita", variant: "destructive" });
+    }
+  }, [fetchSession, toast]);
 
   const handleStopClick = () => {
     setStopDescription(session?.taskTitle ?? session?.clientName ?? "");
@@ -159,19 +171,23 @@ export function ActiveTimerWidget() {
       });
       if (res.ok) {
         setShowStartDropdown(false);
-        setStartClientId(null);
+        setStartClientId(scopedClientId);
         setStartProjectId(null);
         setStartDescription("");
         fetchSession();
+      } else {
+        toast({ title: "Avvio timer non riuscito", variant: "destructive" });
       }
-    } catch {}
-  }, [startClientId, startProjectId, startDescription, fetchSession]);
+    } catch {
+      toast({ title: "Avvio timer non riuscito", variant: "destructive" });
+    }
+  }, [startClientId, startProjectId, startDescription, fetchSession, scopedClientId, toast]);
 
   const loadClientsProjects = useCallback(async () => {
     try {
       const [cRes, pRes] = await Promise.all([
         portalFetch(`${API}/clients`, { credentials: "include" }),
-        portalFetch(`${API}/projects`, { credentials: "include" }),
+        portalFetch(`${API}/projects${scopedClientId != null ? `?clientId=${scopedClientId}` : ""}`, { credentials: "include" }),
       ]);
       if (cRes.ok) {
         const cData = await cRes.json();
@@ -180,13 +196,25 @@ export function ActiveTimerWidget() {
         else setClients([]);
       }
       if (pRes.ok) setProjects(await pRes.json());
-    } catch {}
-  }, []);
+    } catch {
+      // Silent fallback in widget context.
+    }
+  }, [scopedClientId]);
 
   const openStart = () => {
     loadClientsProjects();
+    if (scopedClientId != null) {
+      setStartClientId(scopedClientId);
+    }
     setShowStartDropdown(true);
   };
+
+  useEffect(() => {
+    if (scopedClientId != null) {
+      setStartClientId(scopedClientId);
+      setStartProjectId(null);
+    }
+  }, [scopedClientId]);
 
   const projectList = Array.isArray(projects)
     ? projects
@@ -197,7 +225,7 @@ export function ActiveTimerWidget() {
         : [];
 
   const filteredProjects = startClientId
-    ? projectList.filter((p: any) => p.clientId === startClientId)
+    ? projectList.filter((p: any) => Number(p?.clientId) === startClientId)
     : projectList;
 
   return (
@@ -244,12 +272,16 @@ export function ActiveTimerWidget() {
                 <label className="text-xs text-muted-foreground mb-1 block">Cliente *</label>
                 <select
                   value={startClientId ?? ""}
+                  disabled={scopedClientId != null}
                   onChange={e => { setStartClientId(Number(e.target.value) || null); setStartProjectId(null); }}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background disabled:opacity-60"
                 >
                   <option value="">Seleziona cliente...</option>
                   {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                {scopedClientId != null && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Cliente bloccato sul contesto attivo.</p>
+                )}
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Progetto</label>

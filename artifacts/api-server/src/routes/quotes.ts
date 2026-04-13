@@ -44,6 +44,12 @@ async function enrichQuote(q: typeof quoteTemplatesTable.$inferSelect) {
   };
 }
 
+function canAccessClient(clientId: number | null | undefined, accessible: number[] | "all"): boolean {
+  if (accessible === "all") return true;
+  if (!clientId) return true;
+  return accessible.includes(clientId);
+}
+
 router.get("/quotes", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const rows = await db
@@ -64,6 +70,14 @@ router.post("/quotes", async (req, res): Promise<void> => {
     return;
   }
   const data = parsed.data;
+  const userId = getUserId(req);
+  if (userId) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (!canAccessClient(data.clientId ?? null, accessible)) {
+      res.status(403).json({ error: "Accesso negato al cliente selezionato" });
+      return;
+    }
+  }
   const items = (data.items ?? []) as Array<{ description: string; quantity: number; unitPrice: number }>;
   const [row] = await db.insert(quoteTemplatesTable).values({
     name: data.name,
@@ -119,6 +133,19 @@ router.patch("/quotes/:id", async (req, res): Promise<void> => {
     .from(quoteTemplatesTable)
     .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  const userId = getUserId(req);
+  if (userId) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (!canAccessClient(existing.clientId, accessible)) {
+      res.status(403).json({ error: "Accesso negato" });
+      return;
+    }
+    const targetClientId = d.clientId !== undefined ? (d.clientId ?? null) : (existing.clientId ?? null);
+    if (!canAccessClient(targetClientId, accessible)) {
+      res.status(403).json({ error: "Accesso negato al cliente selezionato" });
+      return;
+    }
+  }
 
   const [row] = await db.update(quoteTemplatesTable).set(updates).where(eq(quoteTemplatesTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
@@ -133,6 +160,14 @@ router.post("/quotes/:id/duplicate", async (req, res): Promise<void> => {
     .from(quoteTemplatesTable)
     .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
   if (!orig) { res.status(404).json({ error: "Not found" }); return; }
+  const userId = getUserId(req);
+  if (userId) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (!canAccessClient(orig.clientId, accessible)) {
+      res.status(403).json({ error: "Accesso negato" });
+      return;
+    }
+  }
   const [copy] = await db.insert(quoteTemplatesTable).values({
     name: orig.name + " (Copia)",
     clientId: orig.clientId,
@@ -149,6 +184,18 @@ router.delete("/quotes/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   const userId = getUserId(req);
+  const [row] = await db
+    .select()
+    .from(quoteTemplatesTable)
+    .where(and(eq(quoteTemplatesTable.id, id), isNull(quoteTemplatesTable.deletedAt)));
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (userId) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (!canAccessClient(row.clientId, accessible)) {
+      res.status(403).json({ error: "Accesso negato" });
+      return;
+    }
+  }
   const r = await softDeleteRecord("quote_templates", String(id), { deletedBy: userId });
   if (!r.ok) {
     res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });

@@ -345,10 +345,26 @@ router.patch("/time-entries/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
-  const allowedFields = ["description", "activityType", "isBillable", "clientId", "projectId", "taskId", "durationSeconds"];
-  const updates: any = {};
-  for (const key of allowedFields) {
-    if (req.body[key] !== undefined) updates[key] = req.body[key];
+  const [existing] = await db.select().from(timeEntriesTable)
+    .where(and(eq(timeEntriesTable.id, id), eq(timeEntriesTable.userId, userId)))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Entry non trovata" }); return; }
+
+  const updates: Record<string, unknown> = {};
+  if (req.body.description !== undefined) updates.description = req.body.description;
+  if (req.body.activityType !== undefined) updates.activityType = req.body.activityType;
+  if (req.body.isBillable !== undefined) updates.isBillable = Boolean(req.body.isBillable);
+  if (req.body.clientId !== undefined) updates.clientId = req.body.clientId ? Number(req.body.clientId) : null;
+  if (req.body.projectId !== undefined) updates.projectId = req.body.projectId ? Number(req.body.projectId) : null;
+  if (req.body.taskId !== undefined) updates.taskId = req.body.taskId ? Number(req.body.taskId) : null;
+  if (req.body.durationSeconds !== undefined) {
+    const duration = Number(req.body.durationSeconds);
+    if (!Number.isFinite(duration) || duration < 0) {
+      res.status(400).json({ error: "durationSeconds non valido" });
+      return;
+    }
+    updates.durationSeconds = Math.floor(duration);
+    updates.endedAt = new Date(existing.startedAt.getTime() + Math.floor(duration) * 1000);
   }
 
   const [updated] = await db.update(timeEntriesTable).set(updates)
@@ -380,17 +396,27 @@ router.delete("/time-entries/:id", async (req, res): Promise<void> => {
 router.get("/time-tracker/stats", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const rawClientId = req.query.clientId;
+  const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;
+  if (rawClientId != null && rawClientId !== "" && !Number.isFinite(clientId)) {
+    res.status(400).json({ error: "clientId non valido" });
+    return;
+  }
 
   const today = todayStr();
   const weekStart = weekStartStr();
   const monthStart = monthStartStr();
 
   const rangeStart = weekStart < monthStart ? weekStart : monthStart;
+  const statConditions = [
+    eq(timeEntriesTable.userId, userId),
+    gte(timeEntriesTable.startedAt, new Date(rangeStart)),
+  ];
+  if (clientId != null) {
+    statConditions.push(eq(timeEntriesTable.clientId, clientId));
+  }
   const allEntries = await db.select().from(timeEntriesTable)
-    .where(and(
-      eq(timeEntriesTable.userId, userId),
-      gte(timeEntriesTable.startedAt, new Date(rangeStart)),
-    ))
+    .where(and(...statConditions))
     .orderBy(desc(timeEntriesTable.startedAt));
 
   const todayEntries = allEntries.filter(e => e.startedAt.toISOString().slice(0, 10) === today);

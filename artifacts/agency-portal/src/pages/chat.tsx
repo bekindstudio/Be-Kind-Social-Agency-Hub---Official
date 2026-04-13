@@ -135,7 +135,7 @@ export default function Chat() {
   return (
     <Layout>
       <div className="flex h-full">
-        <div className="w-56 border-r border-border bg-card/50 shrink-0 flex flex-col">
+        <div className="hidden md:flex w-56 border-r border-border bg-card/50 shrink-0 flex-col">
           <div className="p-4 border-b border-border">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Canali</p>
           </div>
@@ -175,7 +175,20 @@ export default function Chat() {
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="p-4 border-b border-border bg-card/30">
+          <div className="p-3 md:p-4 border-b border-border bg-card/30 space-y-2 md:space-y-0">
+            <div className="md:hidden">
+              <label className="text-[11px] text-muted-foreground">Canale</label>
+              <select
+                value={selectedProjectId ?? ""}
+                onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : null)}
+                className="mt-1 w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
+              >
+                <option value=""># Generale</option>
+                {activeClientProjectList.map((p: any) => (
+                  <option key={p.id} value={p.id}># {p.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-center gap-2">
               <Hash size={16} className="text-muted-foreground" />
               <p className="text-sm font-semibold">{channelName}</p>
@@ -188,7 +201,7 @@ export default function Chat() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4">
             {messagesLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <p className="text-muted-foreground text-sm">Caricamento messaggi...</p>
@@ -222,7 +235,7 @@ export default function Chat() {
                         }
                       )
                     }
-                    className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
+                    className="md:opacity-0 md:group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
                     title="Elimina messaggio"
                   >
                     <Trash2 size={13} />
@@ -237,7 +250,7 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 border-t border-border">
+          <div className="p-3 md:p-4 border-t border-border pb-[max(env(safe-area-inset-bottom),0.75rem)]">
             <div className="flex gap-2">
               <input
                 className="flex-1 px-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
@@ -255,9 +268,10 @@ export default function Chat() {
               <button
                 onClick={handleSend}
                 disabled={createMessage.isPending || !msgText.trim()}
-                className="px-4 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="px-4 py-2.5 min-w-[44px] min-h-[44px] bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
               >
                 <Send size={16} />
+                <span className="text-xs md:hidden">Invia</span>
               </button>
             </div>
           </div>

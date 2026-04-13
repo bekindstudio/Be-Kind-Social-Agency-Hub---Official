@@ -14,7 +14,7 @@ import { Layout } from "@/components/layout/Layout";
 import {
   Plus, Trash2, Search, ChevronDown, ChevronRight, X, Pencil,
   CheckSquare, Square, ListChecks, BarChart2, ToggleLeft, ToggleRight,
-  Columns3, List, CalendarDays, MessageSquare, Activity, GripVertical,
+  Columns3, List, CalendarDays, MessageSquare, Activity, GripVertical, SlidersHorizontal,
 } from "lucide-react";
 import { cn, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
@@ -458,6 +458,7 @@ export default function Tasks() {
   const [activityByTask, setActivityByTask] = useState<Record<number, TaskActivityItem[]>>({});
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => (localStorage.getItem("tasks-view") as any) || "list");
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const draggedTaskRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -828,14 +829,14 @@ export default function Tasks() {
 
   return (
     <Layout>
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Task</h1>
             <p className="text-muted-foreground text-sm mt-1">{taskList.length} task totali</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
             <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
               <button
                 onClick={() => { setViewMode("list"); localStorage.setItem("tasks-view", "list"); }}
@@ -854,7 +855,7 @@ export default function Tasks() {
             </div>
             <button
               onClick={() => { setEditId(null); setShowForm(!showForm); setForm(EMPTY_FORM); setChecklist([]); }}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity w-full sm:w-auto"
             >
               <Plus size={16} />
               Nuovo Task
@@ -885,7 +886,7 @@ export default function Tasks() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-xs font-medium text-muted-foreground">Titolo *</label>
                 <input
@@ -976,7 +977,7 @@ export default function Tasks() {
               <ChecklistEditor items={checklist} onChange={setChecklist} />
             )}
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex flex-col sm:flex-row gap-2 mt-4">
               <button onClick={handleSave} disabled={createTask.isPending || updateTask.isPending} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50">
                 {createTask.isPending || updateTask.isPending ? "Salvataggio..." : editId ? "Aggiorna Task" : "Crea Task"}
               </button>
@@ -986,7 +987,17 @@ export default function Tasks() {
         )}
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="mb-3 flex items-center justify-between md:hidden">
+          <button
+            onClick={() => setShowMobileFilters((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+          >
+            <SlidersHorizontal size={14} />
+            {showMobileFilters ? "Nascondi filtri" : "Mostra filtri"}
+          </button>
+          <span className="text-xs text-muted-foreground">{filtered.length} risultati</span>
+        </div>
+        <div className={cn("mb-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3", !showMobileFilters && "hidden md:grid")}>
           <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input className="w-full pl-9 pr-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Cerca task..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -1030,12 +1041,14 @@ export default function Tasks() {
         </div>
 
         {selectedTaskIds.length > 0 && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
-            <p className="text-sm text-amber-900">{selectedTaskIds.length} task selezionati</p>
-            <button onClick={handleBulkDeleteTasks} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
-              <Trash2 size={13} />
-              Elimina selezionati
-            </button>
+          <div className="fixed bottom-4 left-4 right-4 md:static md:mb-4 md:left-auto md:right-auto z-40 md:z-auto">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 shadow-lg md:shadow-none">
+              <p className="text-sm text-amber-900">{selectedTaskIds.length} task selezionati</p>
+              <button onClick={handleBulkDeleteTasks} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+                <Trash2 size={13} />
+                Elimina selezionati
+              </button>
+            </div>
           </div>
         )}
 
@@ -1143,7 +1156,8 @@ export default function Tasks() {
             })}
           </div>
         ) : (
-          <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
+          <div className="bg-card border border-card-border rounded-xl">
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-card-border bg-muted/30">
@@ -1218,6 +1232,54 @@ export default function Tasks() {
                 })}
               </tbody>
             </table>
+            </div>
+            <div className="md:hidden divide-y divide-card-border/70">
+              {filtered.map((task) => {
+                const isAvanzata = task.tipo === "avanzata";
+                const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
+                const { done, total, pct } = calcProgress(items);
+                return (
+                  <div key={task.id} className="p-3">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedTaskIds.includes(task.id)}
+                        onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
+                        className="mt-1 h-4 w-4 accent-primary"
+                        aria-label={`Seleziona task ${task.title}`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <button onClick={() => handleOpenEdit(task as TaskRow)} className="font-medium text-left break-words hover:text-primary">
+                          {task.title}
+                        </button>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", isAvanzata ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
+                            {isAvanzata ? "Avanzata" : "Semplice"}
+                          </span>
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span>
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", TASK_STATUS_COLORS[task.status])}>{TASK_STATUS_LABELS[task.status]}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                          <span>Assegnato: {task.assigneeName ?? "—"}</span>
+                          <span>Scadenza: {task.dueDate ? formatDate(task.dueDate) : "—"}</span>
+                        </div>
+                        {isAvanzata && (
+                          <div className="mt-2">
+                            <ProgressBar pct={pct} />
+                            <span className="text-[11px] text-muted-foreground">{done}/{total}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-end gap-1">
+                      <button onClick={() => handleOpenEdit(task as TaskRow)} className="p-2 text-muted-foreground hover:text-foreground" title="Modifica"><Pencil size={15} /></button>
+                      {isAvanzata && <button onClick={() => handleOpenDetail(task as TaskRow)} className="p-2 text-primary/70 hover:text-primary" title="Dettaglio"><ListChecks size={15} /></button>}
+                      <button onClick={() => handleDelete(task.id)} className="p-2 text-muted-foreground hover:text-destructive" title="Elimina"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

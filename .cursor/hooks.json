@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "type": "command",
+        "command": ".cursor/hooks/play-ready-sound.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

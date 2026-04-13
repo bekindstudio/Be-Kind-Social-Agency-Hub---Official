@@ -19,13 +19,16 @@ import ContractsNew from "@/pages/contracts-new";
 import ContractsTemplates from "@/pages/contracts-templates";
 import ContractsClassic from "@/pages/contracts-classic";
 import Settings from "@/pages/settings";
-import Reports from "@/pages/reports";
 import AiAssistant from "@/pages/ai-assistant";
 import Tools from "@/pages/tools";
 import BriefPage from "@/pages/tools/BriefPage";
 import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
 import TimeTracker from "@/pages/time-tracker";
 import CalendarPage from "@/pages/tools/CalendarPage";
+import CompetitorsPage from "@/pages/tools/CompetitorsPage";
+import AnalyticsPage from "@/pages/tools/AnalyticsPage";
+import ReportsPage from "@/pages/tools/ReportsPage";
+import CaptionAiPage from "@/pages/tools/CaptionAiPage";
 import Trash from "@/pages/trash";
 import NotFound from "@/pages/not-found";
 import SignInPage from "@/pages/sign-in";
@@ -185,7 +188,7 @@ function Router() {
         <RequireAuth><Contracts /></RequireAuth>
       </Route>
       <Route path="/reports">
-        <RequireAuth><Reports /></RequireAuth>
+        <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
       </Route>
       <Route path="/ai-assistant">
         <RequireAuth><AiAssistant /></RequireAuth>
@@ -207,6 +210,18 @@ function Router() {
       </Route>
       <Route path="/tools/calendar">
         <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/competitors">
+        <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/analytics">
+        <RequireAuth><RequireActiveClient><AnalyticsPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/reports">
+        <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/caption-ai">
+        <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
       </Route>
       <Route component={NotFound} />
     </Switch>

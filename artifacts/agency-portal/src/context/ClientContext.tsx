@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { portalFetch } from "@workspace/api-client-react";
 import type {
+  AnalyticsPeriod,
   Client,
   ClientAnalytics,
   ClientBrief,
@@ -14,6 +15,7 @@ const STORAGE_KEY = "agency_hub_data";
 type ClientStore = {
   clients: Client[];
   activeClientId: string | null;
+  metaAccountIds: Record<string, string | null>;
   briefs: Record<string, ClientBrief>;
   posts: Record<string, EditorialPost[]>;
   analytics: Record<string, ClientAnalytics>;
@@ -37,6 +39,25 @@ function startOfMonthIso(): string {
   d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+function getLastNDates(days: number): string[] {
+  return Array.from({ length: days }, (_, idx) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (days - 1 - idx));
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+function generateDailyData(baseFollowers: number, baseReach: number, baseImpressions: number, baseEngagement: number): ClientAnalytics["dailyData"] {
+  const dates = getLastNDates(30);
+  return dates.map((date, idx) => ({
+    date,
+    followers: Math.max(0, baseFollowers - (30 - idx) * 6 + Math.round(Math.random() * 18)),
+    reach: Math.max(0, baseReach + Math.round(Math.sin(idx / 4) * 1200) + Math.round(Math.random() * 900)),
+    impressions: Math.max(0, baseImpressions + Math.round(Math.cos(idx / 5) * 1800) + Math.round(Math.random() * 1300)),
+    engagement: Math.max(0, Number((baseEngagement + Math.sin(idx / 6) * 0.6 + Math.random() * 0.4).toFixed(2))),
+  }));
 }
 
 function seedStore(): ClientStore {
@@ -238,35 +259,109 @@ function seedStore(): ClientStore {
   const analytics: Record<string, ClientAnalytics> = {
     [ristoranteId]: {
       clientId: ristoranteId,
+      accountId: "ig_demo_ristorante",
       period: "ultimo_30_giorni",
       followers: 12480,
+      followersPrevious: 11980,
       followersGrowth: 4.2,
       reach: 86200,
+      reachPrevious: 80300,
       impressions: 124900,
       engagementRate: 5.4,
+      engagementRatePrevious: 4.8,
       postsPublished: 19,
+      profileViews: 4220,
+      dailyData: generateDailyData(12200, 2600, 4100, 4.6),
+      topPosts: [
+        {
+          id: makeId(),
+          caption: "Reel carbonara originale",
+          mediaType: "VIDEO",
+          timestamp: nowIso(),
+          likeCount: 740,
+          commentsCount: 63,
+          reach: 13400,
+          engagementRate: 6.9,
+        },
+        {
+          id: makeId(),
+          caption: "Carosello menu degustazione",
+          mediaType: "CAROUSEL_ALBUM",
+          timestamp: nowIso(),
+          likeCount: 610,
+          commentsCount: 41,
+          reach: 10110,
+          engagementRate: 5.8,
+        },
+      ],
       updatedAt: createdAt,
     },
     [dentistaId]: {
       clientId: dentistaId,
+      accountId: "ig_demo_dentista",
       period: "ultimo_30_giorni",
       followers: 3210,
+      followersPrevious: 3175,
       followersGrowth: 1.1,
       reach: 18700,
+      reachPrevious: 17550,
       impressions: 25100,
       engagementRate: 2.9,
+      engagementRatePrevious: 2.6,
       postsPublished: 6,
+      profileViews: 940,
+      dailyData: generateDailyData(3150, 620, 880, 2.5),
+      topPosts: [
+        {
+          id: makeId(),
+          caption: "FAQ igiene orale",
+          mediaType: "IMAGE",
+          timestamp: nowIso(),
+          likeCount: 141,
+          commentsCount: 12,
+          reach: 2210,
+          engagementRate: 3.4,
+        },
+      ],
       updatedAt: createdAt,
     },
     [modaId]: {
       clientId: modaId,
+      accountId: "ig_demo_moda",
       period: "ultimo_30_giorni",
       followers: 28100,
+      followersPrevious: 28280,
       followersGrowth: -0.6,
       reach: 105400,
+      reachPrevious: 110200,
       impressions: 162700,
       engagementRate: 3.7,
+      engagementRatePrevious: 4.1,
       postsPublished: 12,
+      profileViews: 8100,
+      dailyData: generateDailyData(27900, 3300, 5100, 3.9),
+      topPosts: [
+        {
+          id: makeId(),
+          caption: "Reel lookbook urbano",
+          mediaType: "VIDEO",
+          timestamp: nowIso(),
+          likeCount: 980,
+          commentsCount: 77,
+          reach: 18800,
+          engagementRate: 4.9,
+        },
+        {
+          id: makeId(),
+          caption: "Post capsule nero/rosa",
+          mediaType: "IMAGE",
+          timestamp: nowIso(),
+          likeCount: 650,
+          commentsCount: 28,
+          reach: 12600,
+          engagementRate: 3.8,
+        },
+      ],
       updatedAt: createdAt,
     },
   };
@@ -280,9 +375,26 @@ function seedStore(): ClientStore {
         profileUrl: "https://instagram.com/osteriadelporto",
         platform: "instagram",
         followers: 9400,
+        followersPrevious: 9100,
         engagementRate: 4.1,
         postsPerWeek: 4,
+        isPrimary: true,
         notes: "Molto forte su format reel ricette.",
+        topContent: "Reel con preparazione primi piatti e audio trend.",
+        observedStrategy: "Pubblicazione costante su format video brevi.",
+        strengths: ["Video coinvolgenti", "Community attiva"],
+        weaknesses: ["Call to action deboli"],
+        updateHistory: [
+          {
+            date: createdAt,
+            followers: 9400,
+            engagementRate: 4.1,
+            postsPerWeek: 4,
+            note: "Baseline iniziale",
+          },
+        ],
+        createdAt,
+        updatedAt: createdAt,
       },
       {
         id: makeId(),
@@ -291,9 +403,26 @@ function seedStore(): ClientStore {
         profileUrl: "https://facebook.com/bottegadelgusto",
         platform: "facebook",
         followers: 6800,
+        followersPrevious: 6700,
         engagementRate: 3.5,
         postsPerWeek: 5,
+        isPrimary: false,
         notes: "Buon livello di community management.",
+        topContent: "Foto piatti con promozioni weekend.",
+        observedStrategy: "Mix tra promozioni e contenuti educational.",
+        strengths: ["Calendario regolare"],
+        weaknesses: ["Visual poco distintivo"],
+        updateHistory: [
+          {
+            date: createdAt,
+            followers: 6800,
+            engagementRate: 3.5,
+            postsPerWeek: 5,
+            note: "Baseline iniziale",
+          },
+        ],
+        createdAt,
+        updatedAt: createdAt,
       },
     ],
     [dentistaId]: [],
@@ -305,9 +434,26 @@ function seedStore(): ClientStore {
         profileUrl: "https://instagram.com/urbanchicstore",
         platform: "instagram",
         followers: 56200,
+        followersPrevious: 55000,
         engagementRate: 3.4,
         postsPerWeek: 6,
+        isPrimary: true,
         notes: "Feed molto coerente sul visual.",
+        topContent: "Reel transizioni outfit con creator locali.",
+        observedStrategy: "Spinta su collaborazioni micro influencer.",
+        strengths: ["Coerenza visual", "Video trend"],
+        weaknesses: ["Copy poco approfonditi"],
+        updateHistory: [
+          {
+            date: createdAt,
+            followers: 56200,
+            engagementRate: 3.4,
+            postsPerWeek: 6,
+            note: "Baseline iniziale",
+          },
+        ],
+        createdAt,
+        updatedAt: createdAt,
       },
       {
         id: makeId(),
@@ -316,9 +462,26 @@ function seedStore(): ClientStore {
         profileUrl: "https://facebook.com/capsuledistrict",
         platform: "facebook",
         followers: 18400,
+        followersPrevious: 18100,
         engagementRate: 2.1,
         postsPerWeek: 3,
+        isPrimary: false,
         notes: "Più spinta su promo e ads.",
+        topContent: "Post carosello promo bundle stagionali.",
+        observedStrategy: "Contenuti orientati a conversione diretta.",
+        strengths: ["Offerte chiare"],
+        weaknesses: ["Bassa retention organica"],
+        updateHistory: [
+          {
+            date: createdAt,
+            followers: 18400,
+            engagementRate: 2.1,
+            postsPerWeek: 3,
+            note: "Baseline iniziale",
+          },
+        ],
+        createdAt,
+        updatedAt: createdAt,
       },
       {
         id: makeId(),
@@ -327,9 +490,26 @@ function seedStore(): ClientStore {
         profileUrl: "https://linkedin.com/company/milano-street-lab",
         platform: "linkedin",
         followers: 7200,
+        followersPrevious: 7000,
         engagementRate: 1.8,
         postsPerWeek: 2,
+        isPrimary: false,
         notes: "Ottimo posizionamento B2B e employer branding.",
+        topContent: "Case study visual merchandising retail.",
+        observedStrategy: "Approccio thought leadership e brand authority.",
+        strengths: ["Contenuti verticali"],
+        weaknesses: ["Frequenza ridotta"],
+        updateHistory: [
+          {
+            date: createdAt,
+            followers: 7200,
+            engagementRate: 1.8,
+            postsPerWeek: 2,
+            note: "Baseline iniziale",
+          },
+        ],
+        createdAt,
+        updatedAt: createdAt,
       },
     ],
   };
@@ -337,6 +517,11 @@ function seedStore(): ClientStore {
   return {
     clients,
     activeClientId: ristoranteId,
+    metaAccountIds: {
+      [ristoranteId]: "ig_demo_ristorante",
+      [dentistaId]: "ig_demo_dentista",
+      [modaId]: "ig_demo_moda",
+    },
     briefs,
     posts,
     analytics,
@@ -350,7 +535,10 @@ function loadStore(): ClientStore {
     if (!raw) return seedStore();
     const parsed = JSON.parse(raw) as ClientStore;
     if (!Array.isArray(parsed.clients) || parsed.clients.length === 0) return seedStore();
-    return parsed;
+    return {
+      ...parsed,
+      metaAccountIds: parsed.metaAccountIds ?? {},
+    };
   } catch {
     return seedStore();
   }
@@ -375,6 +563,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const posts = activeClientId ? store.posts[activeClientId] ?? [] : [];
   const analytics = activeClientId ? store.analytics[activeClientId] ?? null : null;
   const competitors = activeClientId ? store.competitors[activeClientId] ?? [] : [];
+  const metaAccountId = activeClientId ? store.metaAccountIds[activeClientId] ?? null : null;
 
   const setActiveClient = useCallback((client: Client) => {
     setStore((prev) => ({ ...prev, activeClientId: client.id }));
@@ -472,6 +661,24 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateCompetitor = useCallback((id: string, updates: Partial<Competitor>) => {
+    setStore((prev) => {
+      if (!prev.activeClientId) return prev;
+      const current = prev.competitors[prev.activeClientId] ?? [];
+      return {
+        ...prev,
+        competitors: {
+          ...prev.competitors,
+          [prev.activeClientId]: current.map((competitor) =>
+            competitor.id === id
+              ? { ...competitor, ...updates, id: competitor.id, clientId: competitor.clientId, updatedAt: nowIso() }
+              : competitor,
+          ),
+        },
+      };
+    });
+  }, []);
+
   const removeCompetitor = useCallback((id: string) => {
     setStore((prev) => {
       if (!prev.activeClientId) return prev;
@@ -486,10 +693,117 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const refreshAnalytics = useCallback(async () => {
+  const setMetaAccountId = useCallback((id: string | null) => {
+    setStore((prev) => {
+      if (!prev.activeClientId) return prev;
+      return {
+        ...prev,
+        metaAccountIds: {
+          ...prev.metaAccountIds,
+          [prev.activeClientId]: id,
+        },
+      };
+    });
+  }, []);
+
+  const refreshAnalytics = useCallback(async (period: AnalyticsPeriod = "30d") => {
     if (!activeClientId) return;
     setIsLoading(true);
     try {
+      const rangeToPeriod: Record<AnalyticsPeriod, string> = {
+        "7d": "day",
+        "30d": "month",
+        "90d": "month",
+        custom: "month",
+      };
+      const activeAccountId = store.metaAccountIds[activeClientId] ?? null;
+      if (activeAccountId) {
+        const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+        const until = new Date();
+        const since = new Date();
+        since.setDate(until.getDate() - (days - 1));
+        const params = new URLSearchParams({
+          period: rangeToPeriod[period],
+          since: since.toISOString().slice(0, 10),
+          until: until.toISOString().slice(0, 10),
+        });
+        const insightsRes = await portalFetch(`/api/meta/insights/${activeAccountId}?${params.toString()}`);
+        const postsRes = await portalFetch(
+          `/api/meta/posts/${activeAccountId}?${new URLSearchParams({
+            since: since.toISOString().slice(0, 10),
+            until: until.toISOString().slice(0, 10),
+            limit: "40",
+          }).toString()}`,
+        );
+        if (insightsRes.ok && postsRes.ok) {
+          const insights = (await insightsRes.json()) as Array<any>;
+          const postsPayload = (await postsRes.json()) as Array<any>;
+          setStore((prev) => {
+            const current = prev.analytics[activeClientId];
+            if (!current) return prev;
+            const followers = insights.at(-1)?.followerCount ?? current.followers;
+            const followersPrevious = insights.at(0)?.followerCount ?? current.followersPrevious;
+            const reach = insights.reduce((acc, item) => acc + Number(item.reach ?? 0), 0);
+            const reachPrevious = current.reach;
+            const impressions = insights.reduce((acc, item) => acc + Number(item.impressions ?? 0), 0);
+            const engagementRate =
+              postsPayload.length > 0
+                ? Number(
+                    (
+                      postsPayload.reduce((acc, post) => acc + Number(post.engagementRate ?? 0), 0) /
+                      postsPayload.length
+                    ).toFixed(2),
+                  )
+                : current.engagementRate;
+            const growthBase = followersPrevious > 0 ? ((followers - followersPrevious) / followersPrevious) * 100 : 0;
+            return {
+              ...prev,
+              analytics: {
+                ...prev.analytics,
+                [activeClientId]: {
+                  ...current,
+                  accountId: activeAccountId,
+                  period,
+                  followers,
+                  followersPrevious,
+                  followersGrowth: Number(growthBase.toFixed(2)),
+                  reach,
+                  reachPrevious,
+                  impressions,
+                  engagementRate,
+                  engagementRatePrevious: current.engagementRate,
+                  postsPublished: postsPayload.length,
+                  profileViews: insights.reduce((acc, item) => acc + Number(item.profileViews ?? 0), 0),
+                  dailyData: insights.map((item) => ({
+                    date: item.date,
+                    followers: Number(item.followerCount ?? followers),
+                    reach: Number(item.reach ?? 0),
+                    impressions: Number(item.impressions ?? 0),
+                    engagement: Number(item.engagement ?? 0),
+                  })),
+                  topPosts: postsPayload
+                    .sort((a, b) => Number(b.engagementRate ?? 0) - Number(a.engagementRate ?? 0))
+                    .slice(0, 6)
+                    .map((post) => ({
+                      id: String(post.id),
+                      caption: String(post.caption ?? ""),
+                      mediaType: String(post.mediaType ?? "IMAGE"),
+                      timestamp: String(post.timestamp ?? nowIso()),
+                      likeCount: Number(post.likeCount ?? 0),
+                      commentsCount: Number(post.commentsCount ?? 0),
+                      reach: Number(post.reach ?? 0),
+                      engagementRate: Number(post.engagementRate ?? 0),
+                      thumbnailUrl: post.thumbnailUrl ? String(post.thumbnailUrl) : undefined,
+                    })),
+                  updatedAt: nowIso(),
+                },
+              },
+            };
+          });
+          return;
+        }
+      }
+
       setStore((prev) => {
         const current = prev.analytics[activeClientId];
         if (!current) return prev;
@@ -504,17 +818,18 @@ export function ClientProvider({ children }: { children: ReactNode }) {
               ...current,
               followers: nextFollowers,
               followersGrowth: growth,
+              period,
               updatedAt: nowIso(),
             },
           },
         };
       });
-      // TODO: Replace mock analytics refresh with backend API request.
+      // TODO: Replace fallback mock analytics refresh with a dedicated backend endpoint.
       await new Promise((resolve) => setTimeout(resolve, 250));
     } finally {
       setIsLoading(false);
     }
-  }, [activeClientId]);
+  }, [activeClientId, store.metaAccountIds]);
 
   const createClient = useCallback((input: { name: string; industry: string; color?: string }) => {
     const newClient: Client = {
@@ -553,15 +868,26 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         ...prev.analytics,
         [newClient.id]: {
           clientId: newClient.id,
+          accountId: undefined,
           period: "ultimo_30_giorni",
           followers: 0,
+          followersPrevious: 0,
           followersGrowth: 0,
           reach: 0,
+          reachPrevious: 0,
           impressions: 0,
           engagementRate: 0,
+          engagementRatePrevious: 0,
           postsPublished: 0,
+          profileViews: 0,
+          dailyData: generateDailyData(0, 0, 0, 0),
+          topPosts: [],
           updatedAt: nowIso(),
         },
+      },
+      metaAccountIds: {
+        ...prev.metaAccountIds,
+        [newClient.id]: null,
       },
       competitors: {
         ...prev.competitors,
@@ -640,6 +966,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     posts,
     analytics,
     competitors,
+    metaAccountId,
     isLoading,
     setActiveClient,
     updateBrief,
@@ -647,8 +974,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     updatePost,
     deletePost,
     addCompetitor,
+    updateCompetitor,
     removeCompetitor,
     refreshAnalytics,
+    setMetaAccountId,
     createClient,
     importClients,
   };

@@ -22,6 +22,7 @@ import {
   Trash2,
   FileText,
   CalendarDays,
+  Target,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -49,6 +50,7 @@ const hrefPermissionMap: Record<string, string> = {
   "/team": "team",
   "/files": "files",
   "/reports": "reports",
+  "/tools/reports": "reports",
   "/quotes": "quotes",
   "/contracts": "contracts",
   "/settings": "settings",
@@ -75,7 +77,8 @@ const navGroups = [
   {
     label: "Analisi",
     items: [
-      { href: "/reports", label: "Report", icon: BarChart2 },
+      { href: "/tools/analytics", label: "Analytics", icon: BarChart2 },
+      { href: "/tools/reports", label: "Report", icon: FileText },
       { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
     ],
   },
@@ -85,6 +88,8 @@ const navGroups = [
       { href: "/tools", label: "Tools", icon: Wrench },
       { href: "/tools/brief", label: "Brief", icon: FileText },
       { href: "/tools/calendar", label: "Calendario", icon: CalendarDays },
+      { href: "/tools/caption-ai", label: "Caption AI", icon: Sparkles },
+      { href: "/tools/competitors", label: "Competitors", icon: Target },
       { href: "/tools/time-tracker", label: "Time Tracker", icon: Timer },
     ],
   },
@@ -170,7 +175,7 @@ export function Sidebar() {
                 {visibleItems.map(({ href, label, icon: Icon }) => {
                   const active = isActive(href);
                   const badge =
-                    href === "/reports" && reportBadge > 0
+                    (href === "/reports" || href === "/tools/reports") && reportBadge > 0
                       ? reportBadge
                       : href === "/tools/calendar" && calendarPendingBadge > 0
                         ? calendarPendingBadge
@@ -193,6 +198,11 @@ export function Sidebar() {
                           {badge > 0 && (
                             <span className="ml-auto text-[10px] font-bold bg-amber-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
                               {badge}
+                            </span>
+                          )}
+                          {href === "/tools/caption-ai" && (
+                            <span className="ml-auto text-[10px] font-bold bg-violet-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+                              AI
                             </span>
                           )}
                         </div>

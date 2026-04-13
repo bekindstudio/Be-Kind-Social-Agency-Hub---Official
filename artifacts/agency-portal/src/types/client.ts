@@ -45,6 +45,7 @@ export interface ClientBrief {
   topicsToCover?: string[];
   topicsToAvoid?: string[];
   brandHashtags?: string[];
+  hashtags?: string[];
   contactName?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -61,6 +62,7 @@ export interface BriefKpi {
 
 export type SocialPlatform = "instagram" | "facebook" | "linkedin" | "tiktok" | "x" | "youtube";
 export type ContentFormat = "Post foto" | "Carosello" | "Reel/Video" | "Stories" | "Live" | "Articoli";
+export type AnalyticsPeriod = "7d" | "30d" | "90d" | "custom";
 
 export interface EditorialPost {
   id: string;
@@ -79,13 +81,36 @@ export interface EditorialPost {
 
 export interface ClientAnalytics {
   clientId: string;
+  accountId?: string;
   period: string;
   followers: number;
+  followersPrevious: number;
   followersGrowth: number;
   reach: number;
+  reachPrevious: number;
   impressions: number;
   engagementRate: number;
+  engagementRatePrevious: number;
   postsPublished: number;
+  profileViews?: number;
+  dailyData: {
+    date: string;
+    followers: number;
+    reach: number;
+    impressions: number;
+    engagement: number;
+  }[];
+  topPosts: {
+    id: string;
+    caption: string;
+    mediaType: string;
+    timestamp: string;
+    likeCount: number;
+    commentsCount: number;
+    reach: number;
+    engagementRate: number;
+    thumbnailUrl?: string;
+  }[];
   updatedAt: string;
 }
 
@@ -94,11 +119,26 @@ export interface Competitor {
   clientId: string;
   name: string;
   profileUrl: string;
-  platform: "instagram" | "facebook" | "linkedin";
+  platform: "instagram" | "facebook" | "linkedin" | "tiktok" | "x";
   followers: number;
+  followersPrevious?: number;
   engagementRate: number;
   postsPerWeek: number;
+  isPrimary: boolean;
   notes: string;
+  topContent?: string;
+  observedStrategy?: string;
+  strengths: string[];
+  weaknesses: string[];
+  updateHistory: {
+    date: string;
+    followers: number;
+    engagementRate: number;
+    postsPerWeek: number;
+    note?: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ClientContextType {
@@ -108,6 +148,7 @@ export interface ClientContextType {
   posts: EditorialPost[];
   analytics: ClientAnalytics | null;
   competitors: Competitor[];
+  metaAccountId: string | null;
   isLoading: boolean;
   setActiveClient: (client: Client) => void;
   updateBrief: (brief: Partial<ClientBrief>) => void;
@@ -115,8 +156,10 @@ export interface ClientContextType {
   updatePost: (id: string, updates: Partial<EditorialPost>) => void;
   deletePost: (id: string) => void;
   addCompetitor: (competitor: Omit<Competitor, "id">) => void;
+  updateCompetitor: (id: string, updates: Partial<Competitor>) => void;
   removeCompetitor: (id: string) => void;
-  refreshAnalytics: () => Promise<void>;
+  refreshAnalytics: (period?: AnalyticsPeriod) => Promise<void>;
+  setMetaAccountId: (id: string | null) => void;
   createClient: (input: { name: string; industry: string; color?: string }) => void;
   importClients: (clients: Client[]) => void;
 }

@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, socialAccountsTable, clientsTable } from "@workspace/db";
+import { readFile, unlink, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const router: IRouter = Router();
 
@@ -23,6 +25,47 @@ async function graphGet(path: string, token: string, params: Record<string, stri
     throw new Error(`Graph API error for ${path}: ${err}`);
   }
   return res.json() as Promise<any>;
+}
+
+function mapMetaError(metaError: any) {
+  const code = Number(metaError?.error?.code ?? metaError?.code ?? 0);
+  const message = String(metaError?.error?.message ?? metaError?.message ?? "Meta API error");
+  if (code === 190) return { status: 401, body: { error: "TOKEN_EXPIRED", metaCode: code, message } };
+  if (code === 200) return { status: 403, body: { error: "INSUFFICIENT_PERMISSIONS", metaCode: code, message } };
+  if (code === 4) {
+    const retryAfter = Number(metaError?.headers?.["x-business-use-case-usage"] ?? 60);
+    return { status: 429, body: { error: "RATE_LIMIT", retryAfter, metaCode: code, message } };
+  }
+  return { status: 500, body: { error: "META_API_ERROR", metaCode: code, message } };
+}
+
+const LOCAL_META_TOKEN_PATH = resolve(process.cwd(), ".meta-token.local");
+
+async function readMetaAccessToken(): Promise<string | null> {
+  if (process.env.META_ACCESS_TOKEN && process.env.META_ACCESS_TOKEN.trim().length > 0) {
+    return process.env.META_ACCESS_TOKEN.trim();
+  }
+  try {
+    const fileRaw = await readFile(LOCAL_META_TOKEN_PATH, "utf-8");
+    const parsed = JSON.parse(fileRaw) as { accessToken?: string };
+    return parsed.accessToken?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function persistMetaAccessToken(token: string): Promise<void> {
+  process.env.META_ACCESS_TOKEN = token;
+  await writeFile(LOCAL_META_TOKEN_PATH, JSON.stringify({ accessToken: token, updatedAt: new Date().toISOString() }, null, 2), "utf-8");
+}
+
+async function clearMetaAccessToken(): Promise<void> {
+  process.env.META_ACCESS_TOKEN = "";
+  try {
+    await unlink(LOCAL_META_TOKEN_PATH);
+  } catch {
+    // ignore if file does not exist
+  }
 }
 
 async function exchangeForLongLivedToken(shortToken: string): Promise<{ token: string; expires: Date }> {
@@ -174,6 +217,165 @@ function generateMockInsights(range: string, seed = 42) {
 
   return { mock: true, instagram: ig, metaAds: meta };
 }
+
+// ─── Generic Meta API Routes (token-based) ───────────────────────────────────
+
+router.get("/meta/accounts", async (_req, res): Promise<void> => {
+  try {
+    const token = await readMetaAccessToken();
+    if (!token) {
+      res.status(404).json({ error: "TOKEN_MISSING", message: "META_ACCESS_TOKEN non configurato" });
+      return;
+    }
+    const payload = await graphGet("/me/accounts", token, { fields: "id,name,instagram_business_account" });
+    const accounts = (payload.data ?? []).map((account: any) => ({
+      id: String(account.id),
+      name: String(account.name ?? ""),
+      instagramBusinessAccountId: account.instagram_business_account?.id ? String(account.instagram_business_account.id) : null,
+    }));
+    res.json(accounts);
+  } catch (error: any) {
+    console.error("Meta /accounts error:", error);
+    const mapped = mapMetaError(error);
+    res.status(mapped.status).json(mapped.body);
+  }
+});
+
+router.get("/meta/token/status", async (_req, res): Promise<void> => {
+  try {
+    const token = await readMetaAccessToken();
+    if (!token) {
+      res.json({ connected: false, tokenExpired: false });
+      return;
+    }
+    try {
+      const payload = await graphGet("/me/accounts", token, { fields: "id,name,instagram_business_account", limit: "1" });
+      res.json({
+        connected: true,
+        tokenExpired: false,
+        accountsCount: Array.isArray(payload.data) ? payload.data.length : 0,
+      });
+      return;
+    } catch (error: any) {
+      const mapped = mapMetaError(error);
+      if (mapped.body.error === "TOKEN_EXPIRED") {
+        res.json({ connected: false, tokenExpired: true });
+        return;
+      }
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
+  } catch (error: any) {
+    console.error("Meta /token/status error:", error);
+    const mapped = mapMetaError(error);
+    res.status(mapped.status).json(mapped.body);
+  }
+});
+
+router.post("/meta/token", async (req, res): Promise<void> => {
+  try {
+    const accessToken = String(req.body?.accessToken ?? "").trim();
+    if (!accessToken) {
+      res.status(400).json({ error: "MISSING_ACCESS_TOKEN" });
+      return;
+    }
+    const appId = process.env.META_APP_ID;
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appId || !appSecret) {
+      res.status(500).json({ error: "META_APP_CONFIG_MISSING" });
+      return;
+    }
+    const url = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
+    url.searchParams.set("grant_type", "fb_exchange_token");
+    url.searchParams.set("client_id", appId);
+    url.searchParams.set("client_secret", appSecret);
+    url.searchParams.set("fb_exchange_token", accessToken);
+    const response = await fetch(url.toString());
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      const mapped = mapMetaError(payload);
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
+    const longLivedToken = String(payload.access_token ?? "");
+    const expiresIn = Number(payload.expires_in ?? 0);
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+    await persistMetaAccessToken(longLivedToken);
+    res.json({ success: true, expiresAt });
+  } catch (error: any) {
+    console.error("Meta /token error:", error);
+    const mapped = mapMetaError(error);
+    res.status(mapped.status).json(mapped.body);
+  }
+});
+
+router.post("/meta/token/disconnect", async (_req, res): Promise<void> => {
+  try {
+    await clearMetaAccessToken();
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Meta /token/disconnect error:", error);
+    res.status(500).json({ error: "DISCONNECT_ERROR", message: error?.message ?? "Errore disconnessione token" });
+  }
+});
+
+router.get("/meta/posts/:accountId", async (req, res): Promise<void> => {
+  try {
+    const token = await readMetaAccessToken();
+    if (!token) {
+      res.status(404).json({ error: "TOKEN_MISSING", message: "META_ACCESS_TOKEN non configurato" });
+      return;
+    }
+    const accountId = String(req.params.accountId);
+    const since = String(req.query.since ?? "");
+    const until = String(req.query.until ?? "");
+    const limit = String(req.query.limit ?? "20");
+    const media = await graphGet(`/${accountId}/media`, token, {
+      fields: "id,caption,media_type,timestamp,like_count,comments_count,media_url,thumbnail_url",
+      limit,
+      ...(since ? { since } : {}),
+      ...(until ? { until } : {}),
+    });
+    const rows = await Promise.all(
+      (media.data ?? []).map(async (item: any) => {
+        let reach = 0;
+        let impressions = 0;
+        let engagement = 0;
+        try {
+          const insight = await graphGet(`/${item.id}/insights`, token, { metric: "impressions,reach,engagement" });
+          const lookup = (name: string) => {
+            const metric = (insight.data ?? []).find((entry: any) => entry.name === name);
+            return Number(metric?.values?.[0]?.value ?? 0);
+          };
+          reach = lookup("reach");
+          impressions = lookup("impressions");
+          engagement = lookup("engagement");
+        } catch (error: any) {
+          console.error("Meta post insight error:", error?.message ?? error);
+        }
+        const denominator = reach > 0 ? reach : 1;
+        const engagementRate = Number((((Number(item.like_count ?? 0) + Number(item.comments_count ?? 0) + engagement) / denominator) * 100).toFixed(2));
+        return {
+          id: String(item.id),
+          caption: String(item.caption ?? ""),
+          mediaType: String(item.media_type ?? "IMAGE"),
+          timestamp: String(item.timestamp ?? ""),
+          likeCount: Number(item.like_count ?? 0),
+          commentsCount: Number(item.comments_count ?? 0),
+          reach,
+          impressions,
+          engagementRate,
+          thumbnailUrl: item.thumbnail_url ?? item.media_url ?? undefined,
+        };
+      }),
+    );
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Meta /posts error:", error);
+    const mapped = mapMetaError(error);
+    res.status(mapped.status).json(mapped.body);
+  }
+});
 
 // ─── Agency-level Routes ─────────────────────────────────────────────────────
 
@@ -975,8 +1177,54 @@ async function autoSyncClient(clientId: number, agencyAccount: any): Promise<voi
 
 // GET /api/meta/insights/:clientId
 router.get("/meta/insights/:clientId", async (req, res): Promise<void> => {
-  const clientId = Number(req.params.clientId);
-  if (isNaN(clientId)) { res.status(400).json({ error: "clientId non valido" }); return; }
+  const rawTargetId = String(req.params.clientId);
+  const clientId = Number(rawTargetId);
+  if (Number.isNaN(clientId)) {
+    try {
+      const token = await readMetaAccessToken();
+      if (!token) {
+        res.status(404).json({ error: "TOKEN_MISSING", message: "META_ACCESS_TOKEN non configurato" });
+        return;
+      }
+      const period = (req.query.period as "day" | "week" | "month" | undefined) ?? "day";
+      const since = String(req.query.since ?? "");
+      const until = String(req.query.until ?? "");
+      const payload = await graphGet(`/${rawTargetId}/insights`, token, {
+        metric: "impressions,reach,follower_count,profile_views,engagement",
+        period,
+        ...(since ? { since } : {}),
+        ...(until ? { until } : {}),
+      });
+      const byDate = new Map<string, { date: string; impressions: number; reach: number; followerCount: number; profileViews: number; engagement: number }>();
+      for (const metric of payload.data ?? []) {
+        for (const item of metric.values ?? []) {
+          const date = String(item.end_time ?? item.value?.date ?? new Date().toISOString()).slice(0, 10);
+          const current = byDate.get(date) ?? {
+            date,
+            impressions: 0,
+            reach: 0,
+            followerCount: 0,
+            profileViews: 0,
+            engagement: 0,
+          };
+          const numeric = Number(item.value ?? 0);
+          if (metric.name === "impressions") current.impressions = numeric;
+          if (metric.name === "reach") current.reach = numeric;
+          if (metric.name === "follower_count") current.followerCount = numeric;
+          if (metric.name === "profile_views") current.profileViews = numeric;
+          if (metric.name === "engagement") current.engagement = numeric;
+          byDate.set(date, current);
+        }
+      }
+      res.json(Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date)));
+      return;
+    } catch (error: any) {
+      console.error("Meta account insights error:", error);
+      const mapped = mapMetaError(error);
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
+  }
 
   const range = (req.query.range as string) ?? "30d";
   const autoSync = req.query.sync !== "false";

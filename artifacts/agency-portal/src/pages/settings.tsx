@@ -37,7 +37,6 @@ type AgencyMeta = {
   tokenExpired?: boolean;
   tokenExpiresAt?: string | null;
   tokenDaysLeft?: number | null;
-  metaUserId?: string;
   metaUserName?: string;
   pages?: any[];
   instagramAccounts?: any[];
@@ -93,9 +92,68 @@ export default function Settings() {
 
   const fetchAgencyMeta = useCallback(async () => {
     try {
-      const data = await portalFetch("/api/meta/agency-status").then((r) => r.json());
-      setMeta(data);
-    } catch { setMeta({ connected: false }); }
+      const statusRes = await portalFetch("/api/meta/token/status");
+      const statusData = await statusRes.json().catch(() => ({}));
+      if (!statusRes.ok) {
+        setMeta({ connected: false });
+        return;
+      }
+
+      if (statusData?.tokenExpired) {
+        setMeta({
+          connected: true,
+          tokenExpired: true,
+          metaUserName: "Account Meta",
+          pages: [],
+          instagramAccounts: [],
+          adAccounts: [],
+          lastSyncedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      if (!statusData?.connected) {
+        setMeta({ connected: false });
+        return;
+      }
+
+      const accountsRes = await portalFetch("/api/meta/accounts");
+      const accounts = await accountsRes.json().catch(() => []);
+      if (!accountsRes.ok) {
+        if (accounts?.error === "TOKEN_EXPIRED") {
+          setMeta({
+            connected: true,
+            tokenExpired: true,
+            metaUserName: "Account Meta",
+            pages: [],
+            instagramAccounts: [],
+            adAccounts: [],
+            lastSyncedAt: new Date().toISOString(),
+          });
+          return;
+        }
+        setMeta({ connected: false });
+        return;
+      }
+
+      setMeta({
+        connected: true,
+        tokenExpired: false,
+        metaUserName: "Account Meta",
+        pages: Array.isArray(accounts)
+          ? accounts.map((account: any) => ({
+              id: account.id,
+              name: account.name,
+              igUserId: account.instagramBusinessAccountId ?? null,
+            }))
+          : [],
+        instagramAccounts: [],
+        adAccounts: [],
+        lastSyncedAt: new Date().toISOString(),
+      });
+    } catch {
+      setMeta({ connected: false });
+    }
   }, []);
 
   useEffect(() => {
@@ -110,7 +168,7 @@ export default function Settings() {
     setMetaConnecting(true);
     setMetaConnectError("");
     try {
-      const res = await portalFetch("/api/meta/connect-agency", {
+      const res = await portalFetch("/api/meta/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken: metaToken.trim() }),
@@ -133,7 +191,6 @@ export default function Settings() {
   const handleMetaRefresh = async () => {
     setMetaRefreshing(true);
     try {
-      await portalFetch("/api/meta/refresh-agency", { method: "POST" });
       await fetchAgencyMeta();
     } finally {
       setMetaRefreshing(false);
@@ -141,8 +198,8 @@ export default function Settings() {
   };
 
   const handleMetaDisconnect = async () => {
-    if (!confirm("Disconnettere l'account Meta dell'agenzia? Tutti i clienti perderanno l'accesso ai dati Meta.")) return;
-    await portalFetch("/api/meta/disconnect-agency", { method: "POST" });
+    if (!confirm("Disconnettere il token Meta salvato?")) return;
+    await portalFetch("/api/meta/token/disconnect", { method: "POST" });
     setMeta({ connected: false });
     setMetaToken("");
   };

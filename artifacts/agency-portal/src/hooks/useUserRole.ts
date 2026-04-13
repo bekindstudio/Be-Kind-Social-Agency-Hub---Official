@@ -13,24 +13,31 @@ export function useUserRole() {
 
   const fetchRole = useCallback(async () => {
     try {
-      const res = await portalFetch("/api/roles/my-role");
+      const res = await portalFetch("/api/roles/my-role", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setUserRole(data);
-      } else {
-        // Fallback: avoid hiding navigation if role endpoint is temporarily unavailable.
+      } else if (res.status === 401 || res.status === 403) {
+        // Unauthenticated/forbidden: keep UI usable without escalating permissions.
         setUserRole({
-          role: "admin",
-          permissions: ["clients", "projects", "tasks", "team", "chat", "files", "quotes", "contracts", "reports", "settings", "roles"],
-          label: "Amministratore",
+          role: "viewer",
+          permissions: ["projects", "tasks", "chat"],
+          label: "Osservatore",
+        });
+      } else {
+        // Fallback: keep essential navigation without elevated permissions.
+        setUserRole({
+          role: "viewer",
+          permissions: ["projects", "tasks", "chat"],
+          label: "Osservatore",
         });
       }
     } catch {
-      // Keep UI accessible even if auth/role API fails.
+      // Keep UI accessible even if auth/role API fails, without granting admin.
       setUserRole({
-        role: "admin",
-        permissions: ["clients", "projects", "tasks", "team", "chat", "files", "quotes", "contracts", "reports", "settings", "roles"],
-        label: "Amministratore",
+        role: "viewer",
+        permissions: ["projects", "tasks", "chat"],
+        label: "Osservatore",
       });
     } finally {
       setLoading(false);

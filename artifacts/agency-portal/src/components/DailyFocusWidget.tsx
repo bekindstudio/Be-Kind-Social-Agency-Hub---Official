@@ -11,11 +11,18 @@ interface WidgetData {
 
 export function DailyFocusWidget({ onClick }: { onClick: () => void }) {
   const [data, setData] = useState<WidgetData | null>(null);
+  const [authUnavailable, setAuthUnavailable] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await portalFetch(`${API}/daily-focus`);
+      const res = await portalFetch(`${API}/daily-focus`, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        setAuthUnavailable(true);
+        setData(null);
+        return;
+      }
       if (!res.ok) return;
+      setAuthUnavailable(false);
       const json = await res.json();
       const tasks = json.tasks ?? [];
       const session = json.session;
@@ -28,12 +35,13 @@ export function DailyFocusWidget({ onClick }: { onClick: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (authUnavailable) return;
     fetchData();
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, authUnavailable]);
 
-  if (!data || data.totalTasks === 0) return null;
+  if (authUnavailable || !data || data.totalTasks === 0) return null;
 
   const allDone = data.completedTasks >= data.totalTasks;
   const progress = data.totalTasks > 0 ? (data.completedTasks / data.totalTasks) * 100 : 0;

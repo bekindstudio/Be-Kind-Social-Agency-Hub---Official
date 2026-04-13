@@ -100,6 +100,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   const [showDelegate, setShowDelegate] = useState(false);
   const [delegateTarget, setDelegateTarget] = useState<number | null>(null);
   const [showTip, setShowTip] = useState(false);
+  const [authUnavailable, setAuthUnavailable] = useState(false);
   const [animatingOut, setAnimatingOut] = useState(false);
   const [memberName, setMemberName] = useState<string | null>(null);
   const lastQ1Index = useRef(-1);
@@ -109,8 +110,14 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await portalFetch(`${API}/daily-focus`);
+      const res = await portalFetch(`${API}/daily-focus`, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        setAuthUnavailable(true);
+        setTasks([]);
+        return;
+      }
       if (!res.ok) return;
+      setAuthUnavailable(false);
       const data = await res.json();
       setTasks(data.tasks ?? []);
       setTeamMembers(data.teamMembers ?? []);
@@ -129,6 +136,11 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
 
   useEffect(() => {
     if (open) {
+      if (authUnavailable) {
+        setTasks([]);
+        setLoading(false);
+        return;
+      }
       fetchTasks();
       setCurrentIndex(0);
       setCompleted(new Set());
@@ -136,12 +148,13 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
       setDelegated(new Set());
       setPostponed(new Set());
     }
-  }, [open, fetchTasks]);
+  }, [open, fetchTasks, authUnavailable]);
 
   const logAction = useCallback(async (taskId: number, action: string, extra?: any) => {
     try {
       await portalFetch(`${API}/daily-focus/action`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, action, ...extra }),
       });
@@ -152,6 +165,7 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
     try {
       await portalFetch(`${API}/daily-focus/session`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tasksShownJson: tasks.map(t => t.id),

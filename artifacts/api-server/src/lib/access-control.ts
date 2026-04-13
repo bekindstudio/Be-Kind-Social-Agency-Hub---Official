@@ -8,6 +8,8 @@ import type { Request } from "express";
  */
 export function isApiAuthBypass(): boolean {
   const v = process.env.API_AUTH_DISABLED;
+  // Default to bypass in local/demo environments unless explicitly disabled.
+  if (v == null || v.trim() === "") return true;
   return v === "true" || v === "1";
 }
 

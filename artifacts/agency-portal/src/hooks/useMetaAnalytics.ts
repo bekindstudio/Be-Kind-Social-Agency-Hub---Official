@@ -80,20 +80,80 @@ export function useMetaAnalytics(clientId: string, period: AnalyticsPeriod): Use
     setIsLoading(true);
     setError(null);
     try {
-      const accounts = await metaApi.getAccounts();
-      const account = accounts[0];
-      if (!account?.id) {
-        const noAccountError: MetaApiError = { error: "UNKNOWN", message: "No linked Meta account" };
-        setError(noAccountError);
-        setData(null);
-        setPosts([]);
-        return;
-      }
       const range = buildRange(period);
-      const [insights, topPosts] = await Promise.all([
-        metaApi.getInsights(String(account.id), range),
-        metaApi.getPosts(String(account.id), { since: range.since, until: range.until, limit: "30" }),
-      ]);
+      const numericClientId = Number(clientId);
+      let insights: MetaInsightData[] = [];
+      let topPosts: MetaPostData[] = [];
+
+      if (Number.isFinite(numericClientId) && numericClientId > 0) {
+        const params = new URLSearchParams({
+          range: period === "7d" ? "7d" : period === "90d" ? "90d" : "30d",
+          since: range.since,
+          until: range.until,
+          sync: "true",
+        });
+
+        // Best effort sync with assigned Meta accounts before loading report/analytics data.
+        await fetch(`/api/meta/sync/${numericClientId}?since=${range.since}&until=${range.until}`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => null);
+
+        const response = await fetch(`/api/meta/insights/${numericClientId}?${params.toString()}`, {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw payload;
+
+        const instagram = (payload as any)?.instagram ?? {};
+        const summary = instagram.summary ?? {};
+        const followerTrend = instagram.followerTrend ?? { data: [] };
+        const trendData = Array.isArray(followerTrend.data) ? followerTrend.data : [];
+        const trendLen = trendData.length || 1;
+        const sinceDate = new Date(range.since);
+
+        insights = trendData.map((followers: number, index: number) => {
+          const d = new Date(sinceDate);
+          d.setDate(d.getDate() + index);
+          return {
+            date: d.toISOString().slice(0, 10),
+            impressions: Math.round(Number(summary.impressions ?? 0) / trendLen),
+            reach: Math.round(Number(summary.reach ?? 0) / trendLen),
+            followerCount: Number(followers ?? 0),
+            profileViews: Math.round(Number(summary.profileViews ?? 0) / trendLen),
+            engagement: Number(summary.engagementRate ?? 0),
+          };
+        });
+
+        const rawPosts = Array.isArray(instagram.topPosts) ? instagram.topPosts : [];
+        topPosts = rawPosts.map((post: any) => ({
+          id: String(post.id ?? crypto.randomUUID()),
+          caption: String(post.caption ?? post.description ?? ""),
+          mediaType: String(post.mediaType ?? "IMAGE"),
+          timestamp: String(post.timestamp ?? new Date().toISOString()),
+          likeCount: Number(post.likes ?? post.likeCount ?? 0),
+          commentsCount: Number(post.comments ?? post.commentsCount ?? 0),
+          reach: Number(post.reach ?? 0),
+          impressions: Number(post.impressions ?? 0),
+          engagementRate: Number(post.engagementRate ?? post.engagement ?? 0),
+          thumbnailUrl: typeof post.thumbnailUrl === "string" ? post.thumbnailUrl : undefined,
+        }));
+      } else {
+        const accounts = await metaApi.getAccounts();
+        const account = accounts[0];
+        if (!account?.id) {
+          const noAccountError: MetaApiError = { error: "UNKNOWN", message: "No linked Meta account" };
+          setError(noAccountError);
+          setData(null);
+          setPosts([]);
+          return;
+        }
+        [insights, topPosts] = await Promise.all([
+          metaApi.getInsights(String(account.id), range),
+          metaApi.getPosts(String(account.id), { since: range.since, until: range.until, limit: "30" }),
+        ]);
+      }
+
       const syncAt = new Date().toISOString();
       setData({ daily: insights });
       setPosts(topPosts);

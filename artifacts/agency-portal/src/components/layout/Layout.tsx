@@ -24,7 +24,8 @@ export function Layout({ children }: LayoutProps) {
     let mounted = true;
     const check = async () => {
       try {
-        const res = await portalFetch("/api/daily-focus/should-open");
+        const res = await portalFetch("/api/daily-focus/should-open", { credentials: "include" });
+        if (res.status === 401 || res.status === 403) return;
         if (!res.ok) return;
         const data = await res.json();
         if (mounted && data?.shouldOpen) {

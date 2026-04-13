@@ -21,8 +21,27 @@ async function graphGet(path: string, token: string, params: Record<string, stri
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Graph API error for ${path}: ${err}`);
+    const text = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const metaError = parsed?.error ?? parsed ?? {};
+    const error = new Error(
+      String(metaError?.message ?? `Graph API error for ${path}: ${text}`),
+    ) as Error & {
+      code?: number;
+      type?: string;
+      fbtrace_id?: string;
+      graphPath?: string;
+    };
+    if (typeof metaError?.code === "number") error.code = metaError.code;
+    if (typeof metaError?.type === "string") error.type = metaError.type;
+    if (typeof metaError?.fbtrace_id === "string") error.fbtrace_id = metaError.fbtrace_id;
+    error.graphPath = path;
+    throw error;
   }
   return res.json() as Promise<any>;
 }

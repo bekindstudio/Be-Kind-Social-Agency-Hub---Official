@@ -66,12 +66,19 @@ export function ActiveTimerWidget() {
   const [startClientId, setStartClientId] = useState<number | null>(null);
   const [startProjectId, setStartProjectId] = useState<number | null>(null);
   const [startDescription, setStartDescription] = useState("");
+  const [authUnavailable, setAuthUnavailable] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSession = useCallback(async () => {
     try {
       const res = await portalFetch(`${API}/timer/active`, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        setAuthUnavailable(true);
+        setSession(null);
+        return;
+      }
       if (!res.ok) return;
+      setAuthUnavailable(false);
       const data = await res.json();
       setSession(data);
       if (data?.taskTitle) setStopDescription(data.taskTitle);
@@ -79,10 +86,11 @@ export function ActiveTimerWidget() {
   }, []);
 
   useEffect(() => {
+    if (authUnavailable) return;
     fetchSession();
     const poll = setInterval(fetchSession, 15000);
     return () => clearInterval(poll);
-  }, [fetchSession]);
+  }, [fetchSession, authUnavailable]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -254,6 +262,7 @@ export function ActiveTimerWidget() {
       ) : (
         <button
           onClick={openStart}
+          disabled={authUnavailable}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-xs font-medium transition-colors"
           title="Avvia timer"
         >

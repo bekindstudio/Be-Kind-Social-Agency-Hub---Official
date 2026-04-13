@@ -104,6 +104,7 @@ const AUTOFILL_PASTE_STORAGE_KEY = "agency_brief_autofill_on_paste";
 async function apiFetch(path: string, options?: RequestInit) {
   return portalFetch(path, {
     ...options,
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...options?.headers },
   });
 }
@@ -228,6 +229,7 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   const [autoFillNotice, setAutoFillNotice] = useState("");
   const [pasteTick, setPasteTick] = useState(0);
   const [autoFillOnPaste, setAutoFillOnPaste] = useState(true);
+  const lastAutoFillPasteTickRef = useRef(0);
   const strategyRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
@@ -328,8 +330,10 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   useEffect(() => {
     if (pasteTick === 0) return;
     if (!autoFillOnPaste) return;
+    if (lastAutoFillPasteTickRef.current === pasteTick) return;
     const value = rawText.trim();
     if (!value || parsing) return;
+    lastAutoFillPasteTickRef.current = pasteTick;
     setAutoFillNotice("Testo incollato rilevato: autocompilazione brief in corso...");
     const timer = setTimeout(async () => {
       await parseAndFillBrief();

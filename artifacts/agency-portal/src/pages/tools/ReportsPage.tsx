@@ -7,6 +7,7 @@ import { useClientContext } from "@/context/ClientContext";
 import { useMetaAnalytics } from "@/hooks/useMetaAnalytics";
 import { useToast } from "@/hooks/use-toast";
 import { MetaConnectionBanner } from "@/components/shared/MetaConnectionBanner";
+import { portalFetch } from "@workspace/api-client-react";
 
 function monthLabel(value: string): string {
   const [year, month] = value.split("-");
@@ -28,6 +29,7 @@ export default function ReportsPage() {
   const [strategicNotes, setStrategicNotes] = useState("Testare 2 nuove rubriche editoriali e un boost paid per i top post.");
   const [includeCompetitors, setIncludeCompetitors] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [history, setHistory] = useState<SavedReport[]>(() => {
     if (!activeClient?.id) return [];
     try {
@@ -103,6 +105,69 @@ export default function ReportsPage() {
     [activeClient?.name, month, introMessage, nextGoals, strategicNotes, includeCompetitors, sections, effectiveAnalytics, nextMonthPosts],
   );
 
+  const selectedClientNumericId = useMemo(() => {
+    const raw = Number(activeClient?.id);
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }, [activeClient?.id]);
+
+  const selectedMonthRange = useMemo(() => {
+    const [year, monthNum] = month.split("-").map(Number);
+    const start = new Date(year, (monthNum ?? 1) - 1, 1);
+    const end = new Date(year, monthNum ?? 1, 0);
+    return {
+      since: start.toISOString().slice(0, 10),
+      until: end.toISOString().slice(0, 10),
+    };
+  }, [month]);
+
+  const buildFallbackMetrics = () => ({
+    mock: true,
+    instagram: {
+      summary: {
+        followers: effectiveAnalytics?.followers ?? 0,
+        followerGrowth: effectiveAnalytics?.followersGrowth ?? 0,
+        reach: effectiveAnalytics?.reach ?? 0,
+        impressions: effectiveAnalytics?.impressions ?? 0,
+        engagementRate: effectiveAnalytics?.engagementRate ?? 0,
+        profileViews: effectiveAnalytics?.profileViews ?? 0,
+      },
+      topPosts: (effectiveAnalytics?.topPosts ?? []).map((post) => ({
+        id: post.id,
+        caption: post.caption,
+        mediaType: post.mediaType,
+        timestamp: post.timestamp,
+        likes: post.likeCount,
+        comments: post.commentsCount,
+        reach: post.reach,
+        impressions: 0,
+        engagementRate: post.engagementRate,
+      })),
+    },
+    metaAds: null,
+  });
+
+  const syncAndFetchReportMetrics = async () => {
+    if (!selectedClientNumericId) return null;
+    const qs = new URLSearchParams({
+      range: "30d",
+      since: selectedMonthRange.since,
+      until: selectedMonthRange.until,
+      sync: "true",
+    });
+    await portalFetch(`/api/meta/sync/${selectedClientNumericId}?since=${selectedMonthRange.since}&until=${selectedMonthRange.until}`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => null);
+    const res = await portalFetch(`/api/meta/insights/${selectedClientNumericId}?${qs.toString()}`, {
+      credentials: "include",
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(payload?.error ?? "Errore caricamento metriche Meta");
+    }
+    return payload;
+  };
+
   const persistHistory = (records: SavedReport[]) => {
     if (!activeClient?.id) return;
     localStorage.setItem(storageKey(activeClient.id), JSON.stringify(records));
@@ -124,10 +189,50 @@ export default function ReportsPage() {
     persistHistory([entry, ...history].slice(0, 20));
   };
 
+  const handleGeneratePreview = async () => {
+    if (!activeClient) return;
+    setIsGeneratingReport(true);
+    try {
+      await syncAndFetchReportMetrics();
+      saveHistoryEntry();
+      toast({ title: "Anteprima aggiornata", description: "Dati aggiornati dal token Meta collegato." });
+    } catch (err: any) {
+      saveHistoryEntry();
+      toast({
+        title: "Anteprima salvata",
+        description: err?.message ?? "Aggiornamento Meta non disponibile: uso dati locali.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   const handleExport = async () => {
     if (!previewRef.current || !activeClient) return;
     setIsExporting(true);
     try {
+      const serverMetrics = (await syncAndFetchReportMetrics().catch(() => null)) ?? buildFallbackMetrics();
+      if (selectedClientNumericId) {
+        await portalFetch("/api/reports", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: selectedClientNumericId,
+            tipo: "mensile",
+            period: month,
+            periodLabel: monthLabel(month),
+            periodoInizio: selectedMonthRange.since,
+            periodoFine: selectedMonthRange.until,
+            metrics: serverMetrics,
+            isRealData: !serverMetrics?.mock,
+            riepilogoEsecutivo: introMessage,
+            strategiaProssimoPeriodo: nextGoals,
+            noteAggiuntive: strategicNotes,
+          }),
+        });
+      }
       await exportReportPdf(previewRef.current, `report-${activeClient.name}-${month}.pdf`);
       saveHistoryEntry();
       toast({ title: "Report scaricato", description: "Esportazione PDF completata con successo." });
@@ -198,8 +303,8 @@ export default function ReportsPage() {
           </label>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <button onClick={() => saveHistoryEntry()} className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium">
-              Genera anteprima
+            <button onClick={handleGeneratePreview} disabled={isGeneratingReport} className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium disabled:opacity-60">
+              {isGeneratingReport ? "Aggiornamento dati..." : "Genera anteprima"}
             </button>
             <button onClick={handleExport} disabled={isExporting} className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60">
               {isExporting ? "Generazione PDF in corso..." : "Esporta PDF"}

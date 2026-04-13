@@ -3,6 +3,8 @@ import { portalFetch } from "@workspace/api-client-react";
 import { FileText, Sparkles, Loader2, ClipboardPaste, Trash2, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateStrategyPDF } from "@/lib/strategy-pdf";
+import { useClientContext } from "@/context/ClientContext";
+import type { ClientBrief, SocialPlatform } from "@/types/client";
 
 interface Brief {
   id: number;
@@ -97,6 +99,7 @@ const FIELD_LABELS: Record<string, string> = {
   comunicazione_social_2026: "Obiettivo Comunicazione Social 2026",
   adv_social_2026: "Obiettivo ADV Social 2026",
 };
+const AUTOFILL_PASTE_STORAGE_KEY = "agency_brief_autofill_on_paste";
 
 async function apiFetch(path: string, options?: RequestInit) {
   return portalFetch(path, {
@@ -105,7 +108,112 @@ async function apiFetch(path: string, options?: RequestInit) {
   });
 }
 
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function splitList(value: string): string[] {
+  if (!value.trim()) return [];
+  return value
+    .split(/[,\n;|]/g)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function inferToneType(value: string): ClientBrief["toneOfVoiceType"] {
+  const lower = value.toLowerCase();
+  if (/(iron|diverten|scherz)/.test(lower)) return "Ironico";
+  if (/(ispiraz|motivaz|sogno)/.test(lower)) return "Ispirazionale";
+  if (/(lusso|premium|esclusiv)/.test(lower)) return "Lusso";
+  if (/(educativ|didattic|spieg)/.test(lower)) return "Educativo";
+  if (/(amichevol|caldo|familiare|empatic)/.test(lower)) return "Amichevole";
+  return "Professionale";
+}
+
+function extractPlatforms(parsed: Record<string, any>): SocialPlatform[] {
+  const materiale = parsed.materiale_iniziale ?? {};
+  const links = [
+    cleanText(materiale.link_instagram),
+    cleanText(materiale.link_facebook),
+    cleanText(materiale.link_tiktok),
+    cleanText(materiale.instagram),
+  ].join(" ").toLowerCase();
+  const platforms: SocialPlatform[] = [];
+  if (links.includes("instagram")) platforms.push("instagram");
+  if (links.includes("facebook")) platforms.push("facebook");
+  if (links.includes("tiktok")) platforms.push("tiktok");
+  return platforms;
+}
+
+function parsedToClientBrief(parsed: Record<string, any>): Partial<ClientBrief> {
+  const materiale = parsed.materiale_iniziale ?? {};
+  const personas = parsed.target_personas ?? {};
+  const servizi = parsed.servizi_chiave ?? {};
+  const comportamento = parsed.comportamento_cliente ?? {};
+  const posizionamento = parsed.posizionamento ?? {};
+  const tov = parsed.tone_of_voice ?? {};
+  const competitor = parsed.competitor ?? {};
+  const pain = parsed.pain_points_desideri ?? {};
+  const socialPreference = parsed.social_preference ?? {};
+  const obiettivi = parsed.obiettivi ?? {};
+
+  const targetAudience = [cleanText(personas.tipo_persone), cleanText(personas.fasce_eta), cleanText(personas.locali_o_fuori_zona)]
+    .filter(Boolean)
+    .join(" | ");
+  const primaryObjective = cleanText(obiettivi.comunicazione_social_2026) || cleanText(posizionamento.sogno_crescita);
+  const secondaryObjectiveParts = [cleanText(obiettivi.adv_social_2026), cleanText(personas.servizio_da_spingere)].filter(Boolean);
+  const secondaryObjectives = secondaryObjectiveParts.join(" | ");
+  const toneNotes = [cleanText(tov.stile_comunicazione), cleanText(tov.sensazioni), cleanText(tov.tono_umano_vs_tecnico)]
+    .filter(Boolean)
+    .join(" | ");
+  const competitors = [
+    cleanText(competitor.competitor_1),
+    cleanText(competitor.competitor_2),
+    cleanText(competitor.competitor_3),
+    cleanText(competitor.competitor_4_negativo),
+  ].filter(Boolean);
+  const topicsToCover = splitList(`${cleanText(servizi.servizi_da_comunicare)}\n${cleanText(servizi.novita_progetti)}`);
+  const topicsToAvoid = splitList(cleanText(socialPreference.come_non_apparire));
+  const usefulLinks = [cleanText(materiale.sito_web), cleanText(materiale.link_instagram), cleanText(materiale.link_facebook), cleanText(materiale.link_tiktok)].filter(Boolean);
+  const brandAdjectives = splitList(cleanText(tov.brand_persona)).slice(0, 3);
+  while (brandAdjectives.length < 3) brandAdjectives.push("");
+
+  const updates: Partial<ClientBrief> = {
+    companyDescription: cleanText(materiale.descrizione_prodotto) || undefined,
+    website: cleanText(materiale.sito_web) || undefined,
+    targetAudience: targetAudience || undefined,
+    targetAge: cleanText(personas.fasce_eta) || undefined,
+    lifestyle: cleanText(personas.professione_disponibilita) || undefined,
+    geolocation: cleanText(personas.locali_o_fuori_zona) || undefined,
+    painPoints: cleanText(pain.pain_points) || cleanText(comportamento.ostacoli) || undefined,
+    primaryObjective: primaryObjective || undefined,
+    secondaryObjectives: secondaryObjectives || undefined,
+    objectives: [primaryObjective, secondaryObjectives].filter(Boolean).join(" | ") || undefined,
+    toneOfVoice: cleanText(tov.stile_comunicazione) || cleanText(tov.tono_umano_vs_tecnico) || undefined,
+    toneOfVoiceType: inferToneType(cleanText(tov.stile_comunicazione)),
+    toneOfVoiceNotes: toneNotes || undefined,
+    brandVoice: cleanText(tov.value_proposition) || undefined,
+    brandAdjectives,
+    brandDonts: cleanText(socialPreference.come_non_apparire) || undefined,
+    competitors: competitors.length ? competitors : undefined,
+    activePlatforms: extractPlatforms(parsed),
+    topicsToCover: topicsToCover.length ? topicsToCover : undefined,
+    topicsToAvoid: topicsToAvoid.length ? topicsToAvoid : undefined,
+    contactName: cleanText(materiale.nome_referenti) || undefined,
+    usefulLinks: usefulLinks.length ? usefulLinks : undefined,
+    notes: [cleanText(pain.desideri_obiettivi), cleanText(comportamento.feedback_comuni), cleanText(comportamento.canali_funzionanti)]
+      .filter(Boolean)
+      .join(" | ") || undefined,
+  };
+
+  return Object.fromEntries(Object.entries(updates).filter(([, value]) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(value);
+  })) as Partial<ClientBrief>;
+}
+
 export function ClientBriefSection({ clientId, clientName }: { clientId: number; clientName: string }) {
+  const { clients, activeClient, setActiveClient, updateBrief } = useClientContext();
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(true);
   const [rawText, setRawText] = useState("");
@@ -117,7 +225,16 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   const [showParsed, setShowParsed] = useState(false);
   const [showStrategy, setShowStrategy] = useState(true);
   const [error, setError] = useState("");
+  const [autoFillNotice, setAutoFillNotice] = useState("");
+  const [pasteTick, setPasteTick] = useState(0);
+  const [autoFillOnPaste, setAutoFillOnPaste] = useState(true);
   const strategyRef = useRef<HTMLDivElement>(null!);
+
+  useEffect(() => {
+    if (String(activeClient?.id ?? "") === String(clientId)) return;
+    const match = clients.find((item) => String(item.id) === String(clientId));
+    if (match) setActiveClient(match);
+  }, [activeClient?.id, clientId, clients, setActiveClient]);
 
   const loadBrief = useCallback(async () => {
     setLoading(true);
@@ -131,6 +248,24 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   }, [clientId]);
 
   useEffect(() => { loadBrief(); }, [loadBrief]);
+
+  useEffect(() => {
+    try {
+      const persisted = localStorage.getItem(AUTOFILL_PASTE_STORAGE_KEY);
+      if (persisted === "0") setAutoFillOnPaste(false);
+      if (persisted === "1") setAutoFillOnPaste(true);
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AUTOFILL_PASTE_STORAGE_KEY, autoFillOnPaste ? "1" : "0");
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [autoFillOnPaste]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -146,10 +281,26 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
     setSaving(false);
   };
 
-  const handleParse = async () => {
+  const parseAndFillBrief = async () => {
     setParsing(true);
     setError("");
     try {
+      const normalizedRaw = rawText.trim();
+      const persistedRaw = cleanText(brief?.rawText);
+      if (normalizedRaw && normalizedRaw !== persistedRaw) {
+        const saveRes = await apiFetch(`/api/clients/${clientId}/brief`, {
+          method: "PUT",
+          body: JSON.stringify({ rawText }),
+        });
+        if (!saveRes.ok) {
+          const saveErr = await saveRes.json().catch(() => ({}));
+          setError(saveErr.error || "Errore nel salvataggio del testo brief");
+          setParsing(false);
+          return;
+        }
+        setBrief(await saveRes.json());
+      }
+
       const res = await apiFetch(`/api/clients/${clientId}/brief/parse`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json();
@@ -159,10 +310,34 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
       }
       const data = await res.json();
       setBrief((prev) => prev ? { ...prev, parsedJson: JSON.stringify(data.parsed) } : prev);
+      if (data?.parsed && String(activeClient?.id ?? "") === String(clientId)) {
+        const mapped = parsedToClientBrief(data.parsed as Record<string, any>);
+        if (Object.keys(mapped).length > 0) {
+          updateBrief(mapped);
+        }
+      }
       setShowParsed(true);
     } catch { setError("Errore nella lettura AI"); }
     setParsing(false);
   };
+
+  const handleParse = async () => {
+    await parseAndFillBrief();
+  };
+
+  useEffect(() => {
+    if (pasteTick === 0) return;
+    if (!autoFillOnPaste) return;
+    const value = rawText.trim();
+    if (!value || parsing) return;
+    setAutoFillNotice("Testo incollato rilevato: autocompilazione brief in corso...");
+    const timer = setTimeout(async () => {
+      await parseAndFillBrief();
+      setAutoFillNotice("Brief compilato automaticamente da testo incollato.");
+      setTimeout(() => setAutoFillNotice(""), 2500);
+    }, 650);
+    return () => clearTimeout(timer);
+  }, [pasteTick, rawText, autoFillOnPaste, parsing]);
 
   const handleGenerateStrategy = async () => {
     setGenerating(true);
@@ -247,6 +422,15 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
           <h3 className="text-lg font-semibold">Brief & Strategia</h3>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              autoFillOnPaste ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground",
+            )}
+            title={autoFillOnPaste ? "Autocompilazione al paste attiva" : "Autocompilazione al paste disattiva"}
+          >
+            AUTO {autoFillOnPaste ? "ON" : "OFF"}
+          </span>
         </div>
         {brief && (
           <button onClick={handleDelete} className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive transition-colors" title="Elimina brief">
@@ -258,6 +442,11 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
       {error && (
         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
           <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
+        </div>
+      )}
+      {autoFillNotice && !error && (
+        <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 shrink-0" /> {autoFillNotice}
         </div>
       )}
 
@@ -273,11 +462,26 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
             <p className="text-xs text-muted-foreground">
               Incolla qui le domande e le risposte del questionario compilato dal cliente. L'AI le organizzeranno automaticamente.
             </p>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={autoFillOnPaste}
+                onChange={(e) => setAutoFillOnPaste(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              Autocompilazione al paste
+            </label>
             <textarea
               className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono"
               rows={12}
               placeholder="Incolla qui il testo del questionario..."
               value={rawText}
+              onPaste={() => {
+                setAutoFillNotice("");
+                if (autoFillOnPaste) {
+                  setPasteTick((prev) => prev + 1);
+                }
+              }}
               onChange={(e) => setRawText(e.target.value)}
             />
             <div className="flex gap-2">
@@ -288,12 +492,12 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Salva Testo
               </button>
-              <button onClick={handleParse} disabled={parsing || !brief?.rawText?.trim()} className={cn(
+              <button onClick={handleParse} disabled={parsing || !rawText.trim()} className={cn(
                 "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
                 "bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
               )}>
                 {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                Organizza con AI
+                Organizza con AI + Compila Brief
               </button>
             </div>
           </div>

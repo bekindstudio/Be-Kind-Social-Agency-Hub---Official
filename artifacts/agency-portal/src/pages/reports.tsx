@@ -80,6 +80,20 @@ const STATUS_COLORS: Record<string, string> = {
   confermato_cliente: "bg-teal-100 text-teal-700",
 };
 
+const REPORT_TOC = [
+  { id: "cover", label: "1. Copertina" },
+  { id: "exec", label: "2. Riepilogo Esecutivo" },
+  { id: "top-content", label: "3. Top Contenuti del Periodo" },
+  { id: "calendar", label: "4. Calendario Contenuti" },
+  { id: "audience", label: "5. Crescita e Audience" },
+  { id: "organic", label: "6. Performance Organica" },
+  { id: "meta", label: "7. Meta Ads" },
+  { id: "google", label: "8. Google Ads" },
+  { id: "insights", label: "9. Analisi e Insights" },
+  { id: "strategy", label: "10. Strategia Prossimo Periodo" },
+  { id: "notes", label: "11. Note Aggiuntive" },
+] as const;
+
 const MONTHS_IT = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 
 type Report = {
@@ -248,6 +262,7 @@ export default function Reports() {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
 
   // Create form
   const [createForm, setCreateForm] = useState({
@@ -267,6 +282,7 @@ export default function Reports() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
   const [sendResult, setSendResult] = useState<any>(null);
+  const [activeTocId, setActiveTocId] = useState<string>("cover");
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -436,6 +452,19 @@ export default function Reports() {
     await fetchReports();
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedReportIds.length === 0) return;
+    const ok = confirm(`Eliminare ${selectedReportIds.length} report selezionati?`);
+    if (!ok) return;
+    await Promise.all(
+      selectedReportIds.map((id) =>
+        portalFetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => null),
+      ),
+    );
+    setSelectedReportIds([]);
+    await fetchReports();
+  };
+
   const handleSend = async () => {
     const data = await doAction("send", { recipientEmail: sendEmail });
     if (data) setSendResult(data);
@@ -547,6 +576,28 @@ export default function Reports() {
     return () => { if (dateRefreshTimer.current) clearTimeout(dateRefreshTimer.current); };
   }, [liveDateFrom, liveDateTo]);
 
+  useEffect(() => {
+    if (view !== "detail" || !selectedReport) return;
+    const ids = REPORT_TOC.map((s) => s.id);
+    const elements = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => Boolean(el));
+    if (elements.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target?.id) {
+          setActiveTocId(visible.target.id);
+        }
+      },
+      { rootMargin: "-25% 0px -55% 0px", threshold: [0.2, 0.4, 0.7] },
+    );
+
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [view, selectedReport?.id, liveData, liveDateFrom, liveDateTo]);
+
   // ── Default period ──
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -582,6 +633,8 @@ export default function Reports() {
   }).length;
   const drafts = filteredReports.filter((r) => r.status === "bozza").length;
   const authors = Array.from(new Set(filteredReports.map((r) => r.createdBy).filter(Boolean)));
+  const allFilteredIds = filteredReports.map((r) => r.id);
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedReportIds.includes(id));
 
   // ═════════════════════════════════════════════════════════════════════════════
   // ── LIST VIEW ──
@@ -696,9 +749,41 @@ export default function Reports() {
             </div>
           ) : (
             <div className="bg-card border border-card-border rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/60 bg-muted/20 flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {selectedReportIds.length > 0 ? `${selectedReportIds.length} selezionati` : "Seleziona più report per azioni rapide"}
+                </p>
+                <div className="flex items-center gap-2">
+                  {selectedReportIds.length > 0 && (
+                    <button
+                      onClick={() => setSelectedReportIds([])}
+                      className="px-2.5 py-1.5 text-xs border border-input rounded-lg hover:bg-muted"
+                    >
+                      Annulla selezione
+                    </button>
+                  )}
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={selectedReportIds.length === 0}
+                    className="px-2.5 py-1.5 text-xs bg-destructive text-destructive-foreground rounded-lg disabled:opacity-50"
+                  >
+                    Elimina selezionati
+                  </button>
+                </div>
+              </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left py-3 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedReportIds(allFilteredIds);
+                          else setSelectedReportIds([]);
+                        }}
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cliente</th>
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tipo</th>
                     <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Periodo</th>
@@ -711,6 +796,19 @@ export default function Reports() {
                 <tbody>
                   {filteredReports.map((r) => (
                     <tr key={r.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => openReport(r)}>
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedReportIds.includes(r.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedReportIds((prev) => (prev.includes(r.id) ? prev : [...prev, r.id]));
+                            } else {
+                              setSelectedReportIds((prev) => prev.filter((id) => id !== r.id));
+                            }
+                          }}
+                        />
+                      </td>
                       <td className="py-3 px-4 font-medium">{r.clientName ?? `#${r.clientId}`}</td>
                       <td className="py-3 px-4"><span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">{TIPO_LABELS[r.tipo] ?? r.tipo}</span></td>
                       <td className="py-3 px-4 text-muted-foreground">{r.periodLabel}</td>
@@ -944,20 +1042,6 @@ export default function Reports() {
   const hasMeta = meta && (metaSummary.totalSpend || metaSummary.impressions || metaSummary.reach);
   const hasGoogle = google && (google.summary?.spend || google.summary?.impressions);
   const hasNoData = !hasIg && !hasMeta && !hasGoogle;
-  const tocSections = [
-    { id: "cover", label: "1. Copertina" },
-    { id: "exec", label: "2. Riepilogo Esecutivo" },
-    { id: "top-content", label: "3. Top Contenuti del Periodo" },
-    { id: "calendar", label: "4. Calendario Contenuti" },
-    { id: "audience", label: "5. Crescita e Audience" },
-    { id: "organic", label: "6. Performance Organica" },
-    { id: "meta", label: "7. Meta Ads" },
-    { id: "google", label: "8. Google Ads" },
-    { id: "insights", label: "9. Analisi e Insights" },
-    { id: "strategy", label: "10. Strategia Prossimo Periodo" },
-    { id: "notes", label: "11. Note Aggiuntive" },
-  ];
-  const [activeTocId, setActiveTocId] = useState<string>("cover");
   const qualitySignals = [
     Boolean(r.riepilogoEsecutivo || r.aiSummary),
     Boolean(topPosts.length > 0),
@@ -969,27 +1053,6 @@ export default function Reports() {
     Boolean(r.noteAggiuntive),
   ];
   const qualityScore = Math.round((qualitySignals.filter(Boolean).length / qualitySignals.length) * 100);
-
-  useEffect(() => {
-    const ids = tocSections.map((s) => s.id);
-    const elements = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => Boolean(el));
-    if (elements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible?.target?.id) {
-          setActiveTocId(visible.target.id);
-        }
-      },
-      { rootMargin: "-25% 0px -55% 0px", threshold: [0.2, 0.4, 0.7] },
-    );
-
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [r.id, liveData, liveDateFrom, liveDateTo]);
 
   return (
     <Layout>
@@ -1141,7 +1204,7 @@ export default function Reports() {
           <aside className="hidden lg:block sticky top-6 bg-card border border-card-border rounded-xl p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Indice report</p>
             <div className="space-y-1">
-              {tocSections.map((s) => (
+              {REPORT_TOC.map((s) => (
                 <button key={s.id} onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
                   className={cn(
                     "w-full text-left text-xs px-2 py-1.5 rounded-md transition-colors",

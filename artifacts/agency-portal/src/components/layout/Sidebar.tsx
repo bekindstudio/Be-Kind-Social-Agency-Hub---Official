@@ -20,6 +20,8 @@ import {
   Timer,
   LogOut,
   Trash2,
+  FileText,
+  CalendarDays,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -27,6 +29,7 @@ import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { useUserRole } from "@/hooks/useUserRole";
 import { portalFetch } from "@workspace/api-client-react";
+import { useClientContext } from "@/context/ClientContext";
 
 function ThemeToggle() {
   const { dark, toggle } = useTheme();
@@ -80,6 +83,8 @@ const navGroups = [
     label: "Strumenti",
     items: [
       { href: "/tools", label: "Tools", icon: Wrench },
+      { href: "/tools/brief", label: "Brief", icon: FileText },
+      { href: "/tools/calendar", label: "Calendario", icon: CalendarDays },
       { href: "/tools/time-tracker", label: "Time Tracker", icon: Timer },
     ],
   },
@@ -99,6 +104,11 @@ export function Sidebar() {
   const { hasPermission, loading: roleLoading } = useUserRole();
   const [reportBadge, setReportBadge] = useState(0);
   const [trashBadge, setTrashBadge] = useState(0);
+  const { activeClient, posts } = useClientContext();
+  const calendarPendingBadge =
+    activeClient == null
+      ? 0
+      : posts.filter((post) => post.clientId === activeClient.id && post.status === "pending_approval").length;
 
   useEffect(() => {
     portalFetch("/api/reports/counts")
@@ -162,6 +172,8 @@ export function Sidebar() {
                   const badge =
                     href === "/reports" && reportBadge > 0
                       ? reportBadge
+                      : href === "/tools/calendar" && calendarPendingBadge > 0
+                        ? calendarPendingBadge
                       : href === "/trash" && trashBadge > 0
                         ? trashBadge
                         : 0;

@@ -7,6 +7,7 @@ import { portalFetch } from "@workspace/api-client-react";
 import { describeApiFailureForUser } from "@/lib/api-response-errors";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { useClientContext } from "@/context/ClientContext";
 
 type ClientRow = any;
 
@@ -29,8 +30,40 @@ function ClientLogo({ name, color, logoUrl }: { name: string; color?: string; lo
   return <div className="w-full h-full flex items-center justify-center text-white font-bold text-3xl" style={{ backgroundColor: color ?? "#7a8f5c" }}>{safeName.charAt(0).toUpperCase()}</div>;
 }
 
+function normalizeName(name: string): string {
+  return String(name ?? "").trim().toLowerCase();
+}
+
+function dedupeClientRows(rows: ClientRow[]): ClientRow[] {
+  const positiveNameSet = new Set(
+    rows
+      .filter((row) => Number.isFinite(Number(row?.id)) && Number(row.id) > 0)
+      .map((row) => normalizeName(row?.name)),
+  );
+  const filtered = rows.filter((row) => {
+    const id = Number(row?.id);
+    return !(Number.isFinite(id) && id < 0 && positiveNameSet.has(normalizeName(row?.name)));
+  });
+
+  const byKey = new Map<string, ClientRow>();
+  for (const row of filtered) {
+    const id = Number(row?.id);
+    const key = Number.isFinite(id) && id > 0 ? `id:${id}` : `name:${normalizeName(row?.name)}`;
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, row);
+      continue;
+    }
+    const prevTime = new Date(prev?.updatedAt ?? prev?.createdAt ?? 0).getTime();
+    const nextTime = new Date(row?.updatedAt ?? row?.createdAt ?? 0).getTime();
+    byKey.set(key, nextTime >= prevTime ? row : prev);
+  }
+  return Array.from(byKey.values());
+}
+
 export default function Clients() {
   const { toast } = useToast();
+  const { clients: contextClients, activeClient, setActiveClient, importClients } = useClientContext();
   const LOCAL_CLIENTS_KEY = "agency-local-clients";
   const [, navigate] = useLocation();
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -54,7 +87,10 @@ export default function Clients() {
   const readLocalClients = () => {
     try {
       const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-      return Array.isArray(parsed) ? parsed : [];
+      const arr = Array.isArray(parsed) ? parsed : [];
+      const deduped = dedupeClientRows(arr).filter((c) => Number(c?.id) < 0);
+      localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(deduped));
+      return deduped;
     } catch {
       return [];
     }
@@ -121,9 +157,9 @@ export default function Clients() {
           const data = await res.json().catch(() => null);
           remote = Array.isArray(data) ? data : [];
         }
-        setClients([...local, ...remote]);
+        setClients(dedupeClientRows([...local, ...remote]));
       } catch {
-        setClients([...local]);
+        setClients(dedupeClientRows([...local]));
       } finally {
         setIsLoading(false);
       }
@@ -205,7 +241,18 @@ export default function Clients() {
         setSaveError(describeApiFailureForUser(res.status, rawText, plain));
         return;
       }
-      setClients((prev) => [data, ...prev]);
+      setClients((prev) => dedupeClientRows([data, ...prev]));
+      importClients([
+        {
+          id: String(data.id),
+          name: String(data.name ?? finalName),
+          logo: data.logoUrl ?? undefined,
+          color: data.brandColor ?? data.color ?? form.brandColor ?? form.color ?? "#7a8f5c",
+          industry: String(data.settore ?? form.settore ?? "Generico"),
+          status: "active",
+          createdAt: String(data.createdAt ?? new Date().toISOString()),
+        },
+      ]);
       setShowForm(false);
       navigate(`/clients/${data.id}`);
     } catch {
@@ -228,7 +275,7 @@ export default function Clients() {
         const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
         const local = Array.isArray(parsed) ? parsed : [];
         localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify([localClient, ...local]));
-        setClients((prev) => [localClient, ...prev]);
+        setClients((prev) => dedupeClientRows([localClient, ...prev]));
         setShowForm(false);
         setSaveError(
           "Connessione assente: cliente salvato solo in questo browser. Quando sei online, apri la scheda cliente e usa «Sincronizza sul database».",
@@ -318,6 +365,11 @@ export default function Clients() {
       return;
     }
     toast({ title: `${success} clienti eliminati` });
+  };
+
+  const syncActiveClientByName = (name: string) => {
+    const match = contextClients.find((c) => normalizeName(c.name) === normalizeName(name));
+    if (match) setActiveClient(match);
   };
 
   return (
@@ -416,7 +468,10 @@ export default function Clients() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((client) => (
               <Link key={client.id} href={`/clients/${client.id}`}>
-                <div className="group bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer relative">
+                <div
+                  onClick={() => syncActiveClientByName(client.name)}
+                  className="group bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer relative"
+                >
                   <label className="absolute top-2 left-2 z-10 inline-flex items-center rounded bg-white/85 px-1.5 py-1 shadow-sm">
                     <input
                       type="checkbox"
@@ -441,7 +496,7 @@ export default function Clients() {
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm truncate">{client.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{client.settore ?? "Settore non impostato"}</p>
-                      <div className="flex items-center gap-1.5 mt-1"><span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", getHealthColor(Number(client.healthScore ?? 0)))}>Salute {client.healthScore ?? 0}</span><span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{client.contractStatus ?? "nessuno"}</span></div>
+                      <div className="flex items-center gap-1.5 mt-1"><span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", getHealthColor(Number(client.healthScore ?? 0)))}>Salute {client.healthScore ?? 0}</span><span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{client.contractStatus ?? "nessuno"}</span>{activeClient && normalizeName(activeClient.name) === normalizeName(client.name) && <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Attivo</span>}</div>
                     </div>
                   </div>
                   <div className="px-4 pb-4">
@@ -449,7 +504,7 @@ export default function Clients() {
                     <div className="flex items-center justify-between">
                       <div className="text-xs text-muted-foreground">€ {Number(client.monthlyValue ?? 0).toLocaleString("it-IT")}/mese</div>
                       <div className="flex items-center gap-1">
-                        <button onClick={(e) => { e.preventDefault(); navigate(`/clients/${client.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button>
+                        <button onClick={(e) => { e.preventDefault(); syncActiveClientByName(client.name); navigate(`/clients/${client.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button>
                         <button onClick={(e) => { e.preventDefault(); navigate("/tasks"); }} className="p-1.5 rounded hover:bg-muted"><Plus size={13} /></button>
                         <button onClick={(e) => { e.preventDefault(); navigate("/chat"); }} className="p-1.5 rounded hover:bg-muted"><MessageSquare size={13} /></button>
                       </div>
@@ -464,7 +519,7 @@ export default function Clients() {
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allClientsSelected} onChange={(e) => toggleSelectAllClients(e.target.checked)} className="h-4 w-4 accent-primary" aria-label="Seleziona tutti i clienti filtrati" /></th><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-left">Contratto</th><th className="px-3 py-2 text-left">Valore mensile</th><th className="px-3 py-2 text-left">Ultima attività</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
-              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => navigate(`/clients/${c.id}`)} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{(JSON.parse(c.tagsJson ?? "[]") as string[]).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => navigate(`/clients/${c.id}`)} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
+              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{(JSON.parse(c.tagsJson ?? "[]") as string[]).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
             </table>
           </div>
         )}

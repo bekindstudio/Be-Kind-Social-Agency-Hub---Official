@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   useListMessages,
   useListProjects,
@@ -12,6 +12,8 @@ import { Send, Trash2, Hash, Users } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { usePortalUser } from "@/hooks/usePortalUser";
+import { useToast } from "@/hooks/use-toast";
+import { useClientContext } from "@/context/ClientContext";
 
 const AUTHOR_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#84cc16"];
 
@@ -23,15 +25,25 @@ function getColorForName(name: string): string {
 
 export default function Chat() {
   const qc = useQueryClient();
-  const { data: projects } = useListProjects({});
+  const { toast } = useToast();
+  const { activeClient } = useClientContext();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
+  const projectQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
+  const { data: projects } = useListProjects(projectQueryParams);
   const { user } = usePortalUser();
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-  const queryParams = selectedProjectId != null ? { projectId: selectedProjectId } : {};
-  const { data: messages } = useListMessages(
-    queryParams,
+  const queryParams =
+    selectedProjectId != null
+      ? { ...(apiClientId != null ? { clientId: apiClientId } : {}), projectId: selectedProjectId }
+      : apiClientId != null
+        ? { clientId: apiClientId }
+        : {};
+  const { data: messages, isLoading: messagesLoading } = useListMessages(
+    queryParams as any,
     {
       query: {
-        queryKey: getListMessagesQueryKey(queryParams),
+        queryKey: getListMessagesQueryKey(queryParams as any),
         refetchInterval: 5000,
       },
     }
@@ -56,6 +68,20 @@ export default function Chat() {
         ? [projects as any]
         : [];
 
+  const activeClientProjectList = useMemo(() => {
+    if (!activeClient) return projectList;
+    const activeName = activeClient.name.trim().toLowerCase();
+    const byClientId = Number.isFinite(activeClientNumericId)
+      ? projectList.filter((p: any) => Number(p?.clientId) === activeClientNumericId)
+      : [];
+    const byClientName = projectList.filter(
+      (p: any) => String(p?.clientName ?? "").trim().toLowerCase() === activeName
+    );
+    const merged = [...byClientId, ...byClientName];
+    if (merged.length === 0) return projectList;
+    return merged.filter((p: any, index: number, arr: any[]) => arr.findIndex((x: any) => Number(x?.id) === Number(p?.id)) === index);
+  }, [activeClient, activeClientNumericId, projectList]);
+
   useEffect(() => {
     const newCount = messages?.length ?? 0;
     if (newCount > prevMessageCount.current) {
@@ -64,12 +90,25 @@ export default function Chat() {
     prevMessageCount.current = newCount;
   }, [messages?.length]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedProjectId == null) return;
+    const stillVisible = activeClientProjectList.some((p: any) => Number(p?.id) === Number(selectedProjectId));
+    if (!stillVisible) {
+      setSelectedProjectId(null);
+    }
+  }, [activeClientProjectList, selectedProjectId]);
+
   const handleSend = () => {
-    if (!msgText.trim()) return;
+    const content = msgText.trim();
+    if (!content || createMessage.isPending) return;
     createMessage.mutate(
       {
         data: {
-          content: msgText,
+          content,
           authorName,
           authorColor,
           projectId: selectedProjectId,
@@ -77,8 +116,12 @@ export default function Chat() {
       },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListMessagesQueryKey(queryParams) });
+          qc.invalidateQueries({ queryKey: getListMessagesQueryKey(queryParams as any) });
           setMsgText("");
+        },
+        onError: (err: any) => {
+          const message = err?.data?.error || "Invio messaggio non riuscito";
+          toast({ variant: "destructive", title: message });
         },
       }
     );
@@ -87,7 +130,7 @@ export default function Chat() {
   const channelName =
     selectedProjectId == null
       ? "Generale"
-      : projectList.find((p: any) => p.id === selectedProjectId)?.name ?? "Progetto";
+      : activeClientProjectList.find((p: any) => p.id === selectedProjectId)?.name ?? "Progetto";
 
   return (
     <Layout>
@@ -107,7 +150,7 @@ export default function Chat() {
               <Hash size={14} />
               Generale
             </button>
-            {projectList.map((p: any) => (
+            {activeClientProjectList.map((p: any) => (
               <button
                 key={p.id}
                 onClick={() => setSelectedProjectId(p.id)}
@@ -146,7 +189,11 @@ export default function Chat() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {messages && messages.length > 0 ? messages.map((m) => (
+            {messagesLoading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-muted-foreground text-sm">Caricamento messaggi...</p>
+              </div>
+            ) : messages && messages.length > 0 ? messages.map((m: any) => (
               <div key={m.id} className="flex gap-3 group">
                 <div
                   className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white text-xs font-bold"
@@ -161,12 +208,26 @@ export default function Chat() {
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{m.content}</p>
                 </div>
-                <button
-                  onClick={() => deleteMessage.mutate({ id: m.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListMessagesQueryKey(queryParams) }) })}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
-                >
-                  <Trash2 size={13} />
-                </button>
+                {m.canDelete && (
+                  <button
+                    onClick={() =>
+                      deleteMessage.mutate(
+                        { id: m.id },
+                        {
+                          onSuccess: () => qc.invalidateQueries({ queryKey: getListMessagesQueryKey(queryParams as any) }),
+                          onError: (err: any) => {
+                            const message = err?.data?.error || "Eliminazione messaggio non riuscita";
+                            toast({ variant: "destructive", title: message });
+                          },
+                        }
+                      )
+                    }
+                    className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
+                    title="Elimina messaggio"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
             )) : (
               <div className="flex-1 flex items-center justify-center">
@@ -182,8 +243,14 @@ export default function Chat() {
                 className="flex-1 px-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder={`Messaggio in #${channelName.toLowerCase()}...`}
                 value={msgText}
+                maxLength={4000}
                 onChange={(e) => setMsgText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
               />
               <button
                 onClick={handleSend}

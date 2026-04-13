@@ -486,6 +486,10 @@ export type ListTasksParams = {
   /**
    * @nullable
    */
+  clientId?: number | null;
+  /**
+   * @nullable
+   */
   projectId?: number | null;
   /**
    * @nullable
@@ -498,6 +502,10 @@ export type ListTasksParams = {
 };
 
 export type ListMessagesParams = {
+  /**
+   * @nullable
+   */
+  clientId?: number | null;
   /**
    * @nullable
    */

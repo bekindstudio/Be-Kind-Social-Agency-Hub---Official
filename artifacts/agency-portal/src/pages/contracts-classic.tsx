@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useListContractTemplates,
@@ -15,6 +15,7 @@ import {
   AlertTriangle, CalendarClock, ChevronDown, ChevronRight, Check,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { useClientContext } from "@/context/ClientContext";
 
 // ─── Agency data (precompilati) ──────────────────────────────────────────────
 const AGENZIA = {
@@ -473,6 +474,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
 // ─── Main Contracts Page ──────────────────────────────────────────────────────
 export default function ContractsClassic() {
   const qc = useQueryClient();
+  const { activeClient } = useClientContext();
   const [tab, setTab] = useState<"contratti" | "template">("contratti");
 
   // Contract state
@@ -507,6 +509,13 @@ export default function ContractsClassic() {
     if (Array.isArray(clients.items)) return clients.items;
     return [clients].filter(Boolean);
   }, [clients]);
+  const activeBackendClientId = useMemo(() => {
+    if (!activeClient) return "";
+    const numeric = Number(activeClient.id);
+    if (Number.isFinite(numeric)) return String(numeric);
+    const byName = clientList.find((c: any) => String(c?.name ?? "").trim().toLowerCase() === String(activeClient.name ?? "").trim().toLowerCase());
+    return byName?.id != null ? String(byName.id) : "";
+  }, [activeClient, clientList]);
 
   const filtered = useMemo(() => {
     const contractList = Array.isArray(contracts)
@@ -598,6 +607,12 @@ export default function ContractsClassic() {
     const c = clientList.find((x: any) => String(x.id) === form.clientId);
     return c as any;
   }, [clientList, form.clientId]);
+
+  useEffect(() => {
+    if (!activeBackendClientId) return;
+    setFilterClientId(activeBackendClientId);
+    setForm((prev) => ({ ...prev, clientId: prev.clientId || activeBackendClientId }));
+  }, [activeBackendClientId]);
 
   // ─── Template handlers ─────────────────────────────────────────────────────
   const handleSaveTemplate = () => {

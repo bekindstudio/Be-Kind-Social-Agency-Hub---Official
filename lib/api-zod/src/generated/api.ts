@@ -268,6 +268,7 @@ export const DeleteProjectParams = zod.object({
  * @summary List tasks
  */
 export const ListTasksQueryParams = zod.object({
+  clientId: zod.coerce.number().nullish(),
   projectId: zod.coerce.number().nullish(),
   assigneeId: zod.coerce.number().nullish(),
   status: zod.coerce.string().nullish(),
@@ -422,6 +423,7 @@ export const DeleteTeamMemberParams = zod.object({
  * @summary List messages
  */
 export const ListMessagesQueryParams = zod.object({
+  clientId: zod.coerce.number().nullish(),
   projectId: zod.coerce.number().nullish(),
 });
 

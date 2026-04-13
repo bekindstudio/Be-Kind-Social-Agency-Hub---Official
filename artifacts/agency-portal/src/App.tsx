@@ -22,8 +22,10 @@ import Settings from "@/pages/settings";
 import Reports from "@/pages/reports";
 import AiAssistant from "@/pages/ai-assistant";
 import Tools from "@/pages/tools";
+import BriefPage from "@/pages/tools/BriefPage";
 import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
 import TimeTracker from "@/pages/time-tracker";
+import CalendarPage from "@/pages/tools/CalendarPage";
 import Trash from "@/pages/trash";
 import NotFound from "@/pages/not-found";
 import SignInPage from "@/pages/sign-in";
@@ -34,6 +36,8 @@ import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 import { AutoSaveProvider } from "@/context/AutoSaveContext";
+import { ClientProvider, useClientContext } from "@/context/ClientContext";
+import { Layout } from "@/components/layout/Layout";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +83,25 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
   if (!session) {
     return <Redirect to="/sign-in" />;
+  }
+  return <>{children}</>;
+}
+
+function RequireActiveClient({ children }: { children: React.ReactNode }) {
+  const { activeClient } = useClientContext();
+  if (!activeClient) {
+    return (
+      <Layout>
+        <div className="p-8">
+          <div className="mx-auto max-w-xl rounded-xl border bg-card p-6 text-center">
+            <h2 className="text-lg font-semibold">Seleziona un cliente</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              I tool operano su un contesto cliente centrale. Seleziona un cliente dal selettore in alto per continuare.
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
   }
   return <>{children}</>;
 }
@@ -171,13 +194,19 @@ function Router() {
         <RequireAuth><Settings /></RequireAuth>
       </Route>
       <Route path="/tools">
-        <RequireAuth><Tools /></RequireAuth>
+        <RequireAuth><RequireActiveClient><Tools /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/brief">
+        <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>
       </Route>
       <Route path="/tools/piano-editoriale/:id">
-        {(params) => <RequireAuth><EditorialPlanBuilder id={params.id} /></RequireAuth>}
+        {(params) => <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>}
       </Route>
       <Route path="/tools/time-tracker">
-        <RequireAuth><TimeTracker /></RequireAuth>
+        <RequireAuth><RequireActiveClient><TimeTracker /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/calendar">
+        <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
       </Route>
       <Route component={NotFound} />
     </Switch>
@@ -189,15 +218,17 @@ function ShellWithSession() {
     <QueryClientProvider client={queryClient}>
       <AutoSaveProvider>
         <SessionQueryInvalidator />
-        <AiChatProvider>
-          <TooltipProvider>
-            <ErrorBoundary>
-              <Router />
-            </ErrorBoundary>
-            <Toaster />
-          </TooltipProvider>
-          <AuthenticatedAiWidgets />
-        </AiChatProvider>
+        <ClientProvider>
+          <AiChatProvider>
+            <TooltipProvider>
+              <ErrorBoundary>
+                <Router />
+              </ErrorBoundary>
+              <Toaster />
+            </TooltipProvider>
+            <AuthenticatedAiWidgets />
+          </AiChatProvider>
+        </ClientProvider>
       </AutoSaveProvider>
     </QueryClientProvider>
   );

@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import { useListClients } from "@workspace/api-client-react";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
+import { useClientContext } from "@/context/ClientContext";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler);
 
@@ -236,7 +237,17 @@ function getPeriodLabel(tipo: string, period: string): string {
 
 export default function Reports() {
   const { data: clients } = useListClients();
+  const { activeClient } = useClientContext();
   const clientList = Array.isArray(clients) ? clients : [];
+  const activeClientName = (activeClient?.name ?? "").trim().toLowerCase();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const activeBackendClientId = (
+    clientList.find((client: any) => {
+      const byId = Number.isFinite(activeClientNumericId) && Number(client?.id) === activeClientNumericId;
+      const byName = activeClientName.length > 0 && String(client?.name ?? "").trim().toLowerCase() === activeClientName;
+      return byId || byName;
+    }) as any
+  )?.id;
 
   // View state
   const [view, setView] = useState<"list" | "create" | "detail" | "edit">("list");
@@ -263,6 +274,16 @@ export default function Reports() {
   const [filterTo, setFilterTo] = useState("");
   const [searchText, setSearchText] = useState("");
   const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const numericId = Number(activeBackendClientId);
+    if (!Number.isFinite(numericId)) return;
+    setFilterClient(numericId);
+    setCreateForm((prev) => ({
+      ...prev,
+      clientId: prev.clientId || String(numericId),
+    }));
+  }, [activeBackendClientId]);
 
   // Create form
   const [createForm, setCreateForm] = useState({
@@ -650,7 +671,23 @@ export default function Reports() {
               <p className="text-muted-foreground text-sm mt-1">Gestione report clienti</p>
             </div>
             <button
-              onClick={() => { setView("create"); setCreateForm({ clientId: "", tipo: "mensile", period: defaultMonth, customFrom: "", customTo: "", title: "", riepilogoEsecutivo: "", analisiInsights: "", strategiaProssimoPeriodo: "", noteAggiuntive: "" }); setCreateError(""); }}
+              onClick={() => {
+                const defaultClientId = Number.isFinite(Number(activeBackendClientId)) ? String(Number(activeBackendClientId)) : "";
+                setView("create");
+                setCreateForm({
+                  clientId: defaultClientId,
+                  tipo: "mensile",
+                  period: defaultMonth,
+                  customFrom: "",
+                  customTo: "",
+                  title: "",
+                  riepilogoEsecutivo: "",
+                  analisiInsights: "",
+                  strategiaProssimoPeriodo: "",
+                  noteAggiuntive: "",
+                });
+                setCreateError("");
+              }}
               className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90"
             >
               <Plus size={16} /> Nuovo report

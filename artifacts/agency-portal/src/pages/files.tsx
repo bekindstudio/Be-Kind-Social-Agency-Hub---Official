@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useListFiles,
   useListProjects,
@@ -12,6 +12,7 @@ import { Plus, Trash2, ExternalLink, FileText, Image, FileSpreadsheet, File, Upl
 import { cn, formatDate, formatFileSize } from "@/lib/utils";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { portalFetch } from "@workspace/api-client-react";
+import { useClientContext } from "@/context/ClientContext";
 
 function FileIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
@@ -34,8 +35,21 @@ function detectFileType(name: string, mime: string): string {
 
 export default function Files() {
   const qc = useQueryClient();
-  const { data: files, isLoading } = useListFiles({});
-  const { data: projects } = useListProjects({});
+  const { activeClient } = useClientContext();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
+  const [filterProject, setFilterProject] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [showUrlForm, setShowUrlForm] = useState(false);
+  const [urlForm, setUrlForm] = useState({ name: "", url: "", type: "Documento", projectId: "" });
+  const [selectedProjectForUpload, setSelectedProjectForUpload] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const listFilesQueryParams = filterProject ? { projectId: Number(filterProject) } : {};
+  const { data: files, isLoading } = useListFiles(listFilesQueryParams);
+  const { data: projects } = useListProjects(apiClientId != null ? { clientId: apiClientId } : {});
   const createFile = useCreateFile();
   const deleteFile = useDeleteFile();
   const { user } = usePortalUser();
@@ -50,17 +64,26 @@ export default function Files() {
         ? [projects as any]
         : [];
 
-  const [filterProject, setFilterProject] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [dragOver, setDragOver] = useState(false);
-  const [showUrlForm, setShowUrlForm] = useState(false);
-  const [urlForm, setUrlForm] = useState({ name: "", url: "", type: "Documento", projectId: "" });
-  const [selectedProjectForUpload, setSelectedProjectForUpload] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scopedProjectList = useMemo(() => {
+    if (!activeClient) return projectList;
+    const activeName = activeClient.name.trim().toLowerCase();
+    const byName = projectList.filter((p: any) => String(p?.clientName ?? "").trim().toLowerCase() === activeName);
+    return byName.length > 0 ? byName : projectList;
+  }, [activeClient, projectList]);
+  const scopedProjectIds = useMemo(
+    () => new Set(scopedProjectList.map((p: any) => Number(p?.id)).filter((id: number) => Number.isFinite(id))),
+    [scopedProjectList]
+  );
+
+  useEffect(() => {
+    if (!filterProject) return;
+    if (!scopedProjectList.some((p: any) => String(p?.id) === filterProject)) {
+      setFilterProject("");
+    }
+  }, [filterProject, scopedProjectList]);
 
   const filtered = (files ?? [])
+    .filter((f) => scopedProjectIds.size === 0 || (f.projectId != null && scopedProjectIds.has(Number(f.projectId))))
     .filter((f) => !filterProject || String(f.projectId) === filterProject)
     .filter((f) => !searchQuery || String(f?.name ?? "").toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -198,7 +221,7 @@ export default function Files() {
                 <label className="text-xs font-medium text-muted-foreground">Progetto</label>
                 <select className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background" value={urlForm.projectId} onChange={(e) => setUrlForm({ ...urlForm, projectId: e.target.value })}>
                   <option value="">Nessun progetto</option>
-                  {projectList.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {scopedProjectList.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             </div>
@@ -227,7 +250,7 @@ export default function Files() {
               <label className="text-xs text-muted-foreground">Progetto:</label>
               <select className="px-2 py-1 text-xs border border-input rounded bg-background" value={selectedProjectForUpload} onChange={(e) => setSelectedProjectForUpload(e.target.value)} onClick={(e) => e.stopPropagation()}>
                 <option value="">Nessuno</option>
-                {projectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                {scopedProjectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
               </select>
             </div>
           )}
@@ -249,7 +272,7 @@ export default function Files() {
           </div>
           <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
             <option value="">Tutti i progetti</option>
-            {projectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+            {scopedProjectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
           </select>
         </div>
 

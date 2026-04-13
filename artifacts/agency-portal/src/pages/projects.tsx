@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useListProjects, useListClients, useCreateProject, getListProjectsQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { useToast } from "@/hooks/use-toast";
+import { useClientContext } from "@/context/ClientContext";
 import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays, Trash2 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -29,7 +30,11 @@ export default function Projects() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { data: projects, isLoading } = useListProjects({});
+  const { activeClient } = useClientContext();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
+  const projectsQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
+  const { data: projects, isLoading } = useListProjects(projectsQueryParams);
   const { data: clients } = useListClients();
   const createProject = useCreateProject();
 
@@ -51,6 +56,16 @@ export default function Projects() {
   const projectList = Array.isArray(projects) ? projects : Array.isArray((projects as any)?.items) ? (projects as any).items : projects ? [projects as any] : [];
   const clientList = Array.isArray(clients) ? clients : Array.isArray((clients as any)?.items) ? (clients as any).items : clients ? [clients as any] : [];
   const clientMap = new Map(clientList.map((c: any) => [String(c.id), c]));
+  const activeBackendClientId =
+    apiClientId != null
+      ? String(apiClientId)
+      : String(
+          (
+            clientList.find(
+              (c: any) => String(c?.name ?? "").trim().toLowerCase() === String(activeClient?.name ?? "").trim().toLowerCase()
+            ) as any
+          )?.id ?? ""
+        );
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -72,6 +87,12 @@ export default function Projects() {
         return { ...p, dueDays };
       });
   }, [projectList, search, status, client, type, sortBy]);
+
+  useEffect(() => {
+    if (!activeBackendClientId) return;
+    setClient(activeBackendClientId);
+    setForm((prev: any) => ({ ...prev, clientId: prev.clientId || activeBackendClientId }));
+  }, [activeBackendClientId]);
 
   const stats = useMemo(() => {
     const now = new Date();

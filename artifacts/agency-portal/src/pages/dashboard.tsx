@@ -16,6 +16,7 @@ import {
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { Layout } from "@/components/layout/Layout";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { useClientContext } from "@/context/ClientContext";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
   Search,
@@ -131,11 +132,15 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { signOut, authDisabled } = useSupabaseAuth();
+  const { activeClient } = useClientContext();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
+  const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
   const { data: summary } = useGetDashboardSummary();
   const { data: activityRaw } = useGetRecentActivity();
   const { data: statusRaw } = useGetProjectStatusBreakdown();
-  const { data: projectsRaw } = useListProjects({});
-  const { data: tasksRaw } = useListTasks({});
+  const { data: projectsRaw } = useListProjects(apiClientId != null ? { clientId: apiClientId } : {});
+  const { data: tasksRaw } = useListTasks(tasksQueryParams as any);
   const { data: clientsRaw } = useListClients();
 
   const [showQuick, setShowQuick] = useState(false);
@@ -177,7 +182,11 @@ export default function Dashboard() {
 
   const projects = arr(projectsRaw);
   const tasks = arr(tasksRaw);
-  const clients = arr(clientsRaw);
+  const clients = arr(clientsRaw).filter((client: AnyObj) => {
+    if (!activeClient) return true;
+    if (apiClientId != null) return Number(client?.id) === apiClientId;
+    return String(client?.name ?? "").trim().toLowerCase() === String(activeClient.name ?? "").trim().toLowerCase();
+  });
   const activity = arr(activityRaw);
   const statusBreakdown = arr(statusRaw);
 
@@ -318,7 +327,7 @@ export default function Dashboard() {
       });
       if (!res.ok) return;
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey({}) }),
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(tasksQueryParams as any) }),
         queryClient.invalidateQueries({ queryKey: getGetRecentActivityQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
       ]);

@@ -8,6 +8,8 @@ import { ActiveTimerWidget, useTimerStart } from "@/components/ActiveTimerWidget
 import { Menu } from "lucide-react";
 import { AutoSaveIndicator } from "./AutoSaveIndicator";
 import { OfflineBanner } from "./OfflineBanner";
+import { ClientSelector } from "@/components/ClientSelector";
+import { ClientHeader } from "@/components/ClientHeader";
 
 interface LayoutProps {
   children: ReactNode;
@@ -80,6 +82,7 @@ export function Layout({ children }: LayoutProps) {
             <Menu size={20} />
           </button>
           <span className="text-sm font-semibold md:hidden">Be Kind Social Agency HUB</span>
+          <ClientSelector />
           <div className="ml-auto flex items-center gap-2">
             <AutoSaveIndicator />
             <ActiveTimerWidget />
@@ -87,6 +90,7 @@ export function Layout({ children }: LayoutProps) {
             <GlobalSearch />
           </div>
         </div>
+        <ClientHeader />
         <OfflineBanner />
         {children}
       </main>

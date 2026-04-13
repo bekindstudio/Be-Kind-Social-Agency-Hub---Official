@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useListQuoteTemplates,
   useCreateQuoteTemplate,
@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { Plus, Trash2, Pencil, X, Check, ChevronDown, ChevronUp, Printer, Copy } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { useClientContext } from "@/context/ClientContext";
 
 type QuoteItem = { description: string; quantity: number; unitPrice: number };
 
@@ -55,6 +56,7 @@ const EMPTY_FORM: FormState = {
 
 export default function Quotes() {
   const qc = useQueryClient();
+  const { activeClient } = useClientContext();
   const { data: quotes, isLoading } = useListQuoteTemplates();
   const { data: clients } = useListClients();
   const createQuote = useCreateQuoteTemplate();
@@ -82,11 +84,27 @@ export default function Quotes() {
       : quotes
         ? [quotes as any]
         : [];
+  const activeBackendClientId = useMemo(() => {
+    if (!activeClient) return "";
+    const numeric = Number(activeClient.id);
+    if (Number.isFinite(numeric)) return String(numeric);
+    const byName = clientList.find((c: any) => String(c?.name ?? "").trim().toLowerCase() === String(activeClient.name ?? "").trim().toLowerCase());
+    return byName?.id != null ? String(byName.id) : "";
+  }, [activeClient, clientList]);
+  const visibleQuotes = useMemo(() => {
+    if (!activeBackendClientId) return quoteList;
+    return quoteList.filter((q: any) => String(q?.clientId ?? "") === activeBackendClientId);
+  }, [quoteList, activeBackendClientId]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListQuoteTemplatesQueryKey() });
 
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const total = subtotal * (1 + Number(form.taxRate) / 100);
+
+  useEffect(() => {
+    if (!activeBackendClientId) return;
+    setForm((prev) => ({ ...prev, clientId: prev.clientId || activeBackendClientId }));
+  }, [activeBackendClientId]);
 
   const openCreate = () => {
     setForm(EMPTY_FORM);
@@ -142,7 +160,7 @@ export default function Quotes() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Preventivi</h1>
-            <p className="text-muted-foreground text-sm mt-1">{quoteList.length} preventivi template</p>
+            <p className="text-muted-foreground text-sm mt-1">{visibleQuotes.length} preventivi template</p>
           </div>
           <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
             <Plus size={16} />
@@ -229,14 +247,14 @@ export default function Quotes() {
 
         {isLoading ? (
           <div className="text-center text-muted-foreground py-12">Caricamento...</div>
-        ) : quoteList.length === 0 ? (
+        ) : visibleQuotes.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-muted-foreground text-sm mb-3">Nessun preventivo creato</p>
             <button onClick={openCreate} className="text-sm text-primary hover:underline">Crea il primo preventivo</button>
           </div>
         ) : (
           <div className="grid gap-3">
-            {quoteList.map((q: any) => (
+            {visibleQuotes.map((q: any) => (
               <div key={q.id} className="bg-card border border-card-border rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
                   <div className="flex-1 min-w-0">

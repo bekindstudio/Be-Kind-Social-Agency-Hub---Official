@@ -20,7 +20,9 @@ async function getProjectsAndMembers() {
     db.select().from(teamMembersTable),
   ]);
   return {
+    projects,
     projectMap: new Map(projects.map((p) => [p.id, p.name])),
+    projectClientMap: new Map(projects.map((p) => [p.id, p.clientId ?? null])),
     memberMap: new Map(members.map((m) => [m.id, m.name])),
   };
 }
@@ -209,11 +211,19 @@ router.get("/tasks", async (req, res): Promise<void> => {
     .from(tasksTable)
     .where(isNull(tasksTable.deletedAt))
     .orderBy(tasksTable.createdAt);
-  const { projectMap, memberMap } = await getProjectsAndMembers();
+  const rawClientId = req.query.clientId;
+  const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;
+  const { projectMap, projectClientMap, memberMap } = await getProjectsAndMembers();
 
   let result = tasks.map((t) => serializeTask(t, projectMap, memberMap));
 
   if (query.data.projectId != null) result = result.filter((t) => t.projectId === query.data.projectId);
+  if (clientId != null && Number.isFinite(clientId)) {
+    result = result.filter((t) => {
+      if (t.projectId == null) return false;
+      return projectClientMap.get(t.projectId) === clientId;
+    });
+  }
   if (query.data.assigneeId != null) result = result.filter((t) => t.assigneeId === query.data.assigneeId);
   if (query.data.status != null) result = result.filter((t) => t.status === query.data.status);
 

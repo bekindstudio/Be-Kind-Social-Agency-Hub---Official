@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { portalFetch } from "@workspace/api-client-react";
 import { useAiChat } from "./AiChatContext";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import {
   Search,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useClientContext } from "@/context/ClientContext";
 
 interface Message {
   id?: number;
@@ -84,6 +85,7 @@ function renderMarkdown(text: string) {
 
 export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" }) {
   const { isDrawerOpen, closeDrawer, context } = useAiChat();
+  const { activeClient } = useClientContext();
   const [, setLocation] = useLocation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
@@ -97,7 +99,20 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const contextType = context?.type ?? "general";
+  const derivedClientContext = useMemo(() => {
+    if (!activeClient) return null;
+    return {
+      type: "client",
+      data: {
+        id: activeClient.id,
+        name: activeClient.name,
+        industry: activeClient.industry,
+        status: activeClient.status,
+      },
+    };
+  }, [activeClient]);
+  const effectiveContext = context ?? derivedClientContext;
+  const contextType = effectiveContext?.type ?? "general";
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -145,7 +160,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       const res = await portalFetch("/api/anthropic/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: safeTitle, contextType, contextId: context?.data?.id?.toString() }),
+        body: JSON.stringify({ title: safeTitle, contextType, contextId: effectiveContext?.data?.id?.toString() }),
       });
       if (res.ok) {
         const conv = await res.json();
@@ -160,7 +175,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       setApiError("Impossibile creare una nuova conversazione.");
     }
     return null;
-  }, [contextType, context, fetchConversations]);
+  }, [contextType, effectiveContext, fetchConversations]);
 
   const deleteConversation = useCallback(async (id: number) => {
     try {
@@ -253,7 +268,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       const res = await portalFetch(`/api/anthropic/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, context: context ?? undefined }),
+        body: JSON.stringify({ content, context: effectiveContext ?? undefined }),
         signal: controller.signal,
       });
 
@@ -315,7 +330,7 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [activeConvId, isStreaming, createConversation, context, fetchConversations]);
+  }, [activeConvId, isStreaming, createConversation, effectiveContext, fetchConversations]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -370,6 +385,11 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        {effectiveContext?.type === "client" && (
+          <div className="mb-3 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+            Contesto attivo: cliente <strong>{effectiveContext.data?.name ?? "selezionato"}</strong>
+          </div>
+        )}
         {apiError && (
           <div className="mb-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
             {apiError}

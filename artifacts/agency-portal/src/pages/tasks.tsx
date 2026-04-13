@@ -19,6 +19,7 @@ import {
 import { cn, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
 import { useToast } from "@/hooks/use-toast";
+import { useClientContext } from "@/context/ClientContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type ChecklistItem = {
@@ -425,12 +426,18 @@ const EMPTY_FORM = {
 export default function Tasks() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: tasks, isLoading } = useListTasks({});
-  const { data: projects } = useListProjects({});
+  const { activeClient } = useClientContext();
+  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
+  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
+  const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
+  const projectsQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
+  const { data: tasks, isLoading } = useListTasks(tasksQueryParams as any);
+  const { data: projects } = useListProjects(projectsQueryParams);
   const { data: members } = useListTeamMembers();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
+  const listTasksKey = getListTasksQueryKey(tasksQueryParams as any);
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -502,6 +509,37 @@ export default function Tasks() {
     return [tasks as TaskRow].filter(Boolean);
   }, [tasks]);
 
+  const scopedProjectList = useMemo(() => {
+    if (!activeClient) return projectList;
+    const activeName = activeClient.name.trim().toLowerCase();
+    const byClientId = Number.isFinite(activeClientNumericId)
+      ? projectList.filter((p: any) => Number(p?.clientId) === activeClientNumericId)
+      : [];
+    const byClientName = projectList.filter(
+      (p: any) => String(p?.clientName ?? "").trim().toLowerCase() === activeName
+    );
+    const merged = [...byClientId, ...byClientName];
+    if (merged.length === 0) return projectList;
+    return merged.filter(
+      (p: any, index: number, arr: any[]) => arr.findIndex((x: any) => Number(x?.id) === Number(p?.id)) === index
+    );
+  }, [activeClient, activeClientNumericId, projectList]);
+
+  const scopedProjectIds = useMemo(
+    () => new Set(scopedProjectList.map((p: any) => Number(p?.id)).filter((id: number) => Number.isFinite(id))),
+    [scopedProjectList]
+  );
+  const hasScopedProjects = activeClient != null && scopedProjectIds.size > 0;
+
+  const applyTaskCacheUpdate = useCallback((updater: (list: TaskRow[]) => TaskRow[]) => {
+    qc.setQueryData(listTasksKey, (prev: any) => {
+      if (!prev) return prev;
+      if (Array.isArray(prev)) return updater(prev as TaskRow[]);
+      if (Array.isArray(prev?.items)) return { ...prev, items: updater(prev.items as TaskRow[]) };
+      return prev;
+    });
+  }, [qc, listTasksKey]);
+
   const handleCategoriaChange = useCallback((cat: string) => {
     setForm((f) => ({ ...f, categoria: cat }));
     const items = generateChecklist(cat, form.meseRiferimento, form.pacchettoContenuti);
@@ -534,6 +572,7 @@ export default function Tasks() {
 
   const filtered = useMemo(() => {
     const list = taskList.filter((t) => {
+      const matchActiveClient = !hasScopedProjects || (t.projectId != null && scopedProjectIds.has(Number(t.projectId)));
       const matchSearch = String(t?.title ?? "").toLowerCase().includes(search.toLowerCase());
       const matchStatus = !filterStatus || t.status === filterStatus;
       const matchPriority = !filterPriority || t.priority === filterPriority;
@@ -543,7 +582,7 @@ export default function Tasks() {
       const matchAssignee = !filterAssignee || String(t.assigneeId) === filterAssignee;
       const matchDateFrom = !filterDateFrom || (t.dueDate && t.dueDate >= filterDateFrom);
       const matchDateTo = !filterDateTo || (t.dueDate && t.dueDate <= filterDateTo);
-      return matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;
+      return matchActiveClient && matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;
     }) ?? [];
     return list.sort((a, b) => {
       const statusA = STATUS_ORDER[a.status] ?? 1;
@@ -553,7 +592,13 @@ export default function Tasks() {
       const prioB = PRIORITY_ORDER[b.priority] ?? 2;
       return prioA - prioB;
     });
-  }, [taskList, search, filterStatus, filterPriority, filterTipo, filterCategory, filterProject, filterAssignee, filterDateFrom, filterDateTo]);
+  }, [taskList, hasScopedProjects, scopedProjectIds, search, filterStatus, filterPriority, filterTipo, filterCategory, filterProject, filterAssignee, filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    if (!filterProject) return;
+    const stillVisible = scopedProjectList.some((p: any) => String(p?.id) === filterProject);
+    if (!stillVisible) setFilterProject("");
+  }, [filterProject, scopedProjectList]);
 
   useEffect(() => {
     const validIds = new Set(taskList.map((t) => t.id));
@@ -599,7 +644,6 @@ export default function Tasks() {
     };
 
     const onDone = () => {
-      qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
       if (editId) addActivity(editId, "Task aggiornata");
       setShowForm(false);
       setEditId(null);
@@ -608,14 +652,45 @@ export default function Tasks() {
     };
 
     if (editId) {
-      updateTask.mutate({ id: editId, data: payload }, { onSuccess: onDone });
+      updateTask.mutate(
+        { id: editId, data: payload },
+        {
+          onSuccess: (updated: any) => {
+            if (updated?.id != null) {
+              applyTaskCacheUpdate((list) => list.map((t) => (t.id === updated.id ? { ...(t as any), ...updated } : t)));
+            }
+            qc.invalidateQueries({ queryKey: listTasksKey });
+            toast({ title: "Task aggiornata" });
+            onDone();
+          },
+          onError: (err: any) => {
+            toast({
+              variant: "destructive",
+              title: "Salvataggio task non riuscito",
+              description: err?.data?.error || "Controlla i dati inseriti e riprova.",
+            });
+          },
+        },
+      );
     } else {
       createTask.mutate({
         data: payload,
       }, {
         onSuccess: (created: any) => {
+          if (created?.id != null) {
+            applyTaskCacheUpdate((list) => [created as TaskRow, ...list]);
+          }
           if (created?.id) addActivity(created.id, "Task creata");
+          qc.invalidateQueries({ queryKey: listTasksKey });
+          toast({ title: "Task creata con successo" });
           onDone();
+        },
+        onError: (err: any) => {
+          toast({
+            variant: "destructive",
+            title: "Creazione task non riuscita",
+            description: err?.data?.error || "Controlla i dati inseriti e riprova.",
+          });
         },
       });
     }
@@ -626,9 +701,16 @@ export default function Tasks() {
       { id, data: { status: newStatus } },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          applyTaskCacheUpdate((list) => list.map((t) => (t.id === id ? { ...t, status: newStatus } : t)));
+          qc.invalidateQueries({ queryKey: listTasksKey });
           addActivity(id, `Stato cambiato in ${TASK_STATUS_LABELS[newStatus] ?? newStatus}`);
           if (newStatus === "done") playTaskComplete();
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Aggiornamento stato non riuscito",
+          });
         },
       }
     );
@@ -640,7 +722,8 @@ export default function Tasks() {
       { id },
       {
         onSuccess: async () => {
-          await qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          applyTaskCacheUpdate((list) => list.filter((t) => t.id !== id));
+          await qc.invalidateQueries({ queryKey: listTasksKey });
           setSelectedTaskIds((prev) => prev.filter((x) => x !== id));
           toast({ title: "Task spostato nel cestino" });
         },
@@ -690,7 +773,7 @@ export default function Tasks() {
     const failed = failedIds.length;
 
     if (success > 0) {
-      await qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+      await qc.invalidateQueries({ queryKey: listTasksKey });
     }
 
     if (failed > 0) {
@@ -717,7 +800,7 @@ export default function Tasks() {
       { id: task.id, data: { checklistJson: newJson } as any },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          qc.invalidateQueries({ queryKey: listTasksKey });
           addActivity(task.id, "Checklist aggiornata");
         },
       }
@@ -856,7 +939,7 @@ export default function Tasks() {
                 <label className="text-xs font-medium text-muted-foreground">Progetto</label>
                 <select className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
                   <option value="">Nessun progetto</option>
-                  {projectList.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {scopedProjectList.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
               <div>
@@ -927,7 +1010,7 @@ export default function Tasks() {
           </select>
           <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
             <option value="">Tutti i progetti</option>
-            {projectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+            {scopedProjectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
           </select>
           <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
             <option value="">Tutti gli assegnatari</option>
@@ -1175,7 +1258,7 @@ export default function Tasks() {
                     onChange={(e) => {
                       const priority = e.target.value;
                       setDetailTask({ ...detailTask, priority });
-                      updateTask.mutate({ id: detailTask.id, data: { priority } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListTasksQueryKey() }) });
+                      updateTask.mutate({ id: detailTask.id, data: { priority } }, { onSuccess: () => qc.invalidateQueries({ queryKey: listTasksKey }) });
                       addActivity(detailTask.id, `Priorità cambiata in ${PRIORITY_LABELS[priority] ?? priority}`);
                     }}
                   >

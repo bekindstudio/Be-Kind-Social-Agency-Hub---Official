@@ -146,6 +146,7 @@ export interface ClientEvent {
   clientId: string;
   title: string;
   date: string;
+  endDate?: string;
   type: "campaign" | "launch" | "deadline" | "meeting" | "other";
   priority: "low" | "medium" | "high";
   note?: string;

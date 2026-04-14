@@ -157,8 +157,11 @@ export interface ClientContextType {
   clients: Client[];
   activeClient: Client | null;
   brief: ClientBrief | null;
+  briefsByClient: Record<string, ClientBrief>;
   posts: EditorialPost[];
+  postsByClient: Record<string, EditorialPost[]>;
   analytics: ClientAnalytics | null;
+  analyticsByClient: Record<string, ClientAnalytics>;
   competitors: Competitor[];
   clientEvents: ClientEvent[];
   allClientEvents: ClientEvent[];

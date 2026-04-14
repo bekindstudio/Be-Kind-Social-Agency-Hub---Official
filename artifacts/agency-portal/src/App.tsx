@@ -30,6 +30,7 @@ import CompetitorsPage from "@/pages/tools/CompetitorsPage";
 import AnalyticsPage from "@/pages/tools/AnalyticsPage";
 import ReportsPage from "@/pages/tools/ReportsPage";
 import CaptionAiPage from "@/pages/tools/CaptionAiPage";
+import ContentIdeasPage from "@/pages/tools/ContentIdeasPage";
 import Trash from "@/pages/trash";
 import NotFound from "@/pages/not-found";
 import SignInPage from "@/pages/sign-in";
@@ -226,6 +227,9 @@ function Router() {
       </Route>
       <Route path="/tools/caption-ai">
         <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
+      </Route>
+      <Route path="/tools/content-ideas">
+        <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
       </Route>
       <Route component={NotFound} />
     </Switch>

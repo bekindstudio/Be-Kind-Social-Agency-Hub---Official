@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { portalFetch } from "@workspace/api-client-react";
-import { Bell, Check, CheckCheck, Trash2, X, CheckSquare, FileText, FileSignature, MessageCircle, Info } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, X, CheckSquare, FileText, FileSignature, MessageCircle, Info, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSmartReminders } from "@/hooks/useSmartReminders";
 
 interface Notification {
   id: number;
@@ -54,6 +55,7 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
   const ref = useRef<HTMLDivElement>(null);
   const prevUnreadCount = useRef<number | null>(null);
   const soundEnabled = useRef(false);
+  const smart = useSmartReminders();
 
   const playNotificationSound = useCallback(() => {
     try {
@@ -125,15 +127,16 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
 
   useEffect(() => {
     if (prevUnreadCount.current == null) {
-      prevUnreadCount.current = unreadCount;
+      prevUnreadCount.current = unreadCount + smart.unreadCount;
       return;
     }
-    const increased = unreadCount > prevUnreadCount.current;
+    const totalUnread = unreadCount + smart.unreadCount;
+    const increased = totalUnread > prevUnreadCount.current;
     if (increased && soundEnabled.current && document.visibilityState === "visible") {
       playNotificationSound();
     }
-    prevUnreadCount.current = unreadCount;
-  }, [unreadCount, playNotificationSound]);
+    prevUnreadCount.current = totalUnread;
+  }, [unreadCount, smart.unreadCount, playNotificationSound]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -150,6 +153,7 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
 
   const markAllRead = async () => {
     await portalFetch("/api/notifications/read-all", { method: "POST" });
+    smart.markAllRead();
     fetchNotifications();
   };
 
@@ -165,9 +169,9 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
         className={cn("relative p-2 rounded-lg hover:bg-sidebar-accent transition-colors", buttonClassName)}
       >
         <Bell size={18} className={cn("text-sidebar-foreground/70", iconClassName)} />
-        {unreadCount > 0 && (
+        {unreadCount + smart.unreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center min-w-[18px] h-[18px]">
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {unreadCount + smart.unreadCount > 9 ? "9+" : unreadCount + smart.unreadCount}
           </span>
         )}
       </button>
@@ -177,7 +181,7 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground">Notifiche</h3>
             <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
+              {unreadCount + smart.unreadCount > 0 && (
                 <button onClick={markAllRead} className="p-1 text-xs text-primary hover:underline flex items-center gap-1">
                   <CheckCheck size={13} /> Segna tutte lette
                 </button>
@@ -188,9 +192,51 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
+            {smart.reminders.length > 0 && (
+              <div className="border-b border-border/40 px-4 py-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reminder intelligenti</p>
+                  {smart.unreadCount > 0 && (
+                    <button className="text-[11px] text-primary hover:underline" onClick={smart.markAllRead}>
+                      Segna reminder letti
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  {smart.reminders.slice(0, 6).map((reminder) => {
+                    const unread = !smart.isRead(reminder.id);
+                    return (
+                      <button
+                        key={reminder.id}
+                        type="button"
+                        className={cn(
+                          "w-full rounded-lg border px-2 py-1.5 text-left text-xs",
+                          reminder.severity === "critical"
+                            ? "border-rose-200 bg-rose-50 text-rose-800"
+                            : reminder.severity === "warning"
+                              ? "border-amber-200 bg-amber-50 text-amber-800"
+                              : "border-blue-200 bg-blue-50 text-blue-800",
+                          unread && "ring-1 ring-primary/40",
+                        )}
+                        onClick={() => {
+                          smart.markRead(reminder.id);
+                          window.location.href = reminder.link;
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <AlertTriangle size={12} />
+                          {reminder.title}
+                        </span>
+                        <span className="block text-[11px] opacity-80">{reminder.message}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {notifications.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground text-sm">
-                Nessuna notifica
+                {smart.reminders.length === 0 ? "Nessuna notifica" : "Nessuna notifica API"}
               </div>
             ) : (
               notifications.map((n) => {

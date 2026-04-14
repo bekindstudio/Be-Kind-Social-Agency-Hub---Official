@@ -17,6 +17,7 @@ import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { Layout } from "@/components/layout/Layout";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useClientContext } from "@/context/ClientContext";
+import { useSmartReminders } from "@/hooks/useSmartReminders";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
   Search,
@@ -151,6 +152,7 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const { signOut, authDisabled } = useSupabaseAuth();
   const { activeClient, clients: contextClients, allClientEvents } = useClientContext();
+  const smartReminders = useSmartReminders();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
   const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
@@ -460,6 +462,42 @@ export default function Dashboard() {
         </div>
 
         {/* Alerts */}
+        {smartReminders.reminders.length > 0 && (
+          <div className="bg-card border border-card-border rounded-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold">Reminder intelligenti</p>
+              {smartReminders.unreadCount > 0 && (
+                <button onClick={smartReminders.markAllRead} className="text-xs text-primary hover:underline">
+                  Segna tutti letti
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {smartReminders.reminders.slice(0, 6).map((reminder) => (
+                <button
+                  key={reminder.id}
+                  onClick={() => {
+                    smartReminders.markRead(reminder.id);
+                    navigate(reminder.link);
+                  }}
+                  className={cn(
+                    "px-2.5 py-1.5 rounded-full text-xs border inline-flex items-center gap-1",
+                    reminder.severity === "critical"
+                      ? "bg-red-50 border-red-200 text-red-700"
+                      : reminder.severity === "warning"
+                        ? "bg-amber-50 border-amber-200 text-amber-700"
+                        : "bg-blue-50 border-blue-200 text-blue-700",
+                    !smartReminders.isRead(reminder.id) && "ring-1 ring-primary/30",
+                  )}
+                >
+                  <AlertTriangle size={12} />
+                  {reminder.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {alerts.length > 0 && (
           <div className="bg-card border border-card-border rounded-xl p-3">
             <div className="flex items-center justify-between mb-2">

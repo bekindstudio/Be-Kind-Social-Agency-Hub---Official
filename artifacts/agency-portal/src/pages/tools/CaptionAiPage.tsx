@@ -6,6 +6,7 @@ import { CaptionForm } from "@/components/tools/caption/CaptionForm";
 import { CaptionResults } from "@/components/tools/caption/CaptionResults";
 import { CaptionHistory } from "@/components/tools/caption/CaptionHistory";
 import { fetchCaptionHistory, getCaptionHistory, useCaptionAi, type CaptionRequest } from "@/hooks/useCaptionAi";
+import { getClientOperationalTemplateId, getOperationalTemplateById } from "@/lib/operationalTemplates";
 import type { SocialPlatform } from "@/types/client";
 
 function splitBrandVoice(value?: string): string[] {
@@ -61,6 +62,12 @@ export default function CaptionAiPage() {
     [brief],
   );
 
+  const activeTemplate = useMemo(() => {
+    if (!activeClient?.id) return null;
+    const templateId = getClientOperationalTemplateId(activeClient.id);
+    return getOperationalTemplateById(templateId);
+  }, [activeClient?.id]);
+
   const loadHistory = useCallback(async () => {
     const items = await fetchCaptionHistory(activeClient?.id ?? "");
     setHistory(items);
@@ -71,10 +78,49 @@ export default function CaptionAiPage() {
       ...prev,
       clientId: activeClient?.id ?? "",
       brief: briefPayload,
+      postDetails: {
+        ...prev.postDetails,
+        objective: activeTemplate?.captionStyle.defaultObjective ?? prev.postDetails.objective,
+        additionalNotes: activeTemplate
+          ? [prev.postDetails.additionalNotes ?? "", `Tone hint: ${activeTemplate.captionStyle.toneHint}`]
+              .filter(Boolean)
+              .join(" · ")
+          : prev.postDetails.additionalNotes,
+        keywords: activeTemplate?.captionStyle.keywordHints ?? prev.postDetails.keywords,
+      },
+      options: {
+        ...prev.options,
+        length: activeTemplate?.captionStyle.defaultLength ?? prev.options.length,
+        includeEmoji: activeTemplate?.captionStyle.includeEmoji ?? prev.options.includeEmoji,
+        includeHashtags: activeTemplate?.captionStyle.includeHashtags ?? prev.options.includeHashtags,
+      },
     }));
+    try {
+      const raw = sessionStorage.getItem("agency_hub_caption_prefill");
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          theme?: string;
+          description?: string;
+          platform?: string;
+          contentType?: string;
+        };
+        setForm((prev) => ({
+          ...prev,
+          postDetails: {
+            ...prev.postDetails,
+            theme: parsed.theme || parsed.description || prev.postDetails.theme,
+            platform: (parsed.platform?.toLowerCase() as CaptionRequest["postDetails"]["platform"]) || prev.postDetails.platform,
+            contentType: parsed.contentType || prev.postDetails.contentType,
+          },
+        }));
+        sessionStorage.removeItem("agency_hub_caption_prefill");
+      }
+    } catch {
+      sessionStorage.removeItem("agency_hub_caption_prefill");
+    }
     captionAi.clearVariants();
     void loadHistory();
-  }, [activeClient?.id, briefPayload.toneOfVoice]);
+  }, [activeClient?.id, briefPayload.toneOfVoice, activeTemplate?.id]);
 
   return (
     <Layout>
@@ -90,6 +136,11 @@ export default function CaptionAiPage() {
           <p className="text-xs text-muted-foreground mt-1">
             Generazioni oggi: {captionAi.generationsToday} · Token ultima generazione: {captionAi.tokensUsed}
           </p>
+          {activeTemplate && (
+            <p className="text-xs text-violet-700 mt-1">
+              Template attivo: {activeTemplate.label} · stile suggerito applicato automaticamente.
+            </p>
+          )}
         </div>
 
         {captionAi.error && (

@@ -16,6 +16,7 @@ import {
   FileText,
   Hash,
   MessageSquareQuote,
+  Sparkles,
   ChevronRight,
   Filter,
 } from "lucide-react";
@@ -78,6 +79,7 @@ const PLATFORMS: { value: string; label: string }[] = [
 
 const TOOLS = [
   { id: "piano-editoriale", label: "Piano Editoriale", icon: CalendarDays, active: true },
+  { id: "content-ideas-ai", label: "Idee AI", icon: Sparkles, active: true },
   { id: "content-brief", label: "Content Brief", icon: FileText, active: false },
   { id: "hashtag-sets", label: "Hashtag Sets", icon: Hash, active: false },
   { id: "caption-templates", label: "Caption Templates", icon: MessageSquareQuote, active: false },
@@ -222,7 +224,14 @@ export default function Tools() {
             {TOOLS.map((tool) => (
               <button
                 key={tool.id}
-                onClick={() => tool.active && setActiveTool(tool.id)}
+                onClick={() => {
+                  if (!tool.active) return;
+                  if (tool.id === "content-ideas-ai") {
+                    setLocation("/tools/content-ideas");
+                    return;
+                  }
+                  setActiveTool(tool.id);
+                }}
                 disabled={!tool.active}
                 className={cn(
                   "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left",

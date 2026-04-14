@@ -6,6 +6,14 @@ import { PlatformSelector } from "@/components/tools/brief/PlatformSelector";
 import { ColorPaletteEditor } from "@/components/tools/brief/ColorPaletteEditor";
 import { KpiList } from "@/components/tools/brief/KpiList";
 import { getBriefCompletion, getBriefSectionCompletion } from "@/components/tools/brief/briefCompletion";
+import {
+  OPERATIONAL_TEMPLATES,
+  getClientOperationalTemplateId,
+  getOperationalTemplateById,
+  inferTemplateFromIndustry,
+  setClientOperationalTemplateId,
+  type OperationalTemplateId,
+} from "@/lib/operationalTemplates";
 import { useClientContext } from "@/context/ClientContext";
 import type { BriefKpi, ClientBrief, ContentFormat, SocialPlatform } from "@/types/client";
 
@@ -164,6 +172,7 @@ export default function BriefPage() {
   const [draft, setDraft] = useState<ClientBrief | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [hydratedClientId, setHydratedClientId] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<OperationalTemplateId | "">("");
   const skipNextSaveRef = useRef(true);
 
   useEffect(() => {
@@ -175,6 +184,13 @@ export default function BriefPage() {
     const next = brief ?? createEmptyBrief(activeClient.id);
     setDraft(next);
     setHydratedClientId(activeClient.id);
+    const persisted = getClientOperationalTemplateId(activeClient.id);
+    if (persisted) {
+      setSelectedTemplateId(persisted);
+    } else {
+      const inferred = inferTemplateFromIndustry(activeClient.industry);
+      setSelectedTemplateId(inferred?.id ?? "");
+    }
     skipNextSaveRef.current = true;
   }, [activeClient?.id, brief]);
 
@@ -210,6 +226,7 @@ export default function BriefPage() {
 
   const activePlatforms = draft.activePlatforms ?? [];
   const platformFrequencies = draft.platformFrequencies ?? {};
+  const selectedTemplate = getOperationalTemplateById(selectedTemplateId || null);
 
   return (
     <Layout>
@@ -228,6 +245,96 @@ export default function BriefPage() {
         </div>
 
         <div className="space-y-4">
+          <BriefSection
+            title="Template operativo per settore"
+            description="Preset rapido per standardizzare brief, calendario, caption style e checklist report."
+            completionPercent={selectedTemplate ? 100 : 0}
+          >
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                <div>
+                  <p className="text-xs text-muted-foreground">Template</p>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value as OperationalTemplateId | "")}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Nessun template</option>
+                    {OPERATIONAL_TEMPLATES.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-lg border border-border bg-background p-3 text-xs">
+                  {selectedTemplate ? (
+                    <>
+                      <p className="font-semibold text-foreground">{selectedTemplate.label}</p>
+                      <p className="mt-1 text-muted-foreground">{selectedTemplate.description}</p>
+                      <p className="mt-2 text-muted-foreground">
+                        Calendario consigliato: {selectedTemplate.calendarPreset.postsPerWeek} post/settimana · giorni{" "}
+                        {selectedTemplate.calendarPreset.preferredDays.join(", ")} · ora {selectedTemplate.calendarPreset.preferredTime}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        Caption style: {selectedTemplate.captionStyle.toneHint}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">Seleziona un template per applicare preset operativi al cliente.</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedTemplate}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                  onClick={() => {
+                    if (!selectedTemplate) return;
+                    setDraft((prev) => {
+                      if (!prev) return prev;
+                      const nextTopics = Array.from(new Set([...(prev.topicsToCover ?? []), ...(selectedTemplate.briefPatch.topicsToCover ?? [])]));
+                      const nextAvoid = Array.from(new Set([...(prev.topicsToAvoid ?? []), ...(selectedTemplate.briefPatch.topicsToAvoid ?? [])]));
+                      const nextHashtags = Array.from(new Set([...(prev.brandHashtags ?? []), ...(selectedTemplate.briefPatch.brandHashtags ?? [])]));
+                      return {
+                        ...prev,
+                        ...selectedTemplate.briefPatch,
+                        topicsToCover: nextTopics,
+                        topicsToAvoid: nextAvoid,
+                        brandHashtags: nextHashtags,
+                        internalNotes: [
+                          prev.internalNotes ?? "",
+                          `Template operativo: ${selectedTemplate.label}`,
+                          `Checklist report: ${selectedTemplate.reportChecklist.join(" | ")}`,
+                        ]
+                          .filter(Boolean)
+                          .join("\n"),
+                      };
+                    });
+                    setClientOperationalTemplateId(activeClient.id, selectedTemplate.id);
+                  }}
+                >
+                  Applica template al cliente
+                </button>
+                {selectedTemplate && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-input px-3 py-1.5 text-xs"
+                    onClick={() => {
+                      setField("internalNotes", [
+                        draft.internalNotes ?? "",
+                        `Checklist report (${selectedTemplate.label}): ${selectedTemplate.reportChecklist.join(" | ")}`,
+                      ].filter(Boolean).join("\n"));
+                    }}
+                  >
+                    Inserisci checklist report nelle note
+                  </button>
+                )}
+              </div>
+            </div>
+          </BriefSection>
+
           <BriefSection title="Sezione 1 — Panoramica cliente" description="Identità e informazioni base dell'azienda." completionPercent={sections.overview}>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>

@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { useClientContext } from "@/context/ClientContext";
 import type { EditorialPost, SocialPlatform } from "@/types/client";
+import { getClientOperationalTemplateId, getOperationalTemplateById } from "@/lib/operationalTemplates";
 import { CalendarFilters } from "@/components/tools/calendar/CalendarFilters";
 import { MonthView, type CalendarDay } from "@/components/tools/calendar/MonthView";
 import { WeekView } from "@/components/tools/calendar/WeekView";
@@ -90,6 +91,11 @@ export default function CalendarPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [newPostDate, setNewPostDate] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
+  const activeTemplate = useMemo(() => {
+    if (!activeClient?.id) return null;
+    const templateId = getClientOperationalTemplateId(activeClient.id);
+    return getOperationalTemplateById(templateId);
+  }, [activeClient?.id]);
 
   useEffect(() => {
     setSelectedPlatforms([]);
@@ -210,6 +216,13 @@ export default function CalendarPage() {
           <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">Approvati pronti</p><p className="text-xl font-bold">{stats.approved}</p></div>
           <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">Pubblicati questo mese</p><p className="text-xl font-bold">{stats.publishedMonth}</p></div>
         </div>
+
+        {activeTemplate && (
+          <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs text-violet-800">
+            Template operativo {activeTemplate.label}: {activeTemplate.calendarPreset.postsPerWeek} post/settimana · giorni consigliati{" "}
+            {activeTemplate.calendarPreset.preferredDays.join(", ")} · fascia oraria {activeTemplate.calendarPreset.preferredTime}.
+          </div>
+        )}
 
         <CalendarFilters
           selectedPlatforms={selectedPlatforms}

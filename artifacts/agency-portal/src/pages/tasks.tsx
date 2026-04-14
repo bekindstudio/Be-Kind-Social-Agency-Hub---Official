@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
+import { getClientOperationalTemplateId, getOperationalTemplateById } from "@/lib/operationalTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useClientContext } from "@/context/ClientContext";
 
@@ -460,6 +461,11 @@ export default function Tasks() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const draggedTaskRef = useRef<number | null>(null);
+  const activeTemplate = useMemo(() => {
+    if (!activeClient?.id) return null;
+    const templateId = getClientOperationalTemplateId(activeClient.id);
+    return getOperationalTemplateById(templateId);
+  }, [activeClient?.id]);
 
   useEffect(() => {
     try {
@@ -543,9 +549,12 @@ export default function Tasks() {
 
   const handleCategoriaChange = useCallback((cat: string) => {
     setForm((f) => ({ ...f, categoria: cat }));
-    const items = generateChecklist(cat, form.meseRiferimento, form.pacchettoContenuti);
+    const items =
+      cat === "Report Cliente" && activeTemplate
+        ? activeTemplate.reportChecklist.map((text) => ({ id: uid(), testo: text, completato: false, gruppo: "" }))
+        : generateChecklist(cat, form.meseRiferimento, form.pacchettoContenuti);
     setChecklist(items);
-  }, [form.meseRiferimento, form.pacchettoContenuti]);
+  }, [form.meseRiferimento, form.pacchettoContenuti, activeTemplate]);
 
   const handleMeseChange = (mese: string) => {
     setForm((f) => ({ ...f, meseRiferimento: mese }));
@@ -933,6 +942,11 @@ export default function Tasks() {
                   <select className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={form.tipoReport} onChange={(e) => setForm({ ...form, tipoReport: e.target.value })}>
                     {TIPI_REPORT.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
+                  {activeTemplate && (
+                    <p className="mt-1 text-[11px] text-violet-700">
+                      Checklist report template {activeTemplate.label} applicata automaticamente.
+                    </p>
+                  )}
                 </div>
               )}
 

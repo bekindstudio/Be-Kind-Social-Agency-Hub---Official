@@ -92,6 +92,12 @@ function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function startOfDay(dateInput: string | Date): Date {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : new Date(dateInput);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 const KPI_COLORS = ["bg-indigo-500", "bg-amber-500", "bg-emerald-500", "bg-violet-500"];
 
 function KpiCard({ title, value, sub, trend, color, onClick, progress }: { title: string; value: string | number; sub: string; trend?: string; color: string; onClick?: () => void; progress?: number }) {
@@ -151,7 +157,7 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { signOut, authDisabled } = useSupabaseAuth();
-  const { activeClient, clients: contextClients, allClientEvents } = useClientContext();
+  const { activeClient, clients: contextClients, allClientEvents, posts } = useClientContext();
   const smartReminders = useSmartReminders();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
@@ -239,10 +245,58 @@ export default function Dashboard() {
     return d && d.getMonth() === mo && d.getFullYear() === y;
   }).length;
 
-  const upcomingDeadlines = [
-    ...tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate) <= in14).map((t: AnyObj) => ({ type: "task", title: t.title, when: t.dueDate, priority: t.priority, ref: `/tasks` })),
-    ...projects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= in14).map((p: AnyObj) => ({ type: "deadline", title: p.name, when: p.deadline, priority: "high", ref: `/projects/${p.id}` })),
-  ].sort((a, b) => new Date(a.when).getTime() - new Date(b.when).getTime()).slice(0, 8);
+  const upcomingDeadlines = useMemo(() => {
+    const nowMs = Date.now();
+    const in14Ms = in14.getTime();
+    const fromTasks = tasks
+      .filter((task: AnyObj) => task.dueDate && new Date(task.dueDate).getTime() >= nowMs && new Date(task.dueDate).getTime() <= in14Ms)
+      .map((task: AnyObj) => ({
+        type: "task",
+        title: task.title,
+        when: task.dueDate,
+        priority: task.priority,
+        ref: "/tasks",
+      }));
+    const fromProjects = projects
+      .filter((project: AnyObj) => project.deadline && new Date(project.deadline).getTime() >= nowMs && new Date(project.deadline).getTime() <= in14Ms)
+      .map((project: AnyObj) => ({
+        type: "deadline",
+        title: project.name,
+        when: project.deadline,
+        priority: "high",
+        ref: `/projects/${project.id}`,
+      }));
+    const fromEditorialCalendar = posts
+      .filter((post) => post.status !== "published")
+      .filter((post) => {
+        const t = new Date(post.scheduledDate).getTime();
+        return t >= nowMs && t <= in14Ms;
+      })
+      .map((post) => ({
+        type: "calendar_post",
+        title: `Post: ${post.title}`,
+        when: post.scheduledDate,
+        priority: post.status === "pending_approval" ? "high" : "medium",
+        ref: "/tools/calendar",
+      }));
+    const fromEventsCalendar = allClientEvents
+      .filter((event) => {
+        const start = new Date(event.date).getTime();
+        const end = event.endDate ? new Date(event.endDate).getTime() : start;
+        return end >= nowMs && start <= in14Ms;
+      })
+      .map((event) => ({
+        type: "event",
+        title: `Evento: ${event.title}`,
+        when: event.date,
+        priority: event.priority,
+        ref: "/tools/events",
+      }));
+
+    return [...fromTasks, ...fromProjects, ...fromEditorialCalendar, ...fromEventsCalendar]
+      .sort((a, b) => new Date(a.when).getTime() - new Date(b.when).getTime())
+      .slice(0, 8);
+  }, [allClientEvents, in14, posts, projects, tasks]);
 
   const alerts = useMemo(() => {
     const list: Array<{ id: string; level: "critical" | "warning" | "info"; text: string; href: string }> = [];
@@ -316,15 +370,42 @@ export default function Dashboard() {
     const inv = (reportCounts.inviato ?? 0) + (reportCounts.inviato_al_cliente ?? 0);
     return inv;
   }, [reportCounts]);
-  const editorialWeek = [
-    { day: "Lun", post: 1, reel: 1, story: 1, carousel: 0 },
-    { day: "Mar", post: 0, reel: 1, story: 1, carousel: 1 },
-    { day: "Mer", post: 1, reel: 0, story: 1, carousel: 0 },
-    { day: "Gio", post: 0, reel: 1, story: 0, carousel: 1 },
-    { day: "Ven", post: 1, reel: 1, story: 1, carousel: 0 },
-    { day: "Sab", post: 0, reel: 0, story: 1, carousel: 0 },
-    { day: "Dom", post: 0, reel: 0, story: 0, carousel: 1 },
-  ];
+  const editorialWeek = useMemo(() => {
+    const labels = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+    const weekStart = startOfDay(new Date());
+    const offset = (weekStart.getDay() + 6) % 7;
+    weekStart.setDate(weekStart.getDate() - offset);
+    const weekEndDate = new Date(weekStart);
+    weekEndDate.setDate(weekStart.getDate() + 6);
+    weekEndDate.setHours(23, 59, 59, 999);
+
+    const initial = labels.map((label) => ({
+      day: label,
+      post: 0,
+      draft: 0,
+      pending: 0,
+      approved: 0,
+      published: 0,
+    }));
+
+    posts.forEach((post) => {
+      const scheduled = new Date(post.scheduledDate);
+      if (scheduled < weekStart || scheduled > weekEndDate) return;
+      const idx = (scheduled.getDay() + 6) % 7;
+      initial[idx].post += 1;
+      if (post.status === "draft") initial[idx].draft += 1;
+      if (post.status === "pending_approval") initial[idx].pending += 1;
+      if (post.status === "approved") initial[idx].approved += 1;
+      if (post.status === "published") initial[idx].published += 1;
+    });
+
+    return initial;
+  }, [posts]);
+  const editorialWeekTotals = useMemo(() => {
+    const weekTotal = editorialWeek.reduce((acc, day) => acc + day.post, 0);
+    const pendingTotal = editorialWeek.reduce((acc, day) => acc + day.pending, 0);
+    return { weekTotal, pendingTotal };
+  }, [editorialWeek]);
   const unreadMessages = [
     { id: 1, channel: "Progetto TechNova", preview: "Ho aggiornato il piano media, puoi verificare?", time: "10:12", unread: 3 },
     { id: 2, channel: "DM - Marco", preview: "Ci sentiamo alle 15 per il brief cliente?", time: "09:45", unread: 1 },
@@ -376,9 +457,17 @@ export default function Dashboard() {
   const eventsByDay = useMemo(() => {
     const map = new Map<string, typeof allClientEvents>();
     for (const event of allClientEvents) {
-      const key = dayKey(new Date(event.date));
-      const current = map.get(key) ?? [];
-      map.set(key, [...current, event]);
+      const start = startOfDay(event.date);
+      const end = event.endDate ? startOfDay(event.endDate) : start;
+      const safeEnd = end.getTime() >= start.getTime() ? end : start;
+      const span = Math.min(90, Math.floor((safeEnd.getTime() - start.getTime()) / 86400000));
+      for (let idx = 0; idx <= span; idx += 1) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + idx);
+        const key = dayKey(d);
+        const current = map.get(key) ?? [];
+        map.set(key, [...current, event]);
+      }
     }
     return map;
   }, [allClientEvents]);
@@ -568,14 +657,18 @@ export default function Dashboard() {
                           <p className="text-[10px] text-muted-foreground mb-1">{d.day}</p>
                           <div className="flex justify-center gap-1 flex-wrap">
                             {d.post > 0 && <span className="w-2 h-2 rounded-full bg-violet-500" title="post" />}
-                            {d.reel > 0 && <span className="w-2 h-2 rounded-full bg-pink-500" title="reel" />}
-                            {d.story > 0 && <span className="w-2 h-2 rounded-full bg-teal-500" title="story" />}
-                            {d.carousel > 0 && <span className="w-2 h-2 rounded-full bg-blue-500" title="carousel" />}
+                            {d.draft > 0 && <span className="w-2 h-2 rounded-full bg-slate-400" title="bozze" />}
+                            {d.pending > 0 && <span className="w-2 h-2 rounded-full bg-amber-500" title="in approvazione" />}
+                            {d.approved > 0 && <span className="w-2 h-2 rounded-full bg-blue-500" title="approvati" />}
+                            {d.published > 0 && <span className="w-2 h-2 rounded-full bg-emerald-500" title="pubblicati" />}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">14 contenuti programmati questa settimana · <span className="text-amber-600">3 da approvare</span></p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {editorialWeekTotals.weekTotal} contenuti programmati questa settimana ·{" "}
+                      <span className="text-amber-600">{editorialWeekTotals.pendingTotal} da approvare</span>
+                    </p>
                   </div>
                 )}
 

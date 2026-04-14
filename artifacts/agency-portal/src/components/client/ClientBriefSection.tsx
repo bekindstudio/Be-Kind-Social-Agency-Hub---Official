@@ -409,6 +409,9 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   } catch { /* ignore */ }
 
   const hasParsed = Object.keys(parsedData).length > 0;
+  const parsedSectionCount = Object.values(parsedData).filter((section) =>
+    Object.values(section).some((value) => cleanText(value).length > 0),
+  ).length;
   const strategyContent = generating ? streamHtml : (brief?.strategyHtml ?? "");
   const hasStrategy = !!strategyContent.trim();
 
@@ -453,6 +456,30 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
           <CheckCircle2 className="w-4 h-4 shrink-0" /> {autoFillNotice}
         </div>
       )}
+
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
+          <p className="text-muted-foreground">Questionario</p>
+          <p className="mt-0.5 inline-flex items-center gap-1 font-semibold">
+            <ClipboardPaste className="h-3.5 w-3.5 text-primary" />
+            {rawText.trim() ? "Caricato" : "In attesa"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
+          <p className="text-muted-foreground">Brief strutturato</p>
+          <p className="mt-0.5 inline-flex items-center gap-1 font-semibold">
+            <FileText className="h-3.5 w-3.5 text-primary" />
+            {hasParsed ? `${parsedSectionCount} sezioni compilate` : "Non compilato"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs">
+          <p className="text-muted-foreground">Strategia AI</p>
+          <p className="mt-0.5 inline-flex items-center gap-1 font-semibold">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {hasStrategy ? "Pronta" : generating ? "In generazione" : "Da generare"}
+          </p>
+        </div>
+      </div>
 
       <div className="space-y-2">
         <button onClick={() => setShowRaw(!showRaw)} className="flex items-center gap-2 w-full text-left text-sm font-semibold text-foreground hover:text-primary transition-colors">
@@ -562,6 +589,24 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
                   <><Sparkles className="w-3.5 h-3.5" /> Genera Strategia</>
                 )}
               </button>
+              {hasParsed && (
+                <button
+                  onClick={() => {
+                    if (String(activeClient?.id ?? "") !== String(clientId)) return;
+                    const mapped = parsedToClientBrief(parsedData);
+                    updateBrief(mapped);
+                    setAutoFillNotice("Strategia e brief sincronizzati: sezioni aggiornate automaticamente.");
+                    setTimeout(() => setAutoFillNotice(""), 2200);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                    "bg-violet-100 text-violet-700 hover:bg-violet-200",
+                  )}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Sincronizza dati AI nel brief
+                </button>
+              )}
               {hasStrategy && !generating && (
                 <button onClick={() => {
                   const pdf = generateStrategyPDF(clientName, strategyContent);

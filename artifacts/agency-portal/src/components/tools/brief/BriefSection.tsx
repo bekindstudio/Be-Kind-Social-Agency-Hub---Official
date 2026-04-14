@@ -6,6 +6,7 @@ interface BriefSectionProps {
   description: string;
   children: ReactNode;
   completionPercent: number;
+  icon?: ReactNode;
 }
 
 function completionClass(percent: number): string {
@@ -14,17 +15,20 @@ function completionClass(percent: number): string {
   return "bg-rose-500";
 }
 
-export function BriefSection({ title, description, children, completionPercent }: BriefSectionProps) {
+export function BriefSection({ title, description, children, completionPercent, icon }: BriefSectionProps) {
   const bounded = Math.max(0, Math.min(100, completionPercent));
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm">
       <div className="mb-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <span className="text-xs font-medium text-muted-foreground">{bounded}%</span>
+          <h3 className="inline-flex items-center gap-2 text-sm font-semibold">
+            {icon ? <span className="text-primary">{icon}</span> : null}
+            {title}
+          </h3>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{bounded}%</span>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        <div className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
           <div className={cn("h-full transition-all", completionClass(bounded))} style={{ width: `${bounded}%` }} />
         </div>
       </div>

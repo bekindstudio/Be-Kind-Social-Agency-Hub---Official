@@ -147,6 +147,9 @@ interface StoredHistoryItem {
 }
 
 let historyTableEnsured = false;
+const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
+  (process.env.PRIVATE_PORTAL_AI_ONLY ?? "true").trim().toLowerCase(),
+);
 
 async function ensureCaptionHistoryTable(): Promise<void> {
   if (historyTableEnsured) return;
@@ -165,6 +168,9 @@ async function ensureCaptionHistoryTable(): Promise<void> {
 }
 
 function getAnthropicClient(): Anthropic {
+  if (PRIVATE_PORTAL_AI_ONLY) {
+    throw new Error("Modalita privata attiva: chiamate AI esterne disabilitate.");
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY non configurata");

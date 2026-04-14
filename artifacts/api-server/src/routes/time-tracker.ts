@@ -15,6 +15,34 @@ import { getUserId, isEnvAdmin, isAnonymousApiUserId } from "../lib/access-contr
 
 const router: IRouter = Router();
 
+async function enrichSession(session: any) {
+  let clientName = null;
+  let projectName = null;
+  let taskTitle = null;
+  if (session.clientId) {
+    const [c] = await db.select().from(clientsTable).where(eq(clientsTable.id, session.clientId));
+    clientName = c?.name ?? null;
+  }
+  if (session.projectId) {
+    const [p] = await db.select().from(projectsTable).where(eq(projectsTable.id, session.projectId));
+    projectName = p?.name ?? null;
+  }
+  if (session.taskId) {
+    const [t] = await db.select().from(tasksTable).where(eq(tasksTable.id, session.taskId));
+    taskTitle = t?.title ?? null;
+  }
+  return {
+    ...session,
+    startedAt: session.startedAt?.toISOString(),
+    pausedAt: session.pausedAt?.toISOString() ?? null,
+    resumedAt: session.resumedAt?.toISOString() ?? null,
+    createdAt: session.createdAt?.toISOString(),
+    clientName,
+    projectName,
+    taskTitle,
+  };
+}
+
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -50,33 +78,26 @@ router.get("/timer/active", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!session) { res.json(null); return; }
+  res.json(await enrichSession(session));
+});
 
-  let clientName = null;
-  let projectName = null;
-  let taskTitle = null;
-  if (session.clientId) {
-    const [c] = await db.select().from(clientsTable).where(eq(clientsTable.id, session.clientId));
-    clientName = c?.name ?? null;
-  }
-  if (session.projectId) {
-    const [p] = await db.select().from(projectsTable).where(eq(projectsTable.id, session.projectId));
-    projectName = p?.name ?? null;
-  }
-  if (session.taskId) {
-    const [t] = await db.select().from(tasksTable).where(eq(tasksTable.id, session.taskId));
-    taskTitle = t?.title ?? null;
+router.get("/timer/active-all", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  if (isAnonymousApiUserId(userId)) {
+    res.json([]);
+    return;
   }
 
-  res.json({
-    ...session,
-    startedAt: session.startedAt?.toISOString(),
-    pausedAt: session.pausedAt?.toISOString() ?? null,
-    resumedAt: session.resumedAt?.toISOString() ?? null,
-    createdAt: session.createdAt?.toISOString(),
-    clientName,
-    projectName,
-    taskTitle,
-  });
+  const sessions = await db.select().from(timerSessionsTable)
+    .where(and(
+      eq(timerSessionsTable.userId, userId),
+      sql`${timerSessionsTable.status} IN ('running', 'paused')`
+    ))
+    .orderBy(desc(timerSessionsTable.startedAt));
+
+  const enriched = await Promise.all(sessions.map((session) => enrichSession(session)));
+  res.json(enriched);
 });
 
 router.post("/timer/start", async (req, res): Promise<void> => {
@@ -84,23 +105,6 @@ router.post("/timer/start", async (req, res): Promise<void> => {
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
   const { clientId, projectId, taskId, description, activityType } = req.body;
-
-  const [existing] = await db.select().from(timerSessionsTable)
-    .where(and(
-      eq(timerSessionsTable.userId, userId),
-      sql`${timerSessionsTable.status} IN ('running', 'paused')`
-    ));
-
-  if (existing) {
-    res.status(409).json({
-      error: "Timer gia attivo",
-      activeSession: {
-        ...existing,
-        startedAt: existing.startedAt?.toISOString(),
-      }
-    });
-    return;
-  }
 
   const [session] = await db.insert(timerSessionsTable).values({
     userId,
@@ -130,11 +134,19 @@ router.post("/timer/pause", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
+  const rawSessionId = req.body?.sessionId;
+  const sessionId = rawSessionId != null ? Number(rawSessionId) : null;
+  const baseConditions = [
+    eq(timerSessionsTable.userId, userId),
+    eq(timerSessionsTable.status, "running"),
+  ];
+  if (sessionId != null && Number.isFinite(sessionId)) {
+    baseConditions.push(eq(timerSessionsTable.id, sessionId));
+  }
   const [session] = await db.select().from(timerSessionsTable)
-    .where(and(
-      eq(timerSessionsTable.userId, userId),
-      eq(timerSessionsTable.status, "running"),
-    ));
+    .where(and(...baseConditions))
+    .orderBy(desc(timerSessionsTable.startedAt))
+    .limit(1);
 
   if (!session) { res.status(404).json({ error: "Nessun timer attivo" }); return; }
 
@@ -150,11 +162,19 @@ router.post("/timer/resume", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
+  const rawSessionId = req.body?.sessionId;
+  const sessionId = rawSessionId != null ? Number(rawSessionId) : null;
+  const baseConditions = [
+    eq(timerSessionsTable.userId, userId),
+    eq(timerSessionsTable.status, "paused"),
+  ];
+  if (sessionId != null && Number.isFinite(sessionId)) {
+    baseConditions.push(eq(timerSessionsTable.id, sessionId));
+  }
   const [session] = await db.select().from(timerSessionsTable)
-    .where(and(
-      eq(timerSessionsTable.userId, userId),
-      eq(timerSessionsTable.status, "paused"),
-    ));
+    .where(and(...baseConditions))
+    .orderBy(desc(timerSessionsTable.startedAt))
+    .limit(1);
 
   if (!session) { res.status(404).json({ error: "Nessun timer in pausa" }); return; }
 
@@ -180,13 +200,20 @@ router.post("/timer/stop", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
-  const { description, activityType, isBillable, discard } = req.body;
+  const { description, activityType, isBillable, discard, sessionId: rawSessionId } = req.body;
+  const sessionId = rawSessionId != null ? Number(rawSessionId) : null;
+  const baseConditions = [
+    eq(timerSessionsTable.userId, userId),
+    sql`${timerSessionsTable.status} IN ('running', 'paused')`,
+  ];
+  if (sessionId != null && Number.isFinite(sessionId)) {
+    baseConditions.push(eq(timerSessionsTable.id, sessionId));
+  }
 
   const [session] = await db.select().from(timerSessionsTable)
-    .where(and(
-      eq(timerSessionsTable.userId, userId),
-      sql`${timerSessionsTable.status} IN ('running', 'paused')`
-    ));
+    .where(and(...baseConditions))
+    .orderBy(desc(timerSessionsTable.startedAt))
+    .limit(1);
 
   if (!session) { res.status(404).json({ error: "Nessun timer attivo" }); return; }
 
@@ -242,12 +269,19 @@ router.post("/timer/force-stop", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
+  const rawSessionId = req.body?.sessionId;
+  const sessionId = rawSessionId != null ? Number(rawSessionId) : null;
+  const baseConditions = [
+    eq(timerSessionsTable.userId, userId),
+    sql`${timerSessionsTable.status} IN ('running', 'paused')`,
+  ];
+  if (sessionId != null && Number.isFinite(sessionId)) {
+    baseConditions.push(eq(timerSessionsTable.id, sessionId));
+  }
+
   await db.update(timerSessionsTable)
     .set({ status: "stopped" })
-    .where(and(
-      eq(timerSessionsTable.userId, userId),
-      sql`${timerSessionsTable.status} IN ('running', 'paused')`
-    ));
+    .where(and(...baseConditions));
 
   res.json({ success: true });
 });

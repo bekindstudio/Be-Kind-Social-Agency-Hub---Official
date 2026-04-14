@@ -7,6 +7,7 @@ import { ColorPaletteEditor } from "@/components/tools/brief/ColorPaletteEditor"
 import { KpiList } from "@/components/tools/brief/KpiList";
 import { ClientBriefSection } from "@/components/client/ClientBriefSection";
 import { getBriefCompletion, getBriefSectionCompletion } from "@/components/tools/brief/briefCompletion";
+import { useToast } from "@/hooks/use-toast";
 import {
   OPERATIONAL_TEMPLATES,
   getClientOperationalTemplateId,
@@ -17,6 +18,17 @@ import {
 } from "@/lib/operationalTemplates";
 import { useClientContext } from "@/context/ClientContext";
 import type { BriefKpi, ClientBrief, ContentFormat, SocialPlatform } from "@/types/client";
+import {
+  Wand2,
+  Sparkles,
+  BadgeCheck,
+  Building2,
+  Target,
+  Users,
+  Palette,
+  Clapperboard,
+  BriefcaseBusiness,
+} from "lucide-react";
 
 type SaveState = "saved" | "dirty" | "saving";
 
@@ -67,6 +79,80 @@ function createEmptyBrief(clientId: string): ClientBrief {
     internalNotes: "",
     usefulLinks: [],
   };
+}
+
+function isMissing(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (!value) return true;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length === 0;
+  return false;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function autoCompleteBriefDraft(
+  current: ClientBrief,
+  clientName: string,
+  industry: string,
+  selectedTemplateId: OperationalTemplateId | "",
+): { next: ClientBrief; filledCount: number } {
+  const template = getOperationalTemplateById(selectedTemplateId || null);
+  const baseColor = current.colorPalette?.[0] ?? "#A5A58F";
+  const nameTag = slugify(clientName).replace(/-/g, "");
+  let filledCount = 0;
+  const next: ClientBrief = { ...current };
+  const fill = <K extends keyof ClientBrief>(key: K, value: ClientBrief[K]) => {
+    if (isMissing(next[key])) {
+      next[key] = value;
+      filledCount += 1;
+    }
+  };
+
+  fill("industryOverride", industry);
+  fill("companyDescription", `Brand ${clientName} nel settore ${industry}, con focus su posizionamento distintivo e crescita misurabile.`);
+  fill("foundationYear", "Da confermare");
+  fill("primaryObjective", current.objectives || "Aumentare awareness qualificata e richieste commerciali.");
+  fill("secondaryObjectives", "Migliorare continuita editoriale, engagement e conversioni da contenuti.");
+  fill("objectives", [next.primaryObjective, next.secondaryObjectives].filter(Boolean).join(" | "));
+  fill("targetAge", "25-45");
+  fill("targetGender", "Misto");
+  fill("lifestyle", current.targetAudience || "Professionisti e famiglie interessati a qualita, affidabilita e risultati concreti.");
+  fill("geolocation", "Italia");
+  fill("painPoints", "Poca chiarezza nella proposta, fiducia iniziale da costruire, bisogno di prove sociali.");
+  fill("toneOfVoiceType", "Amichevole");
+  fill("toneOfVoiceNotes", "Professionale ma umano, orientato al valore pratico e alla chiarezza.");
+  fill("toneOfVoice", next.toneOfVoiceNotes || "Professionale ma umano.");
+  fill("brandVoice", "Affidabile, concreto, distintivo");
+  fill("brandAdjectives", ["Affidabile", "Concreto", "Riconoscibile"]);
+  fill("brandDonts", "Evitare claim assoluti, tecnicismi inutili e tono freddo/distaccato.");
+  fill("colorPalette", template?.briefPatch.colorPalette ?? [baseColor, "#111827", "#F8F8F4"]);
+  fill("fontTitles", "Inter SemiBold");
+  fill("fontBody", "Inter Regular");
+  fill("activePlatforms", template?.briefPatch.activePlatforms ?? ["instagram", "facebook"]);
+  fill("formatPreferences", template?.briefPatch.formatPreferences ?? ["Post foto", "Carosello", "Reel/Video"]);
+  fill("topicsToCover", template?.briefPatch.topicsToCover ?? ["Educazione cliente", "Case study", "FAQ", "Dietro le quinte"]);
+  fill("topicsToAvoid", template?.briefPatch.topicsToAvoid ?? ["Promesse irrealistiche", "Contenuti non coerenti con il brand"]);
+  fill("brandHashtags", [`#${nameTag}`, `#${slugify(industry).replace(/-/g, "")}`, "#bekindsocialagency"]);
+  fill("contactName", "Referente cliente");
+  fill("approvalWindow", "Martedi e Giovedi · 15:00-17:00");
+  fill("internalNotes", "Brief autocompilato automaticamente: verificare e rifinire con il cliente prima della consegna finale.");
+  fill("platformFrequencies", Object.fromEntries((next.activePlatforms ?? []).map((platform) => [platform, "3 contenuti/settimana"])));
+  fill("usefulLinks", current.website ? [current.website] : []);
+  fill("kpis", [
+    { label: "Engagement rate", target: "+20%", unit: "%" },
+    { label: "Lead qualificati", target: "+15%", unit: "%" },
+    { label: "Copertura media", target: "+25%", unit: "%" },
+  ]);
+
+  return { next, filledCount };
 }
 
 function TagEditor({
@@ -170,6 +256,7 @@ function LinkListEditor({
 
 export default function BriefPage() {
   const { activeClient, brief, updateBrief } = useClientContext();
+  const { toast } = useToast();
   const [draft, setDraft] = useState<ClientBrief | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [hydratedClientId, setHydratedClientId] = useState<string | null>(null);
@@ -230,20 +317,76 @@ export default function BriefPage() {
   const selectedTemplate = getOperationalTemplateById(selectedTemplateId || null);
   const numericClientId = Number(activeClient.id);
   const canUseAiBriefFlow = Number.isFinite(numericClientId) && numericClientId > 0;
+  const missingSections = useMemo(
+    () => Object.entries(sections).filter(([, value]) => value < 100).length,
+    [sections],
+  );
+  const completeMissingSections = () => {
+    setDraft((prev) => {
+      if (!prev || !activeClient) return prev;
+      const { next, filledCount } = autoCompleteBriefDraft(
+        prev,
+        activeClient.name,
+        prev.industryOverride || activeClient.industry,
+        selectedTemplateId,
+      );
+      toast({
+        title: filledCount > 0 ? "Brief autocompilato" : "Brief gia completo",
+        description:
+          filledCount > 0
+            ? `Aggiornati ${filledCount} campi mancanti. Rivedi i contenuti e personalizza dove serve.`
+            : "Non ci sono campi vuoti da completare automaticamente.",
+      });
+      return next;
+    });
+  };
 
   return (
     <Layout>
       <div className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-2.5">
-          <div>
-            <h1 className="text-lg font-semibold">Brief Cliente</h1>
-            <p className="text-xs text-muted-foreground">Cervello strategico condiviso per tutti i tool.</p>
+        <div className="mb-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-violet-100/60 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="inline-flex items-center gap-2 text-lg font-semibold">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Brief Cliente & Strategia
+              </h1>
+              <p className="text-xs text-muted-foreground">Hub strategico completo, collegato ai tool operativi e alla produzione contenuti.</p>
+            </div>
+            <div className="text-right">
+              <span className="rounded-full bg-background/80 px-2 py-1 text-xs font-semibold text-muted-foreground">Brief {completion}% completo</span>
+              <p className="mt-1 text-[11px]">
+                {saveState === "saved" ? "Salvato" : saveState === "saving" ? "Salvataggio..." : "Modificato"}
+              </p>
+            </div>
           </div>
-          <div className="text-right">
-            <span className="text-xs font-semibold text-muted-foreground">Brief {completion}% completo</span>
-            <p className="text-[11px]">
-              {saveState === "saved" ? "Salvato" : saveState === "saving" ? "Salvataggio..." : "Modificato"}
-            </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
+              <p className="text-muted-foreground">Sezioni complete</p>
+              <p className="font-semibold">{Object.keys(sections).length - missingSections}/6</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
+              <p className="text-muted-foreground">Sezioni da completare</p>
+              <p className="font-semibold">{missingSections}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
+              <p className="text-muted-foreground">Template attivo</p>
+              <p className="font-semibold">{selectedTemplate?.label ?? "Nessuno"}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
+              <p className="text-muted-foreground">AI Brief flow</p>
+              <p className="font-semibold">{canUseAiBriefFlow ? "Disponibile" : "Non disponibile"}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={completeMissingSections}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              Completa campi mancanti automaticamente
+            </button>
           </div>
         </div>
 
@@ -252,6 +395,7 @@ export default function BriefPage() {
             title="Importazione questionario + supporto AI"
             description="Incolla il documento compilato dal cliente e lascia che l'AI organizzi il brief e generi una strategia migliorata."
             completionPercent={canUseAiBriefFlow ? 100 : 0}
+            icon={<BadgeCheck className="h-4 w-4" />}
           >
             {canUseAiBriefFlow ? (
               <ClientBriefSection clientId={numericClientId} clientName={activeClient.name} />
@@ -266,6 +410,7 @@ export default function BriefPage() {
             title="Template operativo per settore"
             description="Preset rapido per standardizzare brief, calendario, caption style e checklist report."
             completionPercent={selectedTemplate ? 100 : 0}
+            icon={<Sparkles className="h-4 w-4" />}
           >
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -352,7 +497,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 1 — Panoramica cliente" description="Identità e informazioni base dell'azienda." completionPercent={sections.overview}>
+          <BriefSection title="Sezione 1 — Panoramica cliente" description="Identità e informazioni base dell'azienda." completionPercent={sections.overview} icon={<Building2 className="h-4 w-4" />}>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <p className="text-xs text-muted-foreground">Nome azienda</p>
@@ -377,7 +522,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 2 — Obiettivi e KPI" description="Direzione strategica e metriche concordate." completionPercent={sections.goals}>
+          <BriefSection title="Sezione 2 — Obiettivi e KPI" description="Direzione strategica e metriche concordate." completionPercent={sections.goals} icon={<Target className="h-4 w-4" />}>
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-muted-foreground">Obiettivo principale</p>
@@ -391,7 +536,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 3 — Target audience" description="Persona target, interessi e pain points." completionPercent={sections.audience}>
+          <BriefSection title="Sezione 3 — Target audience" description="Persona target, interessi e pain points." completionPercent={sections.audience} icon={<Users className="h-4 w-4" />}>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <p className="text-xs text-muted-foreground">Età target</p>
@@ -426,7 +571,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 4 — Brand identity" description="Voce, stile e linee guida del brand." completionPercent={sections.identity}>
+          <BriefSection title="Sezione 4 — Brand identity" description="Voce, stile e linee guida del brand." completionPercent={sections.identity} icon={<Palette className="h-4 w-4" />}>
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
@@ -488,7 +633,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 5 — Contenuti e piattaforme" description="Canali attivi, frequenza e temi editoriali." completionPercent={sections.content}>
+          <BriefSection title="Sezione 5 — Contenuti e piattaforme" description="Canali attivi, frequenza e temi editoriali." completionPercent={sections.content} icon={<Clapperboard className="h-4 w-4" />}>
             <div className="space-y-3">
               <PlatformSelector value={activePlatforms} onChange={(next: SocialPlatform[]) => setField("activePlatforms", next)} />
               {activePlatforms.length > 0 && (
@@ -531,7 +676,7 @@ export default function BriefPage() {
             </div>
           </BriefSection>
 
-          <BriefSection title="Sezione 6 — Note operative" description="Informazioni di coordinamento team-cliente." completionPercent={sections.operations}>
+          <BriefSection title="Sezione 6 — Note operative" description="Informazioni di coordinamento team-cliente." completionPercent={sections.operations} icon={<BriefcaseBusiness className="h-4 w-4" />}>
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div>

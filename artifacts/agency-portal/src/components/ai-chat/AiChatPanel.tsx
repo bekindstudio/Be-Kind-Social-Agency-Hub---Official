@@ -368,6 +368,9 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-violet-500" />
             <span className="font-semibold text-sm">AI Assistant</span>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              PRIVATA
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -390,6 +393,9 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
             Contesto attivo: cliente <strong>{effectiveContext.data?.name ?? "selezionato"}</strong>
           </div>
         )}
+        <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          Modalita privata interna: i dati del portale restano all'interno dell'applicazione.
+        </div>
         {apiError && (
           <div className="mb-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
             {apiError}

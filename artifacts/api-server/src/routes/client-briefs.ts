@@ -5,6 +5,9 @@ import { getUserId, getAccessibleClientIds } from "../lib/access-control";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
+const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
+  (process.env.PRIVATE_PORTAL_AI_ONLY ?? "true").trim().toLowerCase(),
+);
 
 function parseClientId(raw: string): number | null {
   const n = parseInt(raw, 10);
@@ -87,6 +90,10 @@ router.post("/clients/:clientId/brief/parse", async (req, res): Promise<void> =>
   if (!ctx) return;
 
   try {
+    if (PRIVATE_PORTAL_AI_ONLY) {
+      res.status(403).json({ error: "Modalita privata attiva: parsing AI esterno disabilitato." });
+      return;
+    }
     const brief = await db.select().from(clientBriefs).where(eq(clientBriefs.clientId, ctx.clientId));
     if (!brief.length || !brief[0].rawText.trim()) {
       res.status(400).json({ error: "Nessun testo del brief trovato" }); return;
@@ -143,6 +150,10 @@ router.post("/clients/:clientId/brief/generate-strategy", async (req, res): Prom
   if (!ctx) return;
 
   try {
+    if (PRIVATE_PORTAL_AI_ONLY) {
+      res.status(403).json({ error: "Modalita privata attiva: strategia AI esterna disabilitata." });
+      return;
+    }
     const brief = await db.select().from(clientBriefs).where(eq(clientBriefs.clientId, ctx.clientId));
     if (!brief.length) { res.status(400).json({ error: "Nessun brief trovato" }); return; }
 

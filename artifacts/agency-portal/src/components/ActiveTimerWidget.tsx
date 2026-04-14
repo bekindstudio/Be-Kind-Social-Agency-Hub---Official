@@ -12,6 +12,7 @@ interface ActiveSession {
   clientId: number | null;
   projectId: number | null;
   taskId: number | null;
+  description?: string | null;
   startedAt: string;
   pausedAt: string | null;
   totalPausedSeconds: number;
@@ -54,13 +55,15 @@ export function ActiveTimerWidget() {
   const { toast } = useToast();
   const activeClientId = activeClient?.id ? Number(activeClient.id) : NaN;
   const scopedClientId = Number.isFinite(activeClientId) ? activeClientId : null;
-  const [session, setSession] = useState<ActiveSession | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
+  const [elapsedBySession, setElapsedBySession] = useState<Record<number, number>>({});
   const [showStopModal, setShowStopModal] = useState(false);
+  const [stopTargetSession, setStopTargetSession] = useState<ActiveSession | null>(null);
   const [stopDescription, setStopDescription] = useState("");
   const [stopActivityType, setStopActivityType] = useState("");
   const [stopBillable, setStopBillable] = useState(true);
   const [showStartDropdown, setShowStartDropdown] = useState(false);
+  const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [startClientId, setStartClientId] = useState<number | null>(null);
@@ -69,73 +72,92 @@ export function ActiveTimerWidget() {
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchSession = useCallback(async () => {
+  const fetchSessions = useCallback(async () => {
     try {
-      const res = await portalFetch(`${API}/timer/active`, { credentials: "include" });
+      const res = await portalFetch(`${API}/timer/active-all`, { credentials: "include" });
       if (res.status === 401 || res.status === 403) {
         setAuthUnavailable(true);
-        setSession(null);
+        setSessions([]);
         return;
       }
       if (!res.ok) return;
       setAuthUnavailable(false);
       const data = await res.json();
-      setSession(data);
-      if (data?.taskTitle) setStopDescription(data.taskTitle);
+      if (Array.isArray(data)) {
+        setSessions(data);
+      } else {
+        setSessions(data ? [data] : []);
+      }
     } catch {}
   }, []);
 
   useEffect(() => {
     if (authUnavailable) return;
-    fetchSession();
-    const poll = setInterval(fetchSession, 15000);
+    fetchSessions();
+    const poll = setInterval(fetchSessions, 15000);
     return () => clearInterval(poll);
-  }, [fetchSession, authUnavailable]);
+  }, [fetchSessions, authUnavailable]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (session && session.status === "running") {
-      const update = () => {
+    const update = () => {
+      const next: Record<number, number> = {};
+      for (const session of sessions) {
         const started = new Date(session.startedAt).getTime();
-        const now = Date.now();
-        const total = Math.floor((now - started) / 1000);
-        setElapsed(Math.max(0, total - (session.totalPausedSeconds ?? 0)));
-      };
+        if (session.status === "running") {
+          const now = Date.now();
+          const total = Math.floor((now - started) / 1000);
+          next[session.id] = Math.max(0, total - (session.totalPausedSeconds ?? 0));
+        } else {
+          const pausedAt = session.pausedAt ? new Date(session.pausedAt).getTime() : Date.now();
+          const total = Math.floor((pausedAt - started) / 1000);
+          next[session.id] = Math.max(0, total - (session.totalPausedSeconds ?? 0));
+        }
+      }
+      setElapsedBySession(next);
+    };
+    if (sessions.length > 0) {
       update();
       timerRef.current = setInterval(update, 1000);
-    } else if (session && session.status === "paused") {
-      const started = new Date(session.startedAt).getTime();
-      const pausedAt = session.pausedAt ? new Date(session.pausedAt).getTime() : Date.now();
-      const total = Math.floor((pausedAt - started) / 1000);
-      setElapsed(Math.max(0, total - (session.totalPausedSeconds ?? 0)));
     } else {
-      setElapsed(0);
+      setElapsedBySession({});
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [session]);
+  }, [sessions]);
 
-  const handlePause = useCallback(async () => {
+  const handlePause = useCallback(async (sessionId: number) => {
     try {
-      const res = await portalFetch(`${API}/timer/pause`, { method: "POST", credentials: "include" });
+      const res = await portalFetch(`${API}/timer/pause`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
       if (!res.ok) throw new Error("pause_failed");
-      fetchSession();
+      fetchSessions();
     } catch {
       toast({ title: "Pausa timer non riuscita", variant: "destructive" });
     }
-  }, [fetchSession, toast]);
+  }, [fetchSessions, toast]);
 
-  const handleResume = useCallback(async () => {
+  const handleResume = useCallback(async (sessionId: number) => {
     try {
-      const res = await portalFetch(`${API}/timer/resume`, { method: "POST", credentials: "include" });
+      const res = await portalFetch(`${API}/timer/resume`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
       if (!res.ok) throw new Error("resume_failed");
-      fetchSession();
+      fetchSessions();
     } catch {
       toast({ title: "Ripresa timer non riuscita", variant: "destructive" });
     }
-  }, [fetchSession, toast]);
+  }, [fetchSessions, toast]);
 
-  const handleStopClick = () => {
-    setStopDescription(session?.taskTitle ?? session?.clientName ?? "");
+  const handleStopClick = (target: ActiveSession) => {
+    setStopTargetSession(target);
+    setStopDescription(target.taskTitle ?? target.description ?? target.clientName ?? "");
     setStopActivityType("");
     setStopBillable(true);
     setShowStopModal(true);
@@ -148,6 +170,7 @@ export function ActiveTimerWidget() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          sessionId: stopTargetSession?.id,
           description: stopDescription,
           activityType: stopActivityType,
           isBillable: stopBillable,
@@ -155,14 +178,14 @@ export function ActiveTimerWidget() {
         }),
       });
       if (res.ok) {
-        setSession(null);
+        setStopTargetSession(null);
         setShowStopModal(false);
-        setElapsed(0);
+        fetchSessions();
       }
     } catch (err) {
       console.error("Stop timer error:", err);
     }
-  }, [stopDescription, stopActivityType, stopBillable]);
+  }, [stopTargetSession?.id, stopDescription, stopActivityType, stopBillable, fetchSessions]);
 
   const handleStartNew = useCallback(async () => {
     if (!startClientId) return;
@@ -182,14 +205,14 @@ export function ActiveTimerWidget() {
         setStartClientId(scopedClientId);
         setStartProjectId(null);
         setStartDescription("");
-        fetchSession();
+        fetchSessions();
       } else {
         toast({ title: "Avvio timer non riuscito", variant: "destructive" });
       }
     } catch {
       toast({ title: "Avvio timer non riuscito", variant: "destructive" });
     }
-  }, [startClientId, startProjectId, startDescription, fetchSession, scopedClientId, toast]);
+  }, [startClientId, startProjectId, startDescription, fetchSessions, scopedClientId, toast]);
 
   const loadClientsProjects = useCallback(async () => {
     try {
@@ -236,30 +259,12 @@ export function ActiveTimerWidget() {
     ? projectList.filter((p: any) => Number(p?.clientId) === startClientId)
     : projectList;
 
+  const runningSessionsCount = sessions.filter((s) => s.status === "running").length;
+  const totalElapsed = sessions.reduce((sum, s) => sum + (elapsedBySession[s.id] ?? 0), 0);
+
   return (
     <>
-      {/* Timer button or active widget */}
-      {session ? (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-xs font-medium">
-          <span className={`w-2 h-2 rounded-full ${session.status === "running" ? "bg-red-500 animate-pulse" : "bg-gray-400"}`} />
-          <span className="hidden sm:inline max-w-[120px] truncate text-foreground">
-            {session.clientName ?? session.taskTitle ?? "Timer"}
-          </span>
-          <span className="font-mono text-foreground tabular-nums">{formatTime(elapsed)}</span>
-          {session.status === "running" ? (
-            <button onClick={handlePause} className="p-1 rounded hover:bg-background/60 transition-colors" title="Pausa">
-              <Pause size={13} />
-            </button>
-          ) : (
-            <button onClick={handleResume} className="p-1 rounded hover:bg-background/60 transition-colors" title="Riprendi">
-              <Play size={13} />
-            </button>
-          )}
-          <button onClick={handleStopClick} className="p-1 rounded hover:bg-background/60 transition-colors text-red-500" title="Ferma">
-            <Square size={13} />
-          </button>
-        </div>
-      ) : (
+      <div className="relative flex items-center gap-2">
         <button
           onClick={openStart}
           disabled={authUnavailable}
@@ -269,7 +274,52 @@ export function ActiveTimerWidget() {
           <Timer size={14} />
           <span className="hidden sm:inline">Timer</span>
         </button>
-      )}
+
+        {sessions.length > 0 && (
+          <button
+            onClick={() => setShowSessionsPanel((prev) => !prev)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-xs font-medium hover:bg-muted/80 transition-colors"
+            title="Gestisci timer attivi"
+          >
+            <span className={`w-2 h-2 rounded-full ${runningSessionsCount > 0 ? "bg-red-500 animate-pulse" : "bg-gray-400"}`} />
+            <span className="hidden sm:inline text-foreground">
+              {sessions.length} timer
+            </span>
+            <span className="font-mono text-foreground tabular-nums">{formatTime(totalElapsed)}</span>
+          </button>
+        )}
+
+        {showSessionsPanel && sessions.length > 0 && (
+          <div className="absolute right-0 top-11 z-[95] w-[360px] rounded-xl border border-border bg-card shadow-2xl p-3 space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground px-1">Timer attivi in parallelo</div>
+            {sessions.map((session) => (
+              <div key={session.id} className="rounded-lg border border-border bg-background/70 px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium truncate">{session.clientName ?? session.projectName ?? session.taskTitle ?? "Timer"}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{session.projectName ?? session.description ?? "Attivita in corso"}</p>
+                  </div>
+                  <span className="font-mono text-xs tabular-nums">{formatTime(elapsedBySession[session.id] ?? 0)}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-1">
+                  {session.status === "running" ? (
+                    <button onClick={() => handlePause(session.id)} className="p-1 rounded hover:bg-muted transition-colors" title="Pausa">
+                      <Pause size={13} />
+                    </button>
+                  ) : (
+                    <button onClick={() => handleResume(session.id)} className="p-1 rounded hover:bg-muted transition-colors" title="Riprendi">
+                      <Play size={13} />
+                    </button>
+                  )}
+                  <button onClick={() => handleStopClick(session)} className="p-1 rounded hover:bg-muted transition-colors text-red-500" title="Ferma">
+                    <Square size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Start dropdown */}
       {showStartDropdown && (
@@ -342,8 +392,8 @@ export function ActiveTimerWidget() {
                 <Clock size={20} className="text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold">Tempo registrato: {formatDuration(elapsed)}</h3>
-                <p className="text-sm text-muted-foreground">{session?.clientName} {session?.projectName ? `/ ${session.projectName}` : ""}</p>
+                <h3 className="font-semibold">Tempo registrato: {formatDuration(stopTargetSession ? (elapsedBySession[stopTargetSession.id] ?? 0) : 0)}</h3>
+                <p className="text-sm text-muted-foreground">{stopTargetSession?.clientName} {stopTargetSession?.projectName ? `/ ${stopTargetSession.projectName}` : ""}</p>
               </div>
             </div>
 
@@ -413,27 +463,12 @@ export function useTimerStart() {
     description?: string;
   }) => {
     try {
-      const res = await portalFetch(`${API}/timer/start`, {
+      await portalFetch(`${API}/timer/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(opts),
       });
-      if (res.status === 409) {
-        const data = await res.json();
-        const ok = window.confirm(
-          `Hai gia un timer attivo. Vuoi fermarlo e iniziarne uno nuovo?`
-        );
-        if (ok) {
-          await portalFetch(`${API}/timer/force-stop`, { method: "POST", credentials: "include" });
-          await portalFetch(`${API}/timer/start`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify(opts),
-          });
-        }
-      }
     } catch {}
   }, []);
 

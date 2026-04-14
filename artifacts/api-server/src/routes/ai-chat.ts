@@ -1,11 +1,35 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { aiConversations, aiMessages } from "@workspace/db";
-import { eq, desc, asc, and } from "drizzle-orm";
+import {
+  clientBriefs,
+  clientReportsTable,
+  clientsTable,
+  editorialPlansTable,
+  editorialSlotsTable,
+  projectsTable,
+  tasksTable,
+} from "@workspace/db";
+import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { getUserId } from "../lib/access-control";
+import { getAccessibleClientIds, getUserId } from "../lib/access-control";
 
 const router = Router();
+const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
+  (process.env.PRIVATE_PORTAL_AI_ONLY ?? "true").trim().toLowerCase(),
+);
+
+type PortalSnapshot = {
+  clientCount: number;
+  clients: Array<{ id: number; name: string; sector: string | null; healthScore: number | null; contractStatus: string | null }>;
+  projectStats: { total: number; active: number; delayed: number; atRisk: number };
+  openTasks: number;
+  overdueTasks: number;
+  unassignedTasks: number;
+  briefsWithoutStrategy: number;
+  reportsInBozza: number;
+  upcomingEditorialSlots: Array<{ date: string; title: string; platform: string; status: string; clientName: string }>;
+};
 
 function parsePositiveInt(value: string): number | null {
   const n = Number.parseInt(value, 10);
@@ -22,7 +46,172 @@ function requireUser(req: Request, res: Response): string | null {
   return userId;
 }
 
-function buildSystemPrompt(context?: { type?: string; data?: any }): string {
+function isPastDate(raw: unknown): boolean {
+  if (!raw) return false;
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
+
+function toIsoDay(raw: unknown): string {
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function inNextDays(raw: unknown, days: number): boolean {
+  if (!raw) return false;
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return false;
+  const now = Date.now();
+  const end = now + days * 24 * 60 * 60 * 1000;
+  return d.getTime() >= now && d.getTime() <= end;
+}
+
+async function getPortalSnapshot(userId: string): Promise<PortalSnapshot> {
+  const access = await getAccessibleClientIds(userId);
+  const onlyIds = access === "all" ? null : access.length > 0 ? access : [-1];
+
+  const clients =
+    onlyIds == null
+      ? await db.select().from(clientsTable)
+      : await db.select().from(clientsTable).where(inArray(clientsTable.id, onlyIds));
+
+  const projects =
+    onlyIds == null
+      ? await db.select().from(projectsTable)
+      : await db.select().from(projectsTable).where(inArray(projectsTable.clientId, onlyIds));
+
+  const tasks =
+    onlyIds == null
+      ? await db.select().from(tasksTable)
+      : await db.select().from(tasksTable).where(inArray(tasksTable.clientId, onlyIds));
+
+  const briefs =
+    onlyIds == null
+      ? await db.select().from(clientBriefs)
+      : await db.select().from(clientBriefs).where(inArray(clientBriefs.clientId, onlyIds));
+
+  const reports =
+    onlyIds == null
+      ? await db.select().from(clientReportsTable)
+      : await db.select().from(clientReportsTable).where(inArray(clientReportsTable.clientId, onlyIds));
+
+  const plans =
+    onlyIds == null
+      ? await db.select().from(editorialPlansTable)
+      : await db.select().from(editorialPlansTable).where(inArray(editorialPlansTable.clientId, onlyIds));
+  const planIds = plans.map((item) => item.id);
+  const slots =
+    planIds.length > 0
+      ? await db.select().from(editorialSlotsTable).where(inArray(editorialSlotsTable.planId, planIds))
+      : [];
+  const clientNameById = new Map(clients.map((item) => [item.id, item.name]));
+  const planClientById = new Map(plans.map((item) => [item.id, item.clientId]));
+
+  const upcomingEditorialSlots = slots
+    .filter((slot) => inNextDays(slot.publishDate, 14))
+    .sort((a, b) => String(a.publishDate ?? "").localeCompare(String(b.publishDate ?? "")))
+    .slice(0, 8)
+    .map((slot) => ({
+      date: toIsoDay(slot.publishDate),
+      title: slot.title || "Contenuto editoriale",
+      platform: slot.platform || "N/D",
+      status: slot.status || "N/D",
+      clientName: clientNameById.get(planClientById.get(slot.planId) ?? -1) ?? "Cliente",
+    }));
+
+  return {
+    clientCount: clients.length,
+    clients: clients.slice(0, 10).map((item) => ({
+      id: item.id,
+      name: item.name,
+      sector: item.settore,
+      healthScore: item.healthScore,
+      contractStatus: item.contractStatus,
+    })),
+    projectStats: {
+      total: projects.length,
+      active: projects.filter((item) => item.status === "active").length,
+      delayed: projects.filter((item) => item.healthStatus === "delayed").length,
+      atRisk: projects.filter((item) => item.healthStatus === "at-risk").length,
+    },
+    openTasks: tasks.filter((item) => item.status !== "done").length,
+    overdueTasks: tasks.filter((item) => item.status !== "done" && isPastDate(item.dueDate)).length,
+    unassignedTasks: tasks.filter((item) => item.status !== "done" && !item.assigneeId).length,
+    briefsWithoutStrategy: briefs.filter((item) => (item.strategyStatus ?? "empty") !== "ready").length,
+    reportsInBozza: reports.filter((item) => item.status === "bozza").length,
+    upcomingEditorialSlots,
+  };
+}
+
+function buildPrivatePortalReply(userPrompt: string, snapshot: PortalSnapshot): string {
+  const normalized = userPrompt.toLowerCase();
+  const focusBrief = /(brief|strategia)/.test(normalized);
+  const focusCalendar = /(calendar|calendario|editoriale|post)/.test(normalized);
+  const focusReports = /(report|kpi|analytics)/.test(normalized);
+  const focusTasks = /(task|todo|operativ)/.test(normalized);
+
+  const actions: string[] = [];
+  if (snapshot.overdueTasks > 0) actions.push(`Sblocca le task scadute: ${snapshot.overdueTasks} risultano oltre la deadline.`);
+  if (snapshot.unassignedTasks > 0) actions.push(`Assegna ownership: ${snapshot.unassignedTasks} task sono senza owner.`);
+  if (snapshot.briefsWithoutStrategy > 0) actions.push(`Completa allineamento brief/strategia su ${snapshot.briefsWithoutStrategy} clienti.`);
+  if (snapshot.reportsInBozza > 0) actions.push(`Chiudi il ciclo report: ${snapshot.reportsInBozza} report sono in bozza.`);
+  if (snapshot.upcomingEditorialSlots.length > 0) actions.push(`Valida il calendario editoriale dei prossimi 14 giorni per evitare blocchi in pubblicazione.`);
+  if (actions.length === 0) actions.push("Nessuna criticita immediata: puoi concentrarti su ottimizzazione contenuti e crescita.");
+
+  const lines: string[] = [];
+  lines.push("Analisi privata interna completata. Nessun dato e stato inviato a provider esterni.");
+  lines.push("");
+  lines.push("## Snapshot portale");
+  lines.push(`- Clienti monitorati: ${snapshot.clientCount}`);
+  lines.push(`- Progetti: ${snapshot.projectStats.total} totali (${snapshot.projectStats.active} attivi, ${snapshot.projectStats.atRisk} at-risk, ${snapshot.projectStats.delayed} in ritardo)`);
+  lines.push(`- Task aperte: ${snapshot.openTasks} (scadute: ${snapshot.overdueTasks}, senza owner: ${snapshot.unassignedTasks})`);
+  lines.push(`- Brief senza strategia pronta: ${snapshot.briefsWithoutStrategy}`);
+  lines.push(`- Report in bozza: ${snapshot.reportsInBozza}`);
+
+  if (focusCalendar || (!focusBrief && !focusReports && !focusTasks)) {
+    lines.push("");
+    lines.push("## Calendario editoriale (prossimi 14 giorni)");
+    if (snapshot.upcomingEditorialSlots.length === 0) {
+      lines.push("- Nessuno slot editoriale pianificato nei prossimi 14 giorni.");
+    } else {
+      snapshot.upcomingEditorialSlots.forEach((slot) => {
+        lines.push(`- ${slot.date} · ${slot.clientName} · ${slot.platform} · ${slot.title} (${slot.status})`);
+      });
+    }
+  }
+
+  if (focusBrief) {
+    lines.push("");
+    lines.push("## Focus brief e strategia");
+    lines.push(`- Clienti da completare: ${snapshot.briefsWithoutStrategy}`);
+    lines.push("- Priorita: allineare obiettivi, target, tone of voice e pilastri contenuto prima della prossima pianificazione.");
+  }
+
+  if (focusReports) {
+    lines.push("");
+    lines.push("## Focus report");
+    lines.push(`- Report in bozza: ${snapshot.reportsInBozza}`);
+    lines.push("- Suggerimento: chiudi prima i report con KPI pronti e pianifica follow-up cliente nello stesso ciclo.");
+  }
+
+  if (focusTasks) {
+    lines.push("");
+    lines.push("## Focus operativo task");
+    lines.push(`- Task aperte: ${snapshot.openTasks}`);
+    lines.push(`- Scadute: ${snapshot.overdueTasks}`);
+    lines.push(`- Senza owner: ${snapshot.unassignedTasks}`);
+  }
+
+  lines.push("");
+  lines.push("## Azioni consigliate");
+  actions.slice(0, 5).forEach((action) => lines.push(`- ${action}`));
+
+  return lines.join("\n");
+}
+
+function buildSystemPrompt(context?: { type?: string; data?: any }, snapshot?: PortalSnapshot): string {
   const today = new Date().toLocaleDateString("it-IT", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   let prompt = `Sei un esperto assistente di marketing digitale che lavora all'interno di Agency Hub, una piattaforma usata dall'agenzia di marketing di Michael Balleroni con sede a Pesaro, Italia. L'agenzia e specializzata in gestione social media, creazione contenuti, Meta Ads e Google Ads per clienti PMI italiani.
 
@@ -30,6 +219,15 @@ Rispondi sempre in italiano a meno che l'utente non scriva in un'altra lingua.
 Sii pratico, conciso e professionale. Dai consigli specifici e attuabili.
 Quando suggerisci idee per contenuti, adattale al mercato e alla cultura italiana.
 Oggi e il ${today}.`;
+
+  if (snapshot) {
+    prompt += `\n\nSNAPSHOT OPERATIVO PORTALE:
+- Clienti: ${snapshot.clientCount}
+- Progetti attivi: ${snapshot.projectStats.active} (at-risk: ${snapshot.projectStats.atRisk}, ritardo: ${snapshot.projectStats.delayed})
+- Task aperte: ${snapshot.openTasks} (scadute: ${snapshot.overdueTasks}, senza owner: ${snapshot.unassignedTasks})
+- Brief da completare: ${snapshot.briefsWithoutStrategy}
+- Report in bozza: ${snapshot.reportsInBozza}`;
+  }
 
   if (!context?.type || context.type === "general") return prompt;
 
@@ -166,7 +364,8 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
     content: m.content,
   }));
 
-  const systemPrompt = buildSystemPrompt(context);
+  const portalSnapshot = await getPortalSnapshot(userId);
+  const systemPrompt = buildSystemPrompt(context, portalSnapshot);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -179,6 +378,32 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
   req.on("close", () => {
     clientDisconnected = true;
   });
+
+  if (PRIVATE_PORTAL_AI_ONLY) {
+    try {
+      const privateReply = buildPrivatePortalReply(String(content), portalSnapshot);
+      if (!clientDisconnected) {
+        res.write(`data: ${JSON.stringify({ content: privateReply })}\n\n`);
+      }
+      await db.insert(aiMessages).values({
+        conversationId: convId,
+        role: "assistant",
+        content: privateReply,
+        tokensUsed: null,
+      });
+      await db.update(aiConversations).set({ updatedAt: new Date() }).where(eq(aiConversations.id, convId));
+      if (!clientDisconnected) {
+        res.write(`data: ${JSON.stringify({ done: true, privacyMode: "private_internal" })}\n\n`);
+        res.end();
+      }
+    } catch (err: any) {
+      if (!clientDisconnected) {
+        res.write(`data: ${JSON.stringify({ error: err?.message ?? "Errore AI privata" })}\n\n`);
+        res.end();
+      }
+    }
+    return;
+  }
 
   try {
     const stream = anthropic.messages.stream({

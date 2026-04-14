@@ -16,7 +16,6 @@ import {
   Sparkles,
   Moon,
   Sun,
-  Wrench,
   Timer,
   LogOut,
   Trash2,
@@ -47,11 +46,8 @@ function ThemeToggle() {
 }
 
 const hrefPermissionMap: Record<string, string> = {
-  "/clients": "clients",
   "/team": "team",
   "/files": "files",
-  "/reports": "reports",
-  "/tools/reports": "reports",
   "/quotes": "quotes",
   "/contracts": "contracts",
   "/settings": "settings",
@@ -86,7 +82,6 @@ const navGroups = [
   {
     label: "Strumenti",
     items: [
-      { href: "/tools", label: "Tools", icon: Wrench },
       { href: "/tools/brief", label: "Brief", icon: FileText },
       { href: "/tools/calendar", label: "Calendario", icon: CalendarDays },
       { href: "/tools/events", label: "Eventi Clienti", icon: Calendar },
@@ -143,9 +138,6 @@ export function Sidebar() {
   const isActive = (href: string) => {
     if (href === "/dashboard") return location === "/dashboard";
     if (href === "/tools/time-tracker") return location === "/tools/time-tracker";
-    if (href === "/tools") {
-      return location === "/tools" || location.startsWith("/tools/piano-editoriale");
-    }
     if (location === href) return true;
     return location.startsWith(`${href}/`);
   };

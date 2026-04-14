@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { ReportPreview, type ReportSectionFlags } from "@/components/tools/reports/ReportPreview";
 import { exportReportPdf } from "@/components/tools/reports/PdfExporter";
@@ -8,6 +8,7 @@ import { useMetaAnalytics } from "@/hooks/useMetaAnalytics";
 import { useToast } from "@/hooks/use-toast";
 import { MetaConnectionBanner } from "@/components/shared/MetaConnectionBanner";
 import { portalFetch } from "@workspace/api-client-react";
+import type { ClientAnalytics } from "@/types/client";
 
 function monthLabel(value: string): string {
   const [year, month] = value.split("-");
@@ -30,6 +31,7 @@ export default function ReportsPage() {
   const [includeCompetitors, setIncludeCompetitors] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [reportAnalytics, setReportAnalytics] = useState<ClientAnalytics | null>(null);
   const [history, setHistory] = useState<SavedReport[]>(() => {
     if (!activeClient?.id) return [];
     try {
@@ -50,6 +52,9 @@ export default function ReportsPage() {
   });
 
   const meta = useMetaAnalytics(activeClient?.id ?? "", "30d");
+  useEffect(() => {
+    setReportAnalytics(null);
+  }, [activeClient?.id, month]);
   const effectiveAnalytics = useMemo(() => {
     if (!analytics) return null;
     if (!meta.data?.daily?.length && !meta.posts.length) return analytics;
@@ -78,6 +83,8 @@ export default function ReportsPage() {
     };
   }, [analytics, meta.data?.daily, meta.posts]);
 
+  const selectedAnalytics = reportAnalytics ?? effectiveAnalytics;
+
   const nextMonthPosts = useMemo(
     () =>
       posts.filter((post) => {
@@ -99,10 +106,10 @@ export default function ReportsPage() {
       strategicNotes,
       includeCompetitors,
       sections,
-      analytics: effectiveAnalytics,
+      analytics: selectedAnalytics,
       scheduledPosts: nextMonthPosts,
     }),
-    [activeClient?.name, month, introMessage, nextGoals, strategicNotes, includeCompetitors, sections, effectiveAnalytics, nextMonthPosts],
+    [activeClient?.name, month, introMessage, nextGoals, strategicNotes, includeCompetitors, sections, selectedAnalytics, nextMonthPosts],
   );
 
   const selectedClientNumericId = useMemo(() => {
@@ -146,6 +153,51 @@ export default function ReportsPage() {
     metaAds: null,
   });
 
+  const mapPayloadToAnalytics = (payload: any): ClientAnalytics | null => {
+    const ig = payload?.instagram;
+    if (!ig?.summary) return null;
+    const summary = ig.summary;
+    const labels: string[] = Array.isArray(ig.followerTrend?.labels) ? ig.followerTrend.labels : [];
+    const data: number[] = Array.isArray(ig.followerTrend?.data) ? ig.followerTrend.data : [];
+    const reachTotal = Number(summary.reach ?? 0);
+    const impressionsTotal = Number(summary.impressions ?? 0);
+    const dailyData = labels.map((label, index) => ({
+      date: label,
+      followers: Number(data[index] ?? summary.followers ?? 0),
+      reach: Math.round(reachTotal / Math.max(1, labels.length || 1)),
+      impressions: Math.round(impressionsTotal / Math.max(1, labels.length || 1)),
+      engagement: Number(summary.engagementRate ?? 0),
+    }));
+    const topPosts = (ig.topPosts ?? []).map((post: any, index: number) => ({
+      id: String(post.id ?? `report-post-${index}`),
+      caption: String(post.caption ?? post.description ?? ""),
+      mediaType: String(post.mediaType ?? post.type ?? "IMAGE"),
+      timestamp: String(post.timestamp ?? post.date ?? new Date().toISOString()),
+      likeCount: Number(post.likeCount ?? post.likes ?? 0),
+      commentsCount: Number(post.commentsCount ?? post.comments ?? 0),
+      reach: Number(post.reach ?? 0),
+      engagementRate: Number(post.engagementRate ?? post.engagement ?? 0),
+      thumbnailUrl: post.thumbnailUrl,
+    }));
+    return {
+      clientId: activeClient?.id ?? "",
+      period: "report",
+      followers: Number(summary.followers ?? 0),
+      followersPrevious: Math.max(0, Number(summary.followers ?? 0) - Number(summary.followerGrowth ?? 0)),
+      followersGrowth: Number(summary.followerGrowthPct ?? 0),
+      reach: reachTotal,
+      reachPrevious: 0,
+      impressions: impressionsTotal,
+      engagementRate: Number(summary.engagementRate ?? 0),
+      engagementRatePrevious: 0,
+      postsPublished: topPosts.length,
+      profileViews: Number(summary.profileViews ?? 0),
+      dailyData,
+      topPosts,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
   const syncAndFetchReportMetrics = async () => {
     if (!selectedClientNumericId) return null;
     const qs = new URLSearchParams({
@@ -165,6 +217,8 @@ export default function ReportsPage() {
     if (!res.ok) {
       throw new Error(payload?.error ?? "Errore caricamento metriche Meta");
     }
+    const mapped = mapPayloadToAnalytics(payload);
+    if (mapped) setReportAnalytics(mapped);
     return payload;
   };
 
@@ -315,7 +369,13 @@ export default function ReportsPage() {
         </aside>
 
         <section className="space-y-4">
-          <MetaConnectionBanner error={meta.error} isStale={meta.isStale} lastSyncAt={meta.lastSyncAt} onSync={meta.sync} syncing={meta.isLoading} />
+          <MetaConnectionBanner
+            error={meta.error}
+            isStale={meta.isStale}
+            lastSyncAt={meta.lastSyncAt}
+            onSync={handleGeneratePreview}
+            syncing={meta.isLoading || isGeneratingReport}
+          />
           <div ref={previewRef} className="overflow-auto rounded-xl bg-muted/20 p-4 border border-card-border">
             <ReportPreview model={previewModel} />
           </div>

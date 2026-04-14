@@ -20,7 +20,6 @@ import ContractsTemplates from "@/pages/contracts-templates";
 import ContractsClassic from "@/pages/contracts-classic";
 import Settings from "@/pages/settings";
 import AiAssistant from "@/pages/ai-assistant";
-import Tools from "@/pages/tools";
 import BriefPage from "@/pages/tools/BriefPage";
 import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
 import TimeTracker from "@/pages/time-tracker";
@@ -199,7 +198,7 @@ function Router() {
         <RequireAuth><Settings /></RequireAuth>
       </Route>
       <Route path="/tools">
-        <RequireAuth><RequireActiveClient><Tools /></RequireActiveClient></RequireAuth>
+        <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
       </Route>
       <Route path="/tools/brief">
         <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>

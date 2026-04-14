@@ -274,7 +274,7 @@ export default function EditorialPlanBuilder({ id }: { id: string }) {
       <div className="flex flex-col h-[calc(100vh-1rem)]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => setLocation("/tools")} className="p-1.5 rounded-lg hover:bg-muted">
+            <button onClick={() => setLocation("/tools/calendar")} className="p-1.5 rounded-lg hover:bg-muted">
               <ArrowLeft size={18} />
             </button>
             <div>

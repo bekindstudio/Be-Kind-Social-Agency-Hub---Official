@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
-import { ClientBriefSection } from "@/components/client/ClientBriefSection";
+import { useClientContext } from "@/context/ClientContext";
 
 interface Props { id: string; }
 
@@ -163,6 +163,7 @@ export default function ClientDetail({ id }: Props) {
   const createTask = useCreateTask();
 
   const { openDrawer: openAiDrawer } = useAiChat();
+  const { clients: contextClients, setActiveClient } = useClientContext();
   const [syncingLocal, setSyncingLocal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -970,7 +971,26 @@ export default function ClientDetail({ id }: Props) {
             )}
 
             <Section title="Brief & Strategia" icon={<BookOpen size={15} className="text-primary" />}>
-              <ClientBriefSection clientId={viewClient.id} clientName={viewClient.name} />
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Il brief operativo e centralizzato in <strong>Strumenti → Brief</strong>, cosi tutta la squadra lavora su un'unica versione sempre aggiornata.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Da li puoi incollare il questionario compilato dal cliente, farlo organizzare all'AI e ottenere suggerimenti/strategia migliorata.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
+                    if (match) setActiveClient(match);
+                    navigate("/tools/brief");
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  <BookOpen size={13} />
+                  Apri Brief in Strumenti
+                </button>
+              </div>
             </Section>
 
             {/* ── Google Drive ── */}

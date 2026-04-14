@@ -5,6 +5,7 @@ import { EditableField } from "@/components/tools/brief/EditableField";
 import { PlatformSelector } from "@/components/tools/brief/PlatformSelector";
 import { ColorPaletteEditor } from "@/components/tools/brief/ColorPaletteEditor";
 import { KpiList } from "@/components/tools/brief/KpiList";
+import { ClientBriefSection } from "@/components/client/ClientBriefSection";
 import { getBriefCompletion, getBriefSectionCompletion } from "@/components/tools/brief/briefCompletion";
 import {
   OPERATIONAL_TEMPLATES,
@@ -227,6 +228,8 @@ export default function BriefPage() {
   const activePlatforms = draft.activePlatforms ?? [];
   const platformFrequencies = draft.platformFrequencies ?? {};
   const selectedTemplate = getOperationalTemplateById(selectedTemplateId || null);
+  const numericClientId = Number(activeClient.id);
+  const canUseAiBriefFlow = Number.isFinite(numericClientId) && numericClientId > 0;
 
   return (
     <Layout>
@@ -245,6 +248,20 @@ export default function BriefPage() {
         </div>
 
         <div className="space-y-4">
+          <BriefSection
+            title="Importazione questionario + supporto AI"
+            description="Incolla il documento compilato dal cliente e lascia che l'AI organizzi il brief e generi una strategia migliorata."
+            completionPercent={canUseAiBriefFlow ? 100 : 0}
+          >
+            {canUseAiBriefFlow ? (
+              <ClientBriefSection clientId={numericClientId} clientName={activeClient.name} />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Il flusso AI (parse + strategia) e disponibile dopo la sincronizzazione del cliente sul backend.
+              </p>
+            )}
+          </BriefSection>
+
           <BriefSection
             title="Template operativo per settore"
             description="Preset rapido per standardizzare brief, calendario, caption style e checklist report."

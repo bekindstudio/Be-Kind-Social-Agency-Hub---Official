@@ -25,6 +25,33 @@ function getInitials(name: string): string {
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
+function ClientBadge({ client, size }: { client: Client | null; size: "sm" | "md" }) {
+  const dimensions = size === "sm" ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-xs";
+  const bg = client?.color ?? "#4F46E5";
+  const initials = client ? getInitials(client.name) : "CL";
+  return (
+    <span
+      className={cn(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white",
+        dimensions,
+      )}
+      style={{ backgroundColor: bg }}
+    >
+      <span>{initials}</span>
+      {client?.logo && (
+        <img
+          src={client.logo}
+          alt={client.name}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 export function ClientSelector() {
   const { clients, activeClient, setActiveClient, createClient, importClients } = useClientContext();
   const { toast } = useToast();
@@ -109,12 +136,7 @@ export function ClientSelector() {
         onClick={() => setOpen((prev) => !prev)}
         className="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-2.5 py-1.5 hover:bg-muted transition-colors"
       >
-        <span
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-          style={{ backgroundColor: activeClient?.color ?? "#4F46E5" }}
-        >
-          {activeClient ? getInitials(activeClient.name) : "CL"}
-        </span>
+        <ClientBadge client={activeClient} size="sm" />
         <span className="hidden sm:block text-xs font-medium max-w-[150px] truncate">
           {activeClient?.name ?? "Seleziona cliente"}
         </span>
@@ -139,12 +161,7 @@ export function ClientSelector() {
                     selected ? "bg-primary/10" : "hover:bg-muted",
                   )}
                 >
-                  <span
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-                    style={{ backgroundColor: client.color ?? "#4F46E5" }}
-                  >
-                    {getInitials(client.name)}
-                  </span>
+                  <ClientBadge client={client} size="md" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{client.name}</p>
                     <p className="truncate text-[11px] text-muted-foreground">{client.industry}</p>

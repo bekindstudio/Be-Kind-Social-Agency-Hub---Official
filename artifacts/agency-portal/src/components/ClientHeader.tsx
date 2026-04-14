@@ -23,6 +23,27 @@ function initials(name: string): string {
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
+function ClientAvatar({ name, color, logo }: { name: string; color?: string; logo?: string }) {
+  return (
+    <span
+      className="relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white"
+      style={{ backgroundColor: color ?? "#4F46E5" }}
+    >
+      <span>{initials(name)}</span>
+      {logo && (
+        <img
+          src={logo}
+          alt={name}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 export function ClientHeader() {
   const [, navigate] = useLocation();
   const { activeClient, brief, posts } = useClientContext();
@@ -47,12 +68,7 @@ export function ClientHeader() {
   return (
     <div className="border-b border-border bg-card/40 px-4 py-2.5">
       <div className="flex flex-wrap items-center gap-3">
-        <span
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white"
-          style={{ backgroundColor: activeClient.color ?? "#4F46E5" }}
-        >
-          {initials(activeClient.name)}
-        </span>
+        <ClientAvatar name={activeClient.name} color={activeClient.color} logo={activeClient.logo} />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{activeClient.name}</p>
           <p className="truncate text-xs text-muted-foreground">{activeClient.industry}</p>

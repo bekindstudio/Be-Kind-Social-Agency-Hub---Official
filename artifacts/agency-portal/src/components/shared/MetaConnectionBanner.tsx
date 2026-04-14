@@ -33,7 +33,7 @@ export function MetaConnectionBanner({ error, lastSyncAt, isStale, onSync, synci
 
   if (isStale) {
     return (
-      <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-800 text-sm flex items-center justify-between gap-2">
+      <div className="mb-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 text-blue-800 text-sm flex items-center justify-between gap-2">
         <span>
           Dati aggiornati {lastSyncAt ? new Date(lastSyncAt).toLocaleString("it-IT") : "tempo fa"}.
           Potrebbero essere obsoleti.

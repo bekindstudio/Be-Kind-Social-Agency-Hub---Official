@@ -47,6 +47,7 @@ export function ReportPreview({ model }: { model: ReportPreviewModel }) {
     acc[weekKey].push(post);
     return acc;
   }, {});
+  const engagementLevel = kpiSemaphore(model.analytics?.engagementRate ?? 0, 3.5);
 
   return (
     <div className="mx-auto bg-white text-black rounded-lg shadow-sm border border-border overflow-hidden" style={{ width: 794 }}>
@@ -80,7 +81,7 @@ export function ReportPreview({ model }: { model: ReportPreviewModel }) {
             </div>
           </div>
           <div className="mt-4 flex items-center gap-3 text-xs">
-            <span className={`px-2 py-1 rounded ${kpiSemaphore(model.analytics?.engagementRate ?? 0, 3.5) === "green" ? "bg-emerald-100 text-emerald-700" : kpiSemaphore(model.analytics?.engagementRate ?? 0, 3.5) === "yellow" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
+            <span className={`px-2 py-1 rounded ${engagementLevel === "green" ? "bg-emerald-100 text-emerald-700" : engagementLevel === "yellow" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>
               KPI engagement
             </span>
           </div>
@@ -117,20 +118,26 @@ export function ReportPreview({ model }: { model: ReportPreviewModel }) {
       {model.sections.topPosts && (
         <section className="px-10 py-8 border-b border-gray-100">
           <h2 className="text-xl font-semibold mb-4">Top post del mese</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {topPosts.map((post) => (
-              <div key={post.id} className="rounded-md border border-gray-200 p-3">
-                <p className="text-xs text-gray-500">{post.mediaType}</p>
-                <p className="text-sm mt-1 line-clamp-3">{post.caption || "Post senza caption"}</p>
-                <p className="text-xs mt-2 text-gray-600">Engagement {post.engagementRate.toFixed(2)}%</p>
+          {topPosts.length > 0 ? (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                {topPosts.map((post) => (
+                  <div key={post.id} className="rounded-md border border-gray-200 p-3">
+                    <p className="text-xs text-gray-500">{post.mediaType}</p>
+                    <p className="text-sm mt-1 line-clamp-3">{post.caption || "Post senza caption"}</p>
+                    <p className="text-xs mt-2 text-gray-600">Engagement {post.engagementRate.toFixed(2)}%</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <p className="text-sm text-gray-700 mt-3">
-            Il formato migliore del periodo e{" "}
-            <strong>{topPosts[0]?.mediaType ?? "N/D"}</strong> con engagement medio del{" "}
-            <strong>{topPosts[0]?.engagementRate?.toFixed(2) ?? "0.00"}%</strong>.
-          </p>
+              <p className="text-sm text-gray-700 mt-3">
+                Il formato migliore del periodo e{" "}
+                <strong>{topPosts[0]?.mediaType ?? "N/D"}</strong> con engagement medio del{" "}
+                <strong>{topPosts[0]?.engagementRate?.toFixed(2) ?? "0.00"}%</strong>.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">Nessun contenuto disponibile per il periodo selezionato.</p>
+          )}
         </section>
       )}
 
@@ -154,16 +161,20 @@ export function ReportPreview({ model }: { model: ReportPreviewModel }) {
         <section className="px-10 py-8 border-b border-gray-100">
           <h2 className="text-xl font-semibold mb-4">Piano prossimo mese</h2>
           <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{model.nextMonthGoals}</p>
-          {Object.entries(byWeek).map(([week, entries]) => (
-            <div key={week} className="mb-2">
-              <p className="text-xs uppercase text-gray-500">{week}</p>
-              <ul className="text-sm text-gray-700">
-                {entries.map((entry) => (
-                  <li key={entry.id}>- {entry.title} ({entry.platform})</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {Object.keys(byWeek).length > 0 ? (
+            Object.entries(byWeek).map(([week, entries]) => (
+              <div key={week} className="mb-2">
+                <p className="text-xs uppercase text-gray-500">{week}</p>
+                <ul className="text-sm text-gray-700">
+                  {entries.map((entry) => (
+                    <li key={entry.id}>- {entry.title} ({entry.platform})</li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-gray-500">Nessun post pianificato nel prossimo mese al momento.</p>
+          )}
         </section>
       )}
 

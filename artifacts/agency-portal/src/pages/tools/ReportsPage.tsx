@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MetaConnectionBanner } from "@/components/shared/MetaConnectionBanner";
 import { portalFetch } from "@workspace/api-client-react";
 import type { ClientAnalytics } from "@/types/client";
+import { CalendarRange, Download, FileBarChart2, Sparkles, Wand2 } from "lucide-react";
 
 function monthLabel(value: string): string {
   const [year, month] = value.split("-");
@@ -19,6 +20,48 @@ function monthLabel(value: string): string {
 function storageKey(clientId: string): string {
   return `agency_hub_reports_${clientId}`;
 }
+
+const sectionLabels: Record<keyof ReportSectionFlags, string> = {
+  overview: "Panoramica metriche",
+  followerTrend: "Andamento follower",
+  topPosts: "Top post del mese",
+  performance: "Performance per formato",
+  nextPlan: "Piano prossimo mese",
+  strategicNotes: "Note strategiche",
+};
+
+const quickPresets = [
+  {
+    id: "growth",
+    label: "Focus crescita",
+    intro:
+      "Nel periodo analizzato il brand ha mostrato una crescita costante sui KPI principali, con segnali positivi su copertura e coinvolgimento.",
+    goals:
+      "Incrementare la quota di contenuti video ad alto impatto e consolidare i format con migliore retention.",
+    notes:
+      "Priorita su rubriche ricorrenti e test A/B dei primi 3 secondi di hook nei contenuti video.",
+  },
+  {
+    id: "sales",
+    label: "Focus vendite",
+    intro:
+      "Le attivita del mese hanno sostenuto la fase di conversione con una buona base di awareness e contenuti orientati all'azione.",
+    goals:
+      "Aumentare la frequenza dei contenuti con CTA commerciale e rafforzare i touchpoint verso landing e WhatsApp.",
+    notes:
+      "Allineare calendario editoriale e promozioni attive, monitorando i contenuti con migliore rapporto reach/conversione.",
+  },
+  {
+    id: "brand",
+    label: "Focus brand",
+    intro:
+      "La comunicazione ha mantenuto coerenza di tone of voice e presenza costante, rafforzando il posizionamento del brand.",
+    goals:
+      "Consolidare i contenuti educational e storytelling per aumentare autorevolezza e riconoscibilita.",
+    notes:
+      "Mantenere una cadenza editoriale equilibrata tra contenuti istituzionali, community e proof social.",
+  },
+] as const;
 
 export default function ReportsPage() {
   const { activeClient, analytics, posts } = useClientContext();
@@ -52,6 +95,19 @@ export default function ReportsPage() {
   });
 
   const meta = useMetaAnalytics(activeClient?.id ?? "", "30d");
+  useEffect(() => {
+    if (!activeClient?.id) {
+      setHistory([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(storageKey(activeClient.id));
+      setHistory(raw ? (JSON.parse(raw) as SavedReport[]) : []);
+    } catch {
+      setHistory([]);
+    }
+  }, [activeClient?.id]);
+
   useEffect(() => {
     setReportAnalytics(null);
   }, [activeClient?.id, month]);
@@ -311,64 +367,151 @@ export default function ReportsPage() {
     toast({ title: "Template caricato", description: `Configurazione ${saved.period} ripristinata.` });
   };
 
+  const enabledSections = (Object.values(sections) as boolean[]).filter(Boolean).length;
+  const syncStatusLabel = meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString("it-IT") : "non disponibile";
+
+  const applyPreset = (presetId: (typeof quickPresets)[number]["id"]) => {
+    const preset = quickPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+    setIntroMessage(preset.intro);
+    setNextGoals(preset.goals);
+    setStrategicNotes(preset.notes);
+    toast({ title: "Preset applicato", description: `Template "${preset.label}" pronto da rifinire.` });
+  };
+
   return (
     <Layout>
-      <div className="p-4 md:p-8 grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-4">
-        <aside className="rounded-xl border border-card-border bg-card p-4 h-fit space-y-4">
-          <h1 className="text-xl font-bold">Report Mensile</h1>
-          <p className="text-sm text-muted-foreground">Configura le sezioni e genera il PDF professionale da consegnare al cliente.</p>
-          <label className="block text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Periodo</span>
-            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2" />
-          </label>
+      <div className="p-4 md:p-6 space-y-4">
+        <section className="rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-5 md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-2">
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                <Sparkles size={12} />
+                Report Studio
+              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground">Report Mensile {activeClient ? `· ${activeClient.name}` : ""}</h1>
+              <p className="text-sm text-muted-foreground max-w-2xl">Esperienza ottimizzata per costruire report professionali in pochi click, con dati aggiornati e preview live pronta per il PDF.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2">
+                <p className="text-muted-foreground">Periodo</p>
+                <p className="font-semibold text-foreground">{monthLabel(month)}</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2">
+                <p className="text-muted-foreground">Ultima sync</p>
+                <p className="font-semibold text-foreground">{meta.isStale ? "Da aggiornare" : "Allineata"}</p>
+              </div>
+              <div className="col-span-2 rounded-xl border border-emerald-200 bg-white/80 px-3 py-2">
+                <p className="text-muted-foreground">Stato dati</p>
+                <p className="font-semibold text-foreground">{syncStatusLabel} · sezioni {enabledSections}/6</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
-          <div className="space-y-2">
-            {(Object.keys(sections) as Array<keyof ReportSectionFlags>).map((key) => (
-              <label key={key} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={sections[key]} onChange={(e) => setSections((prev) => ({ ...prev, [key]: e.target.checked }))} />
-                {key === "overview" && "Panoramica metriche"}
-                {key === "followerTrend" && "Andamento follower"}
-                {key === "topPosts" && "Top post del mese"}
-                {key === "performance" && "Performance per formato"}
-                {key === "nextPlan" && "Piano prossimo mese"}
-                {key === "strategicNotes" && "Note strategiche"}
+        <div className="grid grid-cols-1 xl:grid-cols-[390px_minmax(0,1fr)] gap-4">
+          <aside className="rounded-2xl border border-card-border bg-card p-4 md:p-5 h-fit xl:sticky xl:top-3 space-y-5 shadow-sm">
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <FileBarChart2 size={18} className="text-emerald-600" />
+                Configurazione report
+              </h2>
+              <p className="text-sm text-muted-foreground">Personalizza contenuti, blocchi e testi strategici prima dell'export.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block text-sm">
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">Periodo</span>
+                <div className="relative mt-1">
+                  <CalendarRange size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="month"
+                    value={month}
+                    onChange={(e) => setMonth(e.target.value)}
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2"
+                  />
+                </div>
               </label>
-            ))}
-          </div>
+              <label className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 mt-5 text-sm">
+                <input type="checkbox" checked={includeCompetitors} onChange={(e) => setIncludeCompetitors(e.target.checked)} />
+                Includi competitors
+              </label>
+            </div>
 
-          <label className="block text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Messaggio introduttivo</span>
-            <textarea value={introMessage} onChange={(e) => setIntroMessage(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-          </label>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Blocchi nel report</p>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(sections) as Array<keyof ReportSectionFlags>).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSections((prev) => ({ ...prev, [key]: !prev[key] }))}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      sections[key]
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {sectionLabels[key]}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <label className="block text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Obiettivi prossimo mese</span>
-            <textarea value={nextGoals} onChange={(e) => setNextGoals(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-          </label>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Preset rapidi</p>
+              <div className="flex flex-wrap gap-2">
+                {quickPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset.id)}
+                    className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <label className="block text-sm">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Note strategiche</span>
-            <textarea value={strategicNotes} onChange={(e) => setStrategicNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-          </label>
+            <label className="block text-sm">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">Messaggio introduttivo</span>
+              <textarea value={introMessage} onChange={(e) => setIntroMessage(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+            </label>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={includeCompetitors} onChange={(e) => setIncludeCompetitors(e.target.checked)} />
-            Includi dati competitors
-          </label>
+            <label className="block text-sm">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">Obiettivi prossimo mese</span>
+              <textarea value={nextGoals} onChange={(e) => setNextGoals(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+            </label>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <button onClick={handleGeneratePreview} disabled={isGeneratingReport} className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium disabled:opacity-60">
-              {isGeneratingReport ? "Aggiornamento dati..." : "Genera anteprima"}
-            </button>
-            <button onClick={handleExport} disabled={isExporting} className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60">
-              {isExporting ? "Generazione PDF in corso..." : "Esporta PDF"}
-            </button>
-          </div>
+            <label className="block text-sm">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">Note strategiche</span>
+              <textarea value={strategicNotes} onChange={(e) => setStrategicNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+            </label>
 
-          <ReportHistory reports={history} onRegenerate={regenerate} />
-        </aside>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                onClick={handleGeneratePreview}
+                disabled={isGeneratingReport}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-medium disabled:opacity-60"
+              >
+                <Wand2 size={15} />
+                {isGeneratingReport ? "Aggiorno..." : "Genera anteprima"}
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={isExporting}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60 hover:bg-emerald-700 transition-colors"
+              >
+                <Download size={15} />
+                {isExporting ? "PDF in corso..." : "Esporta PDF"}
+              </button>
+            </div>
 
-        <section className="space-y-4">
+            <ReportHistory reports={history} onRegenerate={regenerate} />
+          </aside>
+
+          <section className="space-y-4">
           <MetaConnectionBanner
             error={meta.error}
             isStale={meta.isStale}
@@ -376,10 +519,30 @@ export default function ReportsPage() {
             onSync={handleGeneratePreview}
             syncing={meta.isLoading || isGeneratingReport}
           />
-          <div ref={previewRef} className="overflow-auto rounded-xl bg-muted/20 p-4 border border-card-border">
-            <ReportPreview model={previewModel} />
-          </div>
-        </section>
+            <div className="rounded-2xl border border-card-border bg-card p-3 md:p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">Anteprima live</p>
+                <p className="text-xs text-muted-foreground">Template premium · PDF ready</p>
+              </div>
+              <div className="relative">
+                {(isGeneratingReport || meta.isLoading) && (
+                  <div className="absolute inset-0 z-10 rounded-xl border border-emerald-200 bg-white/85 backdrop-blur-[1px] p-4">
+                    <div className="h-full w-full animate-pulse space-y-2">
+                      <div className="h-3 w-1/3 rounded bg-emerald-100" />
+                      <div className="h-2.5 w-2/3 rounded bg-emerald-50" />
+                      <div className="h-2.5 w-1/2 rounded bg-emerald-50" />
+                      <div className="mt-4 h-24 rounded bg-emerald-50" />
+                      <div className="h-16 rounded bg-emerald-50" />
+                    </div>
+                  </div>
+                )}
+                <div ref={previewRef} className="overflow-auto rounded-xl bg-muted/20 p-2 md:p-3 border border-card-border">
+                <ReportPreview model={previewModel} />
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </Layout>
   );

@@ -1,39 +1,39 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import Dashboard from "@/pages/dashboard";
-import Clients from "@/pages/clients";
-import ClientDetail from "@/pages/client-detail";
-import Projects from "@/pages/projects";
-import ProjectDetail from "@/pages/project-detail";
-import Tasks from "@/pages/tasks";
-import Team from "@/pages/team";
-import Chat from "@/pages/chat";
-import Files from "@/pages/files";
-import Quotes from "@/pages/quotes";
-import Contracts from "@/pages/contracts";
-import ContractsNew from "@/pages/contracts-new";
-import ContractsTemplates from "@/pages/contracts-templates";
-import ContractsClassic from "@/pages/contracts-classic";
-import Settings from "@/pages/settings";
-import AiAssistant from "@/pages/ai-assistant";
-import BriefPage from "@/pages/tools/BriefPage";
-import EditorialPlanBuilder from "@/pages/editorial-plan-builder";
-import TimeTracker from "@/pages/time-tracker";
-import CalendarPage from "@/pages/tools/CalendarPage";
-import EventsPage from "@/pages/tools/EventsPage";
-import CompetitorsPage from "@/pages/tools/CompetitorsPage";
-import AnalyticsPage from "@/pages/tools/AnalyticsPage";
-import ReportsPage from "@/pages/tools/ReportsPage";
-import CaptionAiPage from "@/pages/tools/CaptionAiPage";
-import ContentIdeasPage from "@/pages/tools/ContentIdeasPage";
-import Trash from "@/pages/trash";
-import NotFound from "@/pages/not-found";
-import SignInPage from "@/pages/sign-in";
-import AuthCallbackPage from "@/pages/auth-callback";
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Clients = lazy(() => import("@/pages/clients"));
+const ClientDetail = lazy(() => import("@/pages/client-detail"));
+const Projects = lazy(() => import("@/pages/projects"));
+const ProjectDetail = lazy(() => import("@/pages/project-detail"));
+const Tasks = lazy(() => import("@/pages/tasks"));
+const Team = lazy(() => import("@/pages/team"));
+const Chat = lazy(() => import("@/pages/chat"));
+const Files = lazy(() => import("@/pages/files"));
+const Quotes = lazy(() => import("@/pages/quotes"));
+const Contracts = lazy(() => import("@/pages/contracts"));
+const ContractsNew = lazy(() => import("@/pages/contracts-new"));
+const ContractsTemplates = lazy(() => import("@/pages/contracts-templates"));
+const ContractsClassic = lazy(() => import("@/pages/contracts-classic"));
+const Settings = lazy(() => import("@/pages/settings"));
+const AiAssistant = lazy(() => import("@/pages/ai-assistant"));
+const BriefPage = lazy(() => import("@/pages/tools/BriefPage"));
+const EditorialPlanBuilder = lazy(() => import("@/pages/editorial-plan-builder"));
+const TimeTracker = lazy(() => import("@/pages/time-tracker"));
+const CalendarPage = lazy(() => import("@/pages/tools/CalendarPage"));
+const EventsPage = lazy(() => import("@/pages/tools/EventsPage"));
+const CompetitorsPage = lazy(() => import("@/pages/tools/CompetitorsPage"));
+const AnalyticsPage = lazy(() => import("@/pages/tools/AnalyticsPage"));
+const ReportsPage = lazy(() => import("@/pages/tools/ReportsPage"));
+const CaptionAiPage = lazy(() => import("@/pages/tools/CaptionAiPage"));
+const ContentIdeasPage = lazy(() => import("@/pages/tools/ContentIdeasPage"));
+const Trash = lazy(() => import("@/pages/trash"));
+const NotFound = lazy(() => import("@/pages/not-found"));
+const SignInPage = lazy(() => import("@/pages/sign-in"));
+const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
@@ -139,99 +139,101 @@ function HomeRoute() {
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={HomeRoute} />
-      {!authDisabled && <Route path="/sign-in" component={SignInPage} />}
-      {!authDisabled && <Route path="/auth/callback" component={AuthCallbackPage} />}
-      <Route path="/dashboard">
-        <RequireAuth><Dashboard /></RequireAuth>
-      </Route>
-      <Route path="/trash">
-        <RequireAuth><Trash /></RequireAuth>
-      </Route>
-      <Route path="/clients">
-        <RequireAuth><Clients /></RequireAuth>
-      </Route>
-      <Route path="/clients/:id">
-        {(params) => <RequireAuth><ClientDetail id={params.id} /></RequireAuth>}
-      </Route>
-      <Route path="/projects">
-        <RequireAuth><Projects /></RequireAuth>
-      </Route>
-      <Route path="/projects/:id">
-        {(params) => <RequireAuth><ProjectDetail id={params.id} /></RequireAuth>}
-      </Route>
-      <Route path="/tasks">
-        <RequireAuth><Tasks /></RequireAuth>
-      </Route>
-      <Route path="/team">
-        <RequireAuth><Team /></RequireAuth>
-      </Route>
-      <Route path="/chat">
-        <RequireAuth><Chat /></RequireAuth>
-      </Route>
-      <Route path="/files">
-        <RequireAuth><Files /></RequireAuth>
-      </Route>
-      <Route path="/quotes">
-        <RequireAuth><Quotes /></RequireAuth>
-      </Route>
-      <Route path="/contracts/new">
-        <RequireAuth><ContractsNew /></RequireAuth>
-      </Route>
-      <Route path="/contracts/templates">
-        <RequireAuth><ContractsTemplates /></RequireAuth>
-      </Route>
-      <Route path="/contracts/classic">
-        <RequireAuth><ContractsClassic /></RequireAuth>
-      </Route>
-      <Route path="/contracts">
-        <RequireAuth><Contracts /></RequireAuth>
-      </Route>
-      <Route path="/reports">
-        <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
-      </Route>
-      <Route path="/ai-assistant">
-        <RequireAuth><AiAssistant /></RequireAuth>
-      </Route>
-      <Route path="/settings">
-        <RequireAuth><Settings /></RequireAuth>
-      </Route>
-      <Route path="/tools">
-        <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
-      </Route>
-      <Route path="/tools/brief">
-        <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/piano-editoriale/:id">
-        {(params) => <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>}
-      </Route>
-      <Route path="/tools/time-tracker">
-        <RequireAuth><RequireActiveClient><TimeTracker /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/calendar">
-        <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/events">
-        <RequireAuth><RequireActiveClient><EventsPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/competitors">
-        <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/analytics">
-        <RequireAuth><RequireActiveClient><AnalyticsPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/reports">
-        <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/caption-ai">
-        <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route path="/tools/content-ideas">
-        <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<AppBootLoading />}>
+      <Switch>
+        <Route path="/" component={HomeRoute} />
+        {!authDisabled && <Route path="/sign-in" component={SignInPage} />}
+        {!authDisabled && <Route path="/auth/callback" component={AuthCallbackPage} />}
+        <Route path="/dashboard">
+          <RequireAuth><Dashboard /></RequireAuth>
+        </Route>
+        <Route path="/trash">
+          <RequireAuth><Trash /></RequireAuth>
+        </Route>
+        <Route path="/clients">
+          <RequireAuth><Clients /></RequireAuth>
+        </Route>
+        <Route path="/clients/:id">
+          {(params) => <RequireAuth><ClientDetail id={params.id} /></RequireAuth>}
+        </Route>
+        <Route path="/projects">
+          <RequireAuth><Projects /></RequireAuth>
+        </Route>
+        <Route path="/projects/:id">
+          {(params) => <RequireAuth><ProjectDetail id={params.id} /></RequireAuth>}
+        </Route>
+        <Route path="/tasks">
+          <RequireAuth><Tasks /></RequireAuth>
+        </Route>
+        <Route path="/team">
+          <RequireAuth><Team /></RequireAuth>
+        </Route>
+        <Route path="/chat">
+          <RequireAuth><Chat /></RequireAuth>
+        </Route>
+        <Route path="/files">
+          <RequireAuth><Files /></RequireAuth>
+        </Route>
+        <Route path="/quotes">
+          <RequireAuth><Quotes /></RequireAuth>
+        </Route>
+        <Route path="/contracts/new">
+          <RequireAuth><ContractsNew /></RequireAuth>
+        </Route>
+        <Route path="/contracts/templates">
+          <RequireAuth><ContractsTemplates /></RequireAuth>
+        </Route>
+        <Route path="/contracts/classic">
+          <RequireAuth><ContractsClassic /></RequireAuth>
+        </Route>
+        <Route path="/contracts">
+          <RequireAuth><Contracts /></RequireAuth>
+        </Route>
+        <Route path="/reports">
+          <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
+        </Route>
+        <Route path="/ai-assistant">
+          <RequireAuth><AiAssistant /></RequireAuth>
+        </Route>
+        <Route path="/settings">
+          <RequireAuth><Settings /></RequireAuth>
+        </Route>
+        <Route path="/tools">
+          <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+        </Route>
+        <Route path="/tools/brief">
+          <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/piano-editoriale/:id">
+          {(params) => <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>}
+        </Route>
+        <Route path="/tools/time-tracker">
+          <RequireAuth><RequireActiveClient><TimeTracker /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/calendar">
+          <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/events">
+          <RequireAuth><RequireActiveClient><EventsPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/competitors">
+          <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/analytics">
+          <RequireAuth><RequireActiveClient><AnalyticsPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/reports">
+          <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/caption-ai">
+          <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route path="/tools/content-ideas">
+          <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

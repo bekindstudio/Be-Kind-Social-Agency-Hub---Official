@@ -5,7 +5,6 @@ import { Clock, TrendingUp, DollarSign, Calendar, Plus, X, Trash2, ArrowLeft, Pe
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useClientContext } from "@/context/ClientContext";
-import jsPDF from "jspdf";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
@@ -423,36 +422,42 @@ export default function TimeTrackerPage() {
     toast({ title: "CSV esportato" });
   }, [filteredEntries, periodFilter, toast]);
 
-  const exportPdf = useCallback(() => {
-    if (filteredEntries.length === 0) {
-      toast({ title: "Nessun dato da esportare", variant: "destructive" });
-      return;
-    }
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    let y = 14;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Time Tracker Export", 14, y);
-    y += 6;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Periodo: ${periodFilter} · Data export: ${new Date().toLocaleString()}`, 14, y);
-    y += 8;
-    doc.text(`Totale: ${formatDuration(periodTotals.totalSeconds)} · Fatturabile: ${formatDuration(periodTotals.billableSeconds)}`, 14, y);
-    y += 8;
-    doc.setFontSize(8);
-    for (const entry of filteredEntries.slice(0, 120)) {
-      const line = `${toDateKey(entry.startedAt ?? "")} | ${entry.clientName ?? "—"} | ${entry.projectName ?? "—"} | ${entry.description ?? "—"} | ${formatDuration(Number(entry.durationSeconds ?? 0))} | ${entry.isBillable ? "Si" : "No"}`;
-      const wrapped = doc.splitTextToSize(line, 182);
-      if (y + wrapped.length * 4 > 285) {
-        doc.addPage();
-        y = 14;
+  const exportPdf = useCallback(async () => {
+    try {
+      if (filteredEntries.length === 0) {
+        toast({ title: "Nessun dato da esportare", variant: "destructive" });
+        return;
       }
-      doc.text(wrapped, 14, y);
-      y += wrapped.length * 4 + 1;
+      const jsPDFModule = await import("jspdf");
+      const JsPdfCtor = jsPDFModule.default;
+      const doc = new JsPdfCtor({ orientation: "portrait", unit: "mm", format: "a4" });
+      let y = 14;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Time Tracker Export", 14, y);
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Periodo: ${periodFilter} · Data export: ${new Date().toLocaleString()}`, 14, y);
+      y += 8;
+      doc.text(`Totale: ${formatDuration(periodTotals.totalSeconds)} · Fatturabile: ${formatDuration(periodTotals.billableSeconds)}`, 14, y);
+      y += 8;
+      doc.setFontSize(8);
+      for (const entry of filteredEntries.slice(0, 120)) {
+        const line = `${toDateKey(entry.startedAt ?? "")} | ${entry.clientName ?? "—"} | ${entry.projectName ?? "—"} | ${entry.description ?? "—"} | ${formatDuration(Number(entry.durationSeconds ?? 0))} | ${entry.isBillable ? "Si" : "No"}`;
+        const wrapped = doc.splitTextToSize(line, 182);
+        if (y + wrapped.length * 4 > 285) {
+          doc.addPage();
+          y = 14;
+        }
+        doc.text(wrapped, 14, y);
+        y += wrapped.length * 4 + 1;
+      }
+      doc.save(`time-tracker-${periodFilter}-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "PDF esportato" });
+    } catch {
+      toast({ title: "Export PDF non riuscito", variant: "destructive" });
     }
-    doc.save(`time-tracker-${periodFilter}-${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast({ title: "PDF esportato" });
   }, [filteredEntries, periodFilter, periodTotals, toast]);
 
   return (
@@ -623,7 +628,7 @@ export default function TimeTrackerPage() {
               <button onClick={exportCsv} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted">
                 <Download size={13} /> CSV
               </button>
-              <button onClick={exportPdf} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted">
+              <button onClick={() => void exportPdf()} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted">
                 <Download size={13} /> PDF
               </button>
             </div>

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import { db, projectsTable, clientsTable, tasksTable, teamMembersTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
 import {
   CreateProjectBody,
@@ -164,10 +164,17 @@ router.get("/projects", async (req, res): Promise<void> => {
 
     const userId = getUid(req);
 
+    const projectConditions: any[] = [isNull(projectsTable.deletedAt)];
+    if (query.data.clientId != null && !Number.isNaN(Number(query.data.clientId))) {
+      projectConditions.push(eq(projectsTable.clientId, Number(query.data.clientId)));
+    }
+    if (query.data.status != null) {
+      projectConditions.push(eq(projectsTable.status, query.data.status));
+    }
     const projects = await db
       .select()
       .from(projectsTable)
-      .where(isNull(projectsTable.deletedAt))
+      .where(and(...projectConditions))
       .orderBy(projectsTable.createdAt);
     const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
     const clientMap = new Map(clients.map((c) => [c.id, c.name]));
@@ -175,18 +182,37 @@ router.get("/projects", async (req, res): Promise<void> => {
     const accessible = userId ? await getAccessibleClientIds(userId) : ("all" as const);
     const accessFiltered = filterByClientAccess(projects, accessible);
 
-    const allTasks = await db.select().from(tasksTable).where(isNull(tasksTable.deletedAt));
-    let result = accessFiltered
-      .filter((p) => canViewProject(p, userId))
-      .map((p) => {
-        const projectTasks = allTasks.filter((t) => t.projectId === p.id);
-        const done = projectTasks.filter((t) => t.status === "done").length;
-        const total = projectTasks.length;
-        const computedProgress = total > 0 ? Math.round((done / total) * 100) : (p.progress ?? 0);
-        const overdue = projectTasks.filter((t) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < new Date()).length;
+    const visibleProjects = accessFiltered.filter((p) => canViewProject(p, userId));
+    const visibleProjectIds = visibleProjects.map((p) => p.id);
+    const taskRows = visibleProjectIds.length > 0
+      ? await db
+        .select({
+          projectId: tasksTable.projectId,
+          status: tasksTable.status,
+          dueDate: tasksTable.dueDate,
+        })
+        .from(tasksTable)
+        .where(and(isNull(tasksTable.deletedAt), inArray(tasksTable.projectId, visibleProjectIds)))
+      : [];
+
+    const taskStatsByProject = new Map<number, { total: number; done: number; overdue: number }>();
+    const now = new Date();
+    for (const task of taskRows) {
+      const pid = Number(task.projectId);
+      if (!Number.isFinite(pid)) continue;
+      const current = taskStatsByProject.get(pid) ?? { total: 0, done: 0, overdue: 0 };
+      current.total += 1;
+      if (task.status === "done") current.done += 1;
+      if (task.status !== "done" && task.dueDate && new Date(task.dueDate) < now) current.overdue += 1;
+      taskStatsByProject.set(pid, current);
+    }
+
+    const result = visibleProjects.map((p) => {
+        const stats = taskStatsByProject.get(p.id) ?? { total: 0, done: 0, overdue: 0 };
+        const computedProgress = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : (p.progress ?? 0);
         const health = calcHealth({
           status: p.status,
-          overdueTasks: overdue,
+          overdueTasks: stats.overdue,
           budget: Number(p.budget ?? 0),
           spent: Number(p.budgetSpeso ?? 0),
           deadline: p.deadline ?? p.endDate ?? null,
@@ -196,18 +222,10 @@ router.get("/projects", async (req, res): Promise<void> => {
         return serializeProject(p, p.clientId ? (clientMap.get(p.clientId) ?? null) : null, {
           progress: computedProgress,
           healthStatus: health,
-          tasksTotal: total,
-          tasksDone: done,
+          tasksTotal: stats.total,
+          tasksDone: stats.done,
         });
       });
-
-    if (query.data.clientId != null && !Number.isNaN(Number(query.data.clientId))) {
-      const cid = Number(query.data.clientId);
-      result = result.filter((p) => p.clientId != null && Number(p.clientId) === cid);
-    }
-    if (query.data.status != null) {
-      result = result.filter((p) => p.status === query.data.status);
-    }
 
     const safeJson = JSON.parse(
       JSON.stringify(result, (_k, v) => (typeof v === "bigint" ? Number(v) : v)),

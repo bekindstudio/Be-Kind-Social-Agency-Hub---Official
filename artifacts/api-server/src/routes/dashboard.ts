@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, clientsTable, projectsTable, tasksTable, teamMembersTable, messagesTable, filesTable, quoteTemplatesTable, contractTemplatesTable } from "@workspace/db";
+import { desc } from "drizzle-orm";
 import {
   GetDashboardSummaryResponse,
   GetRecentActivityResponse,
@@ -33,24 +34,24 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
 
 router.get("/dashboard/activity", async (_req, res): Promise<void> => {
   const [projects, tasks, messages, files] = await Promise.all([
-    db.select().from(projectsTable).orderBy(projectsTable.createdAt),
-    db.select().from(tasksTable).orderBy(tasksTable.createdAt),
-    db.select().from(messagesTable).orderBy(messagesTable.createdAt),
-    db.select().from(filesTable).orderBy(filesTable.createdAt),
+    db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)).limit(5),
+    db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)).limit(5),
+    db.select().from(messagesTable).orderBy(desc(messagesTable.createdAt)).limit(3),
+    db.select().from(filesTable).orderBy(desc(filesTable.createdAt)).limit(3),
   ]);
 
   const activity: Array<{ id: number; type: string; description: string; entityName: string; createdAt: Date }> = [];
 
-  for (const p of projects.slice(-5)) {
+  for (const p of projects) {
     activity.push({ id: p.id * 10 + 1, type: "project", description: "Progetto creato", entityName: p.name, createdAt: p.createdAt });
   }
-  for (const t of tasks.slice(-5)) {
+  for (const t of tasks) {
     activity.push({ id: t.id * 10 + 2, type: "task", description: `Task ${t.status}`, entityName: t.title, createdAt: t.createdAt });
   }
-  for (const m of messages.slice(-3)) {
+  for (const m of messages) {
     activity.push({ id: m.id * 10 + 3, type: "message", description: "Nuovo messaggio", entityName: m.authorName, createdAt: m.createdAt });
   }
-  for (const f of files.slice(-3)) {
+  for (const f of files) {
     activity.push({ id: f.id * 10 + 4, type: "file", description: "File caricato", entityName: f.name, createdAt: f.createdAt });
   }
 

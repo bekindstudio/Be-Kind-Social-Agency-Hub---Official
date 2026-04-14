@@ -44,7 +44,12 @@ export function useWebDeadlineNotifications() {
     supportsWebNotifications() ? Notification.permission : "denied",
   );
   const [seenMap, setSeenMap] = useState<Record<string, true>>(() => readSeenMap());
+  const seenMapRef = useRef<Record<string, true>>(seenMap);
   const seededRef = useRef(false);
+
+  useEffect(() => {
+    seenMapRef.current = seenMap;
+  }, [seenMap]);
 
   useEffect(() => {
     localStorage.setItem(ENABLED_KEY, String(enabled));
@@ -114,7 +119,7 @@ export function useWebDeadlineNotifications() {
 
   const unreadSmartReminders = useMemo(
     () => smart.reminders.filter((reminder) => !smart.isRead(reminder.id)),
-    [smart.reminders, smart.unreadCount],
+    [smart.reminders],
   );
 
   useEffect(() => {
@@ -122,11 +127,12 @@ export function useWebDeadlineNotifications() {
     let cancelled = false;
 
     const poll = async () => {
+      const currentSeenMap = seenMapRef.current;
       const pending: Array<{ key: string; title: string; body: string; link?: string }> = [];
 
       unreadSmartReminders.forEach((reminder) => {
         const key = `smart:${reminder.id}`;
-        if (seenMap[key]) return;
+        if (currentSeenMap[key]) return;
         pending.push({
           key,
           title: reminder.title,
@@ -143,7 +149,7 @@ export function useWebDeadlineNotifications() {
             .filter((item) => !item.isRead)
             .forEach((item) => {
               const key = `api:${item.id}`;
-              if (seenMap[key]) return;
+              if (currentSeenMap[key]) return;
               pending.push({
                 key,
                 title: item.title,
@@ -156,7 +162,7 @@ export function useWebDeadlineNotifications() {
         // Ignore polling errors and keep next cycle active.
       }
 
-      if (!seededRef.current && Object.keys(seenMap).length === 0) {
+      if (!seededRef.current && Object.keys(currentSeenMap).length === 0) {
         // First sync: mark existing unread items as already seen to avoid notification flood.
         const bootstrapMap: Record<string, true> = {};
         pending.forEach((item) => {
@@ -193,7 +199,7 @@ export function useWebDeadlineNotifications() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [canRun, seenMap, showNativeNotification, unreadSmartReminders]);
+  }, [canRun, showNativeNotification, unreadSmartReminders]);
 
   return {
     isSupported: supportsWebNotifications(),

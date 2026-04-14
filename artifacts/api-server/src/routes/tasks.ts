@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and, isNull } from "drizzle-orm";
+import { eq, sql, and, isNull, inArray } from "drizzle-orm";
 import { db, tasksTable, projectsTable, teamMembersTable } from "@workspace/db";
 import {
   CreateTaskBody,
@@ -14,13 +14,22 @@ import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
-async function getProjectsAndMembers() {
+async function getLookupMaps(projectIds: number[], assigneeIds: number[]) {
   const [projects, members] = await Promise.all([
-    db.select().from(projectsTable).where(isNull(projectsTable.deletedAt)),
-    db.select().from(teamMembersTable),
+    projectIds.length > 0
+      ? db
+        .select({ id: projectsTable.id, name: projectsTable.name, clientId: projectsTable.clientId })
+        .from(projectsTable)
+        .where(and(isNull(projectsTable.deletedAt), inArray(projectsTable.id, projectIds)))
+      : Promise.resolve([]),
+    assigneeIds.length > 0
+      ? db
+        .select({ id: teamMembersTable.id, name: teamMembersTable.name })
+        .from(teamMembersTable)
+        .where(inArray(teamMembersTable.id, assigneeIds))
+      : Promise.resolve([]),
   ]);
   return {
-    projects,
     projectMap: new Map(projects.map((p) => [p.id, p.name])),
     projectClientMap: new Map(projects.map((p) => [p.id, p.clientId ?? null])),
     memberMap: new Map(members.map((m) => [m.id, m.name])),
@@ -38,7 +47,9 @@ function serializeTask(task: typeof tasksTable.$inferSelect, projectMap: Map<num
 }
 
 async function enrichTask(task: typeof tasksTable.$inferSelect) {
-  const { projectMap, memberMap } = await getProjectsAndMembers();
+  const projectIds = task.projectId != null ? [task.projectId] : [];
+  const assigneeIds = task.assigneeId != null ? [task.assigneeId] : [];
+  const { projectMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
   return serializeTask(task, projectMap, memberMap);
 }
 
@@ -206,27 +217,36 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   await seedAdvancedTasks();
 
+  const rawClientId = req.query.clientId;
+  const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;
+  const conditions: any[] = [isNull(tasksTable.deletedAt)];
+  if (query.data.projectId != null) conditions.push(eq(tasksTable.projectId, query.data.projectId));
+  if (query.data.assigneeId != null) conditions.push(eq(tasksTable.assigneeId, query.data.assigneeId));
+  if (query.data.status != null) conditions.push(eq(tasksTable.status, query.data.status));
+
+  if (clientId != null && Number.isFinite(clientId)) {
+    const clientProjects = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(isNull(projectsTable.deletedAt), eq(projectsTable.clientId, clientId)));
+    const clientProjectIds = clientProjects.map((row) => row.id);
+    if (clientProjectIds.length === 0) {
+      res.json([]);
+      return;
+    }
+    conditions.push(inArray(tasksTable.projectId, clientProjectIds));
+  }
+
   const tasks = await db
     .select()
     .from(tasksTable)
-    .where(isNull(tasksTable.deletedAt))
+    .where(and(...conditions))
     .orderBy(tasksTable.createdAt);
-  const rawClientId = req.query.clientId;
-  const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;
-  const { projectMap, projectClientMap, memberMap } = await getProjectsAndMembers();
 
-  let result = tasks.map((t) => serializeTask(t, projectMap, memberMap));
-
-  if (query.data.projectId != null) result = result.filter((t) => t.projectId === query.data.projectId);
-  if (clientId != null && Number.isFinite(clientId)) {
-    result = result.filter((t) => {
-      if (t.projectId == null) return false;
-      return projectClientMap.get(t.projectId) === clientId;
-    });
-  }
-  if (query.data.assigneeId != null) result = result.filter((t) => t.assigneeId === query.data.assigneeId);
-  if (query.data.status != null) result = result.filter((t) => t.status === query.data.status);
-
+  const projectIds = Array.from(new Set(tasks.map((task) => task.projectId).filter((id): id is number => id != null)));
+  const assigneeIds = Array.from(new Set(tasks.map((task) => task.assigneeId).filter((id): id is number => id != null)));
+  const { projectMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
+  const result = tasks.map((task) => serializeTask(task, projectMap, memberMap));
   res.json(result);
 });
 

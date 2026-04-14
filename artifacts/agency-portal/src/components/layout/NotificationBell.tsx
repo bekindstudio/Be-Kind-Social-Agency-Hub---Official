@@ -109,9 +109,13 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible" || open) {
+        fetchNotifications();
+      }
+    }, 30000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, open]);
 
   useEffect(() => {
     const enableSound = () => {

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, notifications } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getUserId, isAnonymousApiUserId, isApiAuthBypass } from "../lib/access-control";
 
 const router = Router();
@@ -35,9 +35,11 @@ router.get("/notifications", async (req: Request, res: Response): Promise<void> 
 router.get("/notifications/unread-count", async (req: Request, res: Response): Promise<void> => {
   const userId = requireNotificationUser(req, res);
   if (!userId) return;
-  const rows = await db.select().from(notifications)
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(notifications)
     .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
-  res.json({ count: rows.length });
+  res.json({ count: Number(row?.count ?? 0) });
 });
 
 router.patch("/notifications/:id/read", async (req: Request, res: Response): Promise<void> => {

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, sql, desc, asc, gte, lte } from "drizzle-orm";
+import { eq, and, sql, desc, asc, gte, lte, inArray } from "drizzle-orm";
 import {
   db,
   timeEntriesTable,
@@ -15,22 +15,39 @@ import { getUserId, isEnvAdmin, isAnonymousApiUserId } from "../lib/access-contr
 
 const router: IRouter = Router();
 
-async function enrichSession(session: any) {
-  let clientName = null;
-  let projectName = null;
-  let taskTitle = null;
-  if (session.clientId) {
-    const [c] = await db.select().from(clientsTable).where(eq(clientsTable.id, session.clientId));
-    clientName = c?.name ?? null;
-  }
-  if (session.projectId) {
-    const [p] = await db.select().from(projectsTable).where(eq(projectsTable.id, session.projectId));
-    projectName = p?.name ?? null;
-  }
-  if (session.taskId) {
-    const [t] = await db.select().from(tasksTable).where(eq(tasksTable.id, session.taskId));
-    taskTitle = t?.title ?? null;
-  }
+type NameLookupMaps = {
+  clientMap: Map<number, string>;
+  projectMap: Map<number, string>;
+  taskMap: Map<number, string>;
+};
+
+async function buildNameLookupMaps(ids: {
+  clientIds: number[];
+  projectIds: number[];
+  taskIds: number[];
+}): Promise<NameLookupMaps> {
+  const [clients, projects, tasks] = await Promise.all([
+    ids.clientIds.length > 0
+      ? db.select({ id: clientsTable.id, name: clientsTable.name }).from(clientsTable).where(inArray(clientsTable.id, ids.clientIds))
+      : Promise.resolve([]),
+    ids.projectIds.length > 0
+      ? db.select({ id: projectsTable.id, name: projectsTable.name }).from(projectsTable).where(inArray(projectsTable.id, ids.projectIds))
+      : Promise.resolve([]),
+    ids.taskIds.length > 0
+      ? db.select({ id: tasksTable.id, title: tasksTable.title }).from(tasksTable).where(inArray(tasksTable.id, ids.taskIds))
+      : Promise.resolve([]),
+  ]);
+  return {
+    clientMap: new Map(clients.map((row) => [row.id, row.name])),
+    projectMap: new Map(projects.map((row) => [row.id, row.name])),
+    taskMap: new Map(tasks.map((row) => [row.id, row.title])),
+  };
+}
+
+function serializeSession(session: any, maps?: NameLookupMaps) {
+  const clientName = session.clientId ? maps?.clientMap.get(session.clientId) ?? null : null;
+  const projectName = session.projectId ? maps?.projectMap.get(session.projectId) ?? null : null;
+  const taskTitle = session.taskId ? maps?.taskMap.get(session.taskId) ?? null : null;
   return {
     ...session,
     startedAt: session.startedAt?.toISOString(),
@@ -78,7 +95,12 @@ router.get("/timer/active", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!session) { res.json(null); return; }
-  res.json(await enrichSession(session));
+  const maps = await buildNameLookupMaps({
+    clientIds: session.clientId ? [session.clientId] : [],
+    projectIds: session.projectId ? [session.projectId] : [],
+    taskIds: session.taskId ? [session.taskId] : [],
+  });
+  res.json(serializeSession(session, maps));
 });
 
 router.get("/timer/active-all", async (req, res): Promise<void> => {
@@ -96,8 +118,11 @@ router.get("/timer/active-all", async (req, res): Promise<void> => {
     ))
     .orderBy(desc(timerSessionsTable.startedAt));
 
-  const enriched = await Promise.all(sessions.map((session) => enrichSession(session)));
-  res.json(enriched);
+  const clientIds = Array.from(new Set(sessions.map((session) => session.clientId).filter((id): id is number => id != null)));
+  const projectIds = Array.from(new Set(sessions.map((session) => session.projectId).filter((id): id is number => id != null)));
+  const taskIds = Array.from(new Set(sessions.map((session) => session.taskId).filter((id): id is number => id != null)));
+  const maps = await buildNameLookupMaps({ clientIds, projectIds, taskIds });
+  res.json(sessions.map((session) => serializeSession(session, maps)));
 });
 
 router.post("/timer/start", async (req, res): Promise<void> => {
@@ -302,14 +327,10 @@ router.get("/time-entries", async (req, res): Promise<void> => {
     .where(and(...conditions))
     .orderBy(desc(timeEntriesTable.startedAt));
 
-  const [clients, projects, tasks] = await Promise.all([
-    db.select().from(clientsTable),
-    db.select().from(projectsTable),
-    db.select().from(tasksTable),
-  ]);
-  const clientMap = new Map(clients.map(c => [c.id, c.name]));
-  const projectMap = new Map(projects.map(p => [p.id, p.name]));
-  const taskMap = new Map(tasks.map(t => [t.id, t.title]));
+  const clientIds = Array.from(new Set(entries.map((e) => e.clientId).filter((id): id is number => id != null)));
+  const projectIds = Array.from(new Set(entries.map((e) => e.projectId).filter((id): id is number => id != null)));
+  const taskIds = Array.from(new Set(entries.map((e) => e.taskId).filter((id): id is number => id != null)));
+  const { clientMap, projectMap, taskMap } = await buildNameLookupMaps({ clientIds, projectIds, taskIds });
 
   res.json(entries.map(e => ({
     ...e,

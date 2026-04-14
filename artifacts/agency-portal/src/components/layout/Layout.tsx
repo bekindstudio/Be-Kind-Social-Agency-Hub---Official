@@ -5,11 +5,12 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
 import { ActiveTimerWidget, useTimerStart } from "@/components/ActiveTimerWidget";
-import { Menu } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import { AutoSaveIndicator } from "./AutoSaveIndicator";
 import { OfflineBanner } from "./OfflineBanner";
 import { ClientSelector } from "@/components/ClientSelector";
 import { ClientHeader } from "@/components/ClientHeader";
+import { useWebDeadlineNotifications } from "@/hooks/useWebDeadlineNotifications";
 
 interface LayoutProps {
   children: ReactNode;
@@ -19,6 +20,7 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const startTimer = useTimerStart();
+  const webNotifications = useWebDeadlineNotifications();
 
   useEffect(() => {
     let mounted = true;
@@ -62,6 +64,15 @@ export function Layout({ children }: LayoutProps) {
     });
   }, [startTimer]);
 
+  const isWebNotifyActive =
+    webNotifications.enabled && webNotifications.permission === "granted";
+  const webNotifyLabel =
+    webNotifications.permission === "denied"
+      ? "Notifiche bloccate"
+      : isWebNotifyActive
+        ? "Notifiche web attive"
+        : "Attiva notifiche web";
+
   return (
     <div className="flex h-screen overflow-hidden">
       <div className="hidden md:flex">
@@ -85,6 +96,23 @@ export function Layout({ children }: LayoutProps) {
           <span className="text-sm font-semibold md:hidden">Be Kind Social Agency HUB</span>
           <ClientSelector />
           <div className="ml-auto flex items-center gap-2">
+            {webNotifications.isSupported && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isWebNotifyActive) {
+                    webNotifications.setEnabled(false);
+                    return;
+                  }
+                  void webNotifications.requestPermission();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                title={isWebNotifyActive ? "Disattiva notifiche web" : "Attiva notifiche web"}
+              >
+                <Bell size={14} />
+                {webNotifyLabel}
+              </button>
+            )}
             <AutoSaveIndicator />
             <ActiveTimerWidget />
             <DailyFocusWidget onClick={() => setFocusOpen(true)} />

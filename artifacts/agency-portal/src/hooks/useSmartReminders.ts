@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useListTasks } from "@workspace/api-client-react";
 import { useClientContext } from "@/context/ClientContext";
 import { getBriefCompletion } from "@/components/tools/brief/briefCompletion";
+import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 
 type ReminderSeverity = "critical" | "warning" | "info";
 
@@ -33,6 +34,7 @@ function readState(): ReadState {
 export function useSmartReminders() {
   const { clients, briefsByClient, postsByClient, analyticsByClient, allClientEvents } = useClientContext();
   const { data: tasksRaw } = useListTasks({});
+  const { preferences } = useReminderPreferences();
   const [readMap, setReadMap] = useState<ReadState>(() => readState());
 
   useEffect(() => {
@@ -48,104 +50,109 @@ export function useSmartReminders() {
 
   const reminders = useMemo<SmartReminder[]>(() => {
     const now = Date.now();
-    const in72h = now + 72 * 60 * 60 * 1000;
+    const eventsWindowEnd = now + preferences.eventsWindowHours * 60 * 60 * 1000;
     const output: SmartReminder[] = [];
 
-    // Scadenze eventi entro 72h.
-    allClientEvents
-      .filter((event) => {
-        const t = new Date(event.date).getTime();
-        return t >= now && t <= in72h;
-      })
-      .forEach((event) => {
-        const clientName = clients.find((client) => client.id === event.clientId)?.name ?? "Cliente";
-        output.push({
-          id: `deadline-${event.id}`,
-          title: `Scadenza vicina: ${event.title}`,
-          message: `${clientName} · evento entro 72h`,
-          link: "/dashboard",
-          severity: event.priority === "high" ? "critical" : "warning",
-          createdAt: new Date().toISOString(),
+    if (preferences.eventsEnabled) {
+      allClientEvents
+        .filter((event) => {
+          const t = new Date(event.date).getTime();
+          return t >= now && t <= eventsWindowEnd;
+        })
+        .forEach((event) => {
+          const clientName = clients.find((client) => client.id === event.clientId)?.name ?? "Cliente";
+          output.push({
+            id: `deadline-${event.id}`,
+            title: `Scadenza vicina: ${event.title}`,
+            message: `${clientName} · evento entro ${preferences.eventsWindowHours}h`,
+            link: "/dashboard",
+            severity: event.priority === "high" ? "critical" : "warning",
+            createdAt: new Date().toISOString(),
+          });
         });
-      });
+    }
 
-    // Post bloccati (rejected o in pending oltre 48h).
-    clients.forEach((client) => {
-      const posts = postsByClient[client.id] ?? [];
-      const blocked = posts.filter((post) => {
-        if (post.status === "rejected") return true;
-        if (post.status !== "pending_approval") return false;
-        return now - new Date(post.updatedAt).getTime() > 48 * 60 * 60 * 1000;
-      }).length;
-      if (blocked > 0) {
-        output.push({
-          id: `blocked-posts-${client.id}-${blocked}`,
-          title: `${blocked} post bloccati`,
-          message: `${client.name} · verifica approvazioni/revisioni`,
-          link: "/tools/calendar",
-          severity: blocked >= 3 ? "critical" : "warning",
-          createdAt: new Date().toISOString(),
-        });
-      }
-    });
-
-    // Brief incompleto.
-    clients.forEach((client) => {
-      const completion = getBriefCompletion(briefsByClient[client.id] ?? null);
-      if (completion < 60) {
-        output.push({
-          id: `brief-${client.id}-${completion}`,
-          title: `Brief incompleto (${completion}%)`,
-          message: `${client.name} · completare sezioni strategiche`,
-          link: "/tools/brief",
-          severity: completion < 40 ? "critical" : "warning",
-          createdAt: new Date().toISOString(),
-        });
-      }
-    });
-
-    // Analytics non aggiornate oltre 24h.
-    clients.forEach((client) => {
-      const analytics = analyticsByClient[client.id];
-      if (!analytics?.updatedAt) {
-        output.push({
-          id: `analytics-missing-${client.id}`,
-          title: "Analytics non collegate",
-          message: `${client.name} · sincronizza account e insight`,
-          link: "/tools/analytics",
-          severity: "warning",
-          createdAt: new Date().toISOString(),
-        });
-        return;
-      }
-      const hours = (now - new Date(analytics.updatedAt).getTime()) / (1000 * 60 * 60);
-      if (hours > 24) {
-        output.push({
-          id: `analytics-stale-${client.id}-${Math.floor(hours)}`,
-          title: "Analytics non aggiornate",
-          message: `${client.name} · ultimo update ${Math.floor(hours)}h fa`,
-          link: "/tools/analytics",
-          severity: hours > 72 ? "critical" : "warning",
-          createdAt: new Date().toISOString(),
-        });
-      }
-    });
-
-    // Task senza owner.
-    const unassignedCount = tasks.filter((task) => task.status !== "done" && !task.assigneeId).length;
-    if (unassignedCount > 0) {
-      output.push({
-        id: `tasks-unassigned-${unassignedCount}`,
-        title: `${unassignedCount} task senza owner`,
-        message: "Assegna responsabilità per evitare blocchi operativi",
-        link: "/tasks",
-        severity: unassignedCount >= 5 ? "critical" : "warning",
-        createdAt: new Date().toISOString(),
+    if (preferences.blockedPostsEnabled) {
+      clients.forEach((client) => {
+        const posts = postsByClient[client.id] ?? [];
+        const blocked = posts.filter((post) => {
+          if (post.status === "rejected") return true;
+          if (post.status !== "pending_approval") return false;
+          return now - new Date(post.updatedAt).getTime() > preferences.blockedPostsHours * 60 * 60 * 1000;
+        }).length;
+        if (blocked > 0) {
+          output.push({
+            id: `blocked-posts-${client.id}-${blocked}`,
+            title: `${blocked} post bloccati`,
+            message: `${client.name} · verifica approvazioni/revisioni`,
+            link: "/tools/calendar",
+            severity: blocked >= 3 ? "critical" : "warning",
+            createdAt: new Date().toISOString(),
+          });
+        }
       });
     }
 
+    if (preferences.briefEnabled) {
+      clients.forEach((client) => {
+        const completion = getBriefCompletion(briefsByClient[client.id] ?? null);
+        if (completion < preferences.briefCompletionThreshold) {
+          output.push({
+            id: `brief-${client.id}-${completion}`,
+            title: `Brief incompleto (${completion}%)`,
+            message: `${client.name} · completare sezioni strategiche`,
+            link: "/tools/brief",
+            severity: completion < Math.max(0, preferences.briefCompletionThreshold - 20) ? "critical" : "warning",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      });
+    }
+
+    if (preferences.analyticsEnabled) {
+      clients.forEach((client) => {
+        const analytics = analyticsByClient[client.id];
+        if (!analytics?.updatedAt) {
+          output.push({
+            id: `analytics-missing-${client.id}`,
+            title: "Analytics non collegate",
+            message: `${client.name} · sincronizza account e insight`,
+            link: "/tools/analytics",
+            severity: "warning",
+            createdAt: new Date().toISOString(),
+          });
+          return;
+        }
+        const hours = (now - new Date(analytics.updatedAt).getTime()) / (1000 * 60 * 60);
+        if (hours > preferences.analyticsStaleHours) {
+          output.push({
+            id: `analytics-stale-${client.id}-${Math.floor(hours)}`,
+            title: "Analytics non aggiornate",
+            message: `${client.name} · ultimo update ${Math.floor(hours)}h fa`,
+            link: "/tools/analytics",
+            severity: hours > preferences.analyticsStaleHours * 3 ? "critical" : "warning",
+            createdAt: new Date().toISOString(),
+          });
+        }
+      });
+    }
+
+    if (preferences.unassignedTasksEnabled) {
+      const unassignedCount = tasks.filter((task) => task.status !== "done" && !task.assigneeId).length;
+      if (unassignedCount > 0) {
+        output.push({
+          id: `tasks-unassigned-${unassignedCount}`,
+          title: `${unassignedCount} task senza owner`,
+          message: "Assegna responsabilità per evitare blocchi operativi",
+          link: "/tasks",
+          severity: unassignedCount >= 5 ? "critical" : "warning",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
     return output;
-  }, [allClientEvents, analyticsByClient, briefsByClient, clients, postsByClient, tasks]);
+  }, [allClientEvents, analyticsByClient, briefsByClient, clients, postsByClient, preferences, tasks]);
 
   useEffect(() => {
     // Keep read map clean from stale reminders.
@@ -166,11 +173,14 @@ export function useSmartReminders() {
     unreadCount,
     isRead: (id: string) => Boolean(readMap[id]),
     markRead: (id: string) => setReadMap((prev) => ({ ...prev, [id]: true })),
-    markAllRead: () => setReadMap((prev) => {
-      const next = { ...prev };
-      reminders.forEach((item) => { next[item.id] = true; });
-      return next;
-    }),
+    markAllRead: () =>
+      setReadMap((prev) => {
+        const next = { ...prev };
+        reminders.forEach((item) => {
+          next[item.id] = true;
+        });
+        return next;
+      }),
     clearAllReadState: () => setReadMap({}),
   };
 }

@@ -1,0 +1,22 @@
+{
+  "name": "Be Kind Social Agency HUB",
+  "short_name": "BeKind HUB",
+  "start_url": "./dashboard",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f8f2",
+  "theme_color": "#7a8f5c",
+  "description": "Portale operativo agenzia con reminder e notifiche scadenze.",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

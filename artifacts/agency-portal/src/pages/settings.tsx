@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
 import { portalFetch } from "@workspace/api-client-react";
+import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 
 type AgencyMeta = {
   connected: boolean;
@@ -76,6 +77,7 @@ export default function Settings() {
   const { user } = usePortalUser();
   const [idCopied, setIdCopied] = useState(false);
   const { isAdmin } = useUserRole();
+  const { preferences, setPartial, reset } = useReminderPreferences();
 
   // Meta agency-level connection
   const [meta, setMeta] = useState<AgencyMeta | null>(null);
@@ -541,6 +543,117 @@ export default function Settings() {
                 </div>
               </div>
             </IntegrationCard>
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-4 flex items-center gap-2">
+            <Bell size={14} /> Reminder intelligenti
+          </h2>
+          <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Configura quali reminder automatici ricevere e quando attivarli.
+            </p>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                <span>Scadenze eventi</span>
+                <input
+                  type="checkbox"
+                  checked={preferences.eventsEnabled}
+                  onChange={(e) => setPartial({ eventsEnabled: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                <span>Post bloccati</span>
+                <input
+                  type="checkbox"
+                  checked={preferences.blockedPostsEnabled}
+                  onChange={(e) => setPartial({ blockedPostsEnabled: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                <span>Brief incompleti</span>
+                <input
+                  type="checkbox"
+                  checked={preferences.briefEnabled}
+                  onChange={(e) => setPartial({ briefEnabled: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                <span>Analytics non aggiornate</span>
+                <input
+                  type="checkbox"
+                  checked={preferences.analyticsEnabled}
+                  onChange={(e) => setPartial({ analyticsEnabled: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm md:col-span-2">
+                <span>Task senza owner</span>
+                <input
+                  type="checkbox"
+                  checked={preferences.unassignedTasksEnabled}
+                  onChange={(e) => setPartial({ unassignedTasksEnabled: e.target.checked })}
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-xs text-muted-foreground">
+                Finestra scadenze eventi (ore)
+                <input
+                  type="number"
+                  min={1}
+                  max={336}
+                  value={preferences.eventsWindowHours}
+                  onChange={(e) => setPartial({ eventsWindowHours: Math.max(1, Math.min(336, Number(e.target.value) || 1)) })}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Soglia post bloccati (ore)
+                <input
+                  type="number"
+                  min={1}
+                  max={336}
+                  value={preferences.blockedPostsHours}
+                  onChange={(e) => setPartial({ blockedPostsHours: Math.max(1, Math.min(336, Number(e.target.value) || 1)) })}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Brief incompleto sotto (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={preferences.briefCompletionThreshold}
+                  onChange={(e) => setPartial({ briefCompletionThreshold: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Analytics stale dopo (ore)
+                <input
+                  type="number"
+                  min={1}
+                  max={336}
+                  value={preferences.analyticsStaleHours}
+                  onChange={(e) => setPartial({ analyticsStaleHours: Math.max(1, Math.min(336, Number(e.target.value) || 1)) })}
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              >
+                Ripristina default
+              </button>
+            </div>
           </div>
         </div>
 

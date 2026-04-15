@@ -14,8 +14,6 @@ import { Plus, Trash2, Pencil, X, Check, ChevronDown, ChevronUp, Printer, Copy, 
 import { cn, formatDate } from "@/lib/utils";
 import { useClientContext } from "@/context/ClientContext";
 import { useToast } from "@/hooks/use-toast";
-import jsPDF from "jspdf";
-import * as XLSX from "xlsx";
 
 type QuoteItem = { description: string; quantity: number; unitPrice: number };
 
@@ -246,7 +244,7 @@ export default function Quotes() {
     toast({ title: "CSV esportato" });
   }, [filteredQuotes, selectedQuoteIds, toast]);
 
-  const exportQuotesXlsx = useCallback(() => {
+  const exportQuotesXlsx = useCallback(async () => {
     const source = selectedQuoteIds.length > 0
       ? filteredQuotes.filter((quote: any) => selectedQuoteIds.includes(Number(quote?.id)))
       : filteredQuotes;
@@ -254,6 +252,7 @@ export default function Quotes() {
       toast({ title: "Nessun preventivo da esportare", variant: "destructive" });
       return;
     }
+    const XLSX = await import("xlsx");
     const rows = source.map((quote: any) => ({
       Nome: quote?.name ?? "",
       Cliente: quote?.clientName ?? "",
@@ -272,7 +271,7 @@ export default function Quotes() {
     toast({ title: "Excel esportato" });
   }, [filteredQuotes, selectedQuoteIds, toast]);
 
-  const exportQuotesPdf = useCallback(() => {
+  const exportQuotesPdf = useCallback(async () => {
     const source = selectedQuoteIds.length > 0
       ? filteredQuotes.filter((quote: any) => selectedQuoteIds.includes(Number(quote?.id)))
       : filteredQuotes;
@@ -280,6 +279,7 @@ export default function Quotes() {
       toast({ title: "Nessun preventivo da esportare", variant: "destructive" });
       return;
     }
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     let y = 14;
     doc.setFont("helvetica", "bold");

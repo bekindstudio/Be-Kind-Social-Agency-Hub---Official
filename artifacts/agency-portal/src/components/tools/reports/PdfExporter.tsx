@@ -1,6 +1,5 @@
-import html2pdf from "html2pdf.js";
-
 export async function exportReportPdf(element: HTMLElement, filename: string): Promise<void> {
+  const { default: html2pdf } = await import("html2pdf.js");
   const opt = {
     margin: [10, 10, 10, 10] as [number, number, number, number],
     filename,

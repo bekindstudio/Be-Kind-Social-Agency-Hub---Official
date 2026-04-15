@@ -28,7 +28,6 @@ import {
   FolderKanban,
   CheckSquare,
   Users,
-  Timer,
   AlertTriangle,
   CalendarDays,
   MessageCircle,
@@ -145,12 +144,6 @@ function usePortalJsonQuery<T>(path: string, staleTime: number) {
 }
 
 type TaskTrendRow = { month: string; creati: number; completati: number };
-type TimeTrackerStats = {
-  thisWeek: number;
-  billableMonth: number;
-  thisMonth: number;
-  clientBreakdown: Array<{ name: string; seconds: number }>;
-};
 type RevenuePayload = { totalQuotes?: number; totalRevenue?: number; approvedQuotes?: number };
 
 export default function Dashboard() {
@@ -202,7 +195,6 @@ export default function Dashboard() {
 
   const { data: taskTrends } = usePortalJsonQuery<TaskTrendRow[]>("/api/dashboard/task-trends", 60_000);
   const { data: revenueData } = usePortalJsonQuery<RevenuePayload>("/api/dashboard/revenue", 60_000);
-  const { data: timeStats } = usePortalJsonQuery<TimeTrackerStats>("/api/time-tracker/stats", 30_000);
   const { data: reportCounts } = usePortalJsonQuery<Record<string, number>>("/api/reports/counts", 60_000);
 
   useEffect(() => {
@@ -341,29 +333,6 @@ export default function Dashboard() {
       })),
     };
   }, [taskTrends]);
-
-  const hoursDonut = useMemo(() => {
-    const breakdown = timeStats?.clientBreakdown;
-    if (!Array.isArray(breakdown) || breakdown.length === 0) return [];
-    const vals = breakdown.slice(0, 5).map((c) => ({
-      name: c.name,
-      value: Math.round(((c.seconds ?? 0) / 3600) * 100) / 100,
-    }));
-    return vals.some((v) => v.value > 0) ? vals : [];
-  }, [timeStats]);
-
-  const weekHoursDisplay = useMemo(() => {
-    if (timeStats?.thisWeek != null && timeStats.thisWeek > 0) {
-      return Math.round((timeStats.thisWeek / 3600) * 10) / 10;
-    }
-    if (timeStats?.thisWeek === 0) return 0;
-    return null;
-  }, [timeStats]);
-
-  const oreMeseDisplay = useMemo(() => {
-    if (timeStats?.thisMonth == null) return null;
-    return Math.round((timeStats.thisMonth / 3600) * 10) / 10;
-  }, [timeStats]);
 
   const reportsInviatiCount = useMemo(() => {
     if (!reportCounts) return null;
@@ -538,15 +507,11 @@ export default function Dashboard() {
           <KpiCard title="Task di Oggi" value={tasksTodayTotal} sub={`${tasksTodayDone} completate oggi`} progress={tasksTodayTotal ? (tasksTodayDone / tasksTodayTotal) * 100 : 0} color={KPI_COLORS[1]} onClick={() => navigate("/tasks")} />
           <KpiCard title="Clienti Attivi" value={clients.length} sub={`${clients.filter((c: AnyObj) => c.contractStatus === "in_scadenza").length} contratti in scadenza (30gg)`} trend={`${clientsAtRisk.length} clienti a rischio`} color={KPI_COLORS[2]} onClick={() => navigate("/clients")} />
           <KpiCard
-            title="Ore Questa Settimana"
-            value={weekHoursDisplay ?? "—"}
-            sub={
-              timeStats
-                ? `${Math.round((timeStats.billableMonth / 3600) * 10) / 10} h fatturabili (mese)`
-                : `${(summary as AnyObj)?.pendingTasks ?? 0} task in sospeso`
-            }
+            title="Task in Sospeso"
+            value={(summary as AnyObj)?.pendingTasks ?? 0}
+            sub={`${tasksOverdue.length} task in ritardo`}
             color={KPI_COLORS[3]}
-            onClick={() => navigate("/tools/time-tracker")}
+            onClick={() => navigate("/tasks")}
           />
         </div>
 
@@ -822,19 +787,19 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
             <div className="h-64">
-              <p className="text-xs text-muted-foreground mb-1">Ore per cliente (mese corrente, time tracker)</p>
-              {hoursDonut.length > 0 ? (
+              <p className="text-xs text-muted-foreground mb-1">Distribuzione stato progetti</p>
+              {pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={hoursDonut} dataKey="value" nameKey="name" outerRadius={85}>
-                      {hoursDonut.map((_, i) => <Cell key={i} fill={["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#84cc16"][i % 5]} />)}
+                    <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={85}>
+                      {pieData.map((_, i) => <Cell key={i} fill={["#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#84cc16"][i % 5]} />)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
-                  Nessuna ora registrata nel time tracker
+                  Nessun dato disponibile
                 </div>
               )}
             </div>
@@ -853,7 +818,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3">
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Ore totali (mese)</p><p className="font-semibold">{oreMeseDisplay != null ? `${oreMeseDisplay} h` : "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task in sospeso</p><p className="font-semibold">{(summary as AnyObj)?.pendingTasks ?? 0}</p></div>
             <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
             <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Nuovi clienti (mese)</p><p className="font-semibold">{newClientsMonth}</p></div>
             <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Preventivi (template)</p><p className="font-semibold">{revenueData?.totalQuotes ?? "—"}</p></div>
@@ -867,7 +832,7 @@ export default function Dashboard() {
           <div className="group relative">
             <button className="w-14 h-14 rounded-full bg-violet-600 text-white shadow-xl inline-flex items-center justify-center"><Plus size={24} /></button>
             <div className="absolute bottom-16 right-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity bg-card border border-card-border rounded-lg shadow-lg p-2 space-y-1 min-w-44">
-              {[["+ Progetto", "/projects"], ["+ Task", "/tasks"], ["+ Cliente", "/clients"], ["+ Timer", "/tools/time-tracker"], ["AI Chat", "/chat"]].map(([l, h]) => <button key={l} onClick={() => navigate(h)} className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted">{l}</button>)}
+              {[["+ Progetto", "/projects"], ["+ Task", "/tasks"], ["+ Cliente", "/clients"], ["AI Chat", "/chat"]].map(([l, h]) => <button key={l} onClick={() => navigate(h)} className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted">{l}</button>)}
             </div>
           </div>
         </div>

@@ -16,7 +16,6 @@ import {
   Sparkles,
   Moon,
   Sun,
-  Timer,
   LogOut,
   Trash2,
   FileText,
@@ -87,7 +86,6 @@ const navGroups = [
       { href: "/tools/events", label: "Eventi Clienti", icon: Calendar },
       { href: "/tools/caption-ai", label: "Caption AI", icon: Sparkles },
       { href: "/tools/competitors", label: "Competitors", icon: Target },
-      { href: "/tools/time-tracker", label: "Time Tracker", icon: Timer },
     ],
   },
   {
@@ -137,7 +135,6 @@ export function Sidebar() {
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return location === "/dashboard";
-    if (href === "/tools/time-tracker") return location === "/tools/time-tracker";
     if (location === href) return true;
     return location.startsWith(`${href}/`);
   };

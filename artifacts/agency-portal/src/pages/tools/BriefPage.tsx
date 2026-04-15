@@ -299,6 +299,7 @@ export default function BriefPage() {
 
   const sections = useMemo(() => getBriefSectionCompletion(draft), [draft]);
   const completion = useMemo(() => getBriefCompletion(draft), [draft]);
+  const missingSections = Object.values(sections).filter((value) => value < 100).length;
 
   if (!activeClient || !draft) {
     return (
@@ -317,10 +318,6 @@ export default function BriefPage() {
   const selectedTemplate = getOperationalTemplateById(selectedTemplateId || null);
   const numericClientId = Number(activeClient.id);
   const canUseAiBriefFlow = Number.isFinite(numericClientId) && numericClientId > 0;
-  const missingSections = useMemo(
-    () => Object.entries(sections).filter(([, value]) => value < 100).length,
-    [sections],
-  );
   const completeMissingSections = () => {
     setDraft((prev) => {
       if (!prev || !activeClient) return prev;

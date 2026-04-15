@@ -1,9 +1,18 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { Suspense, lazy, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
+import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
+import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
+import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
+import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
+import { AutoSaveProvider } from "@/context/AutoSaveContext";
+import { ClientProvider, useClientContext } from "@/context/ClientContext";
+import { Layout } from "@/components/layout/Layout";
+
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Clients = lazy(() => import("@/pages/clients"));
 const ClientDetail = lazy(() => import("@/pages/client-detail"));
@@ -22,7 +31,6 @@ const Settings = lazy(() => import("@/pages/settings"));
 const AiAssistant = lazy(() => import("@/pages/ai-assistant"));
 const BriefPage = lazy(() => import("@/pages/tools/BriefPage"));
 const EditorialPlanBuilder = lazy(() => import("@/pages/editorial-plan-builder"));
-const TimeTracker = lazy(() => import("@/pages/time-tracker"));
 const CalendarPage = lazy(() => import("@/pages/tools/CalendarPage"));
 const EventsPage = lazy(() => import("@/pages/tools/EventsPage"));
 const CompetitorsPage = lazy(() => import("@/pages/tools/CompetitorsPage"));
@@ -34,14 +42,6 @@ const Trash = lazy(() => import("@/pages/trash"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
-import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
-import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
-import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
-import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
-import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
-import { AutoSaveProvider } from "@/context/AutoSaveContext";
-import { ClientProvider, useClientContext } from "@/context/ClientContext";
-import { Layout } from "@/components/layout/Layout";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,9 +137,17 @@ function HomeRoute() {
   return <Redirect to="/sign-in" />;
 }
 
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[hsl(83,15%,96%)]">
+      <p className="text-sm text-muted-foreground">Caricamento…</p>
+    </div>
+  );
+}
+
 function Router() {
   return (
-    <Suspense fallback={<AppBootLoading />}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <Switch>
         <Route path="/" component={HomeRoute} />
         {!authDisabled && <Route path="/sign-in" component={SignInPage} />}
@@ -208,7 +216,7 @@ function Router() {
           {(params) => <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>}
         </Route>
         <Route path="/tools/time-tracker">
-          <RequireAuth><RequireActiveClient><TimeTracker /></RequireActiveClient></RequireAuth>
+          <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
         </Route>
         <Route path="/tools/calendar">
           <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>

@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
-import { ReportPreview, type ReportSectionFlags } from "@/components/tools/reports/ReportPreview";
-import { exportReportPdf } from "@/components/tools/reports/PdfExporter";
-import { ReportHistory, type SavedReport } from "@/components/tools/reports/ReportHistory";
+import type { ReportSectionFlags } from "@/components/tools/reports/ReportPreview";
+import type { SavedReport } from "@/components/tools/reports/ReportHistory";
 import { useClientContext } from "@/context/ClientContext";
 import { useMetaAnalytics } from "@/hooks/useMetaAnalytics";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +9,16 @@ import { MetaConnectionBanner } from "@/components/shared/MetaConnectionBanner";
 import { portalFetch } from "@workspace/api-client-react";
 import type { ClientAnalytics } from "@/types/client";
 import { CalendarRange, Download, FileBarChart2, Sparkles, Wand2, Gauge, TrendingUp, Users, CalendarClock } from "lucide-react";
+
+const ReportPreview = lazy(async () => {
+  const mod = await import("@/components/tools/reports/ReportPreview");
+  return { default: mod.ReportPreview };
+});
+
+const ReportHistory = lazy(async () => {
+  const mod = await import("@/components/tools/reports/ReportHistory");
+  return { default: mod.ReportHistory };
+});
 
 function monthLabel(value: string): string {
   const [year, month] = value.split("-");
@@ -322,6 +331,7 @@ export default function ReportsPage() {
     if (!previewRef.current || !activeClient) return;
     setIsExporting(true);
     try {
+      const { exportReportPdf } = await import("@/components/tools/reports/PdfExporter");
       const serverMetrics = (await syncAndFetchReportMetrics().catch(() => null)) ?? buildFallbackMetrics();
       if (selectedClientNumericId) {
         await portalFetch("/api/reports", {
@@ -546,7 +556,9 @@ export default function ReportsPage() {
               </button>
             </div>
 
-            <ReportHistory reports={history} onRegenerate={regenerate} />
+            <Suspense fallback={<div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">Caricamento storico report...</div>}>
+              <ReportHistory reports={history} onRegenerate={regenerate} />
+            </Suspense>
           </aside>
 
           <section className="space-y-4">
@@ -593,7 +605,9 @@ export default function ReportsPage() {
                   </div>
                 )}
                 <div ref={previewRef} className="overflow-auto rounded-xl bg-muted/20 p-2 md:p-3 border border-card-border">
-                <ReportPreview model={previewModel} />
+                  <Suspense fallback={<div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">Caricamento anteprima report...</div>}>
+                    <ReportPreview model={previewModel} />
+                  </Suspense>
                 </div>
               </div>
             </div>

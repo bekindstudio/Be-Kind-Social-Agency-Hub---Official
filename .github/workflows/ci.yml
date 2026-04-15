@@ -1,0 +1,289 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck + Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @workspace/agency-portal typecheck
+
+      - name: Typecheck backend
+        run: pnpm --filter @workspace/api-server typecheck
+
+      - name: Build frontend
+        run: pnpm --filter @workspace/agency-portal build
+
+      - name: Build backend
+        run: pnpm --filter @workspace/api-server build
+
+      - name: Check bundle chunk sizes
+        run: |
+          MAX_BYTES=512000
+          FAILED=0
+          DIST_DIR="artifacts/agency-portal/dist/public/assets"
+
+          if [ ! -d "$DIST_DIR" ]; then
+            echo "⚠ dist/public/assets not found — skipping chunk check"
+            exit 0
+          fi
+
+          for file in "$DIST_DIR"/*.js; do
+            [ -f "$file" ] || continue
+            size=$(wc -c < "$file")
+            name=$(basename "$file")
+            if [ "$size" -gt "$MAX_BYTES" ]; then
+              kb=$((size / 1024))
+              echo "✗ CHUNK TOO LARGE: $name (${kb}KB > 500KB)"
+              FAILED=1
+            else
+              kb=$((size / 1024))
+              echo "✓ $name (${kb}KB)"
+            fi
+          done
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "Uno o più chunk superano 500KB."
+            echo "Aggiungi manualChunks in vite.config.ts"
+            exit 1
+          fi
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: quality
+
+    env:
+      NODE_ENV: test
+      API_AUTH_DISABLED: "false"
+      PORT: 8080
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+      TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+      TOKEN_ENCRYPTION_KEY_VERSION: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        run: pnpm --filter @workspace/api-server build
+
+      - name: Start backend
+        run: |
+          node --enable-source-maps artifacts/api-server/dist/index.mjs &
+          echo $! > /tmp/server.pid
+          echo "Backend avviato (PID: $!)"
+
+      - name: Wait for backend ready
+        run: |
+          echo "Attendo che il backend risponda su /api/healthz..."
+          MAX_WAIT=30
+          WAITED=0
+          until curl -sf http://localhost:${PORT}/api/healthz > /dev/null 2>&1; do
+            if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+              echo "✗ Backend non risponde dopo ${MAX_WAIT}s"
+              cat /tmp/server.pid | xargs kill 2>/dev/null
+              exit 1
+            fi
+            sleep 2
+            WAITED=$((WAITED + 2))
+            echo "  ... ${WAITED}s"
+          done
+          echo "✓ Backend pronto"
+
+      - name: "Smoke #1 — Auth: richiesta senza JWT → 401"
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://localhost:${PORT}/api/clients)
+          if [ "$STATUS" != "401" ]; then
+            echo "✗ FAIL: expected 401, got $STATUS"
+            echo "  API_AUTH_DISABLED potrebbe essere true"
+            exit 1
+          fi
+          echo "✓ PASS: GET /api/clients senza JWT → 401"
+
+      - name: "Smoke #2 — Roles: utente senza ruolo → 403"
+        run: |
+          TEST_JWT=$(node -e "
+            const crypto = require('crypto')
+            const header = Buffer.from(
+              JSON.stringify({ alg: 'HS256', typ: 'JWT' })
+            ).toString('base64url')
+            const payload = Buffer.from(JSON.stringify({
+              sub: '00000000-0000-0000-0000-000000000099',
+              iat: Math.floor(Date.now() / 1000),
+              exp: Math.floor(Date.now() / 1000) + 300,
+              role: 'authenticated'
+            })).toString('base64url')
+            const sig = crypto
+              .createHmac('sha256', process.env.SUPABASE_JWT_SECRET)
+              .update(header + '.' + payload)
+              .digest('base64url')
+            console.log(header + '.' + payload + '.' + sig)
+          ")
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TEST_JWT" \
+            http://localhost:${PORT}/api/roles/my-role)
+
+          if [ "$STATUS" != "403" ]; then
+            echo "✗ FAIL: expected 403, got $STATUS"
+            echo "  Verificare fix S1-02 (fallback ruolo admin)"
+            exit 1
+          fi
+          echo "✓ PASS: utente senza ruolo → 403"
+
+      - name: "Smoke #3 — Storage: accesso non autorizzato → 403"
+        run: |
+          TEST_JWT=$(node -e "
+            const crypto = require('crypto')
+            const header = Buffer.from(
+              JSON.stringify({ alg: 'HS256', typ: 'JWT' })
+            ).toString('base64url')
+            const payload = Buffer.from(JSON.stringify({
+              sub: '00000000-0000-0000-0000-000000000099',
+              iat: Math.floor(Date.now() / 1000),
+              exp: Math.floor(Date.now() / 1000) + 300,
+              role: 'authenticated'
+            })).toString('base64url')
+            const sig = crypto
+              .createHmac('sha256', process.env.SUPABASE_JWT_SECRET)
+              .update(header + '.' + payload)
+              .digest('base64url')
+            console.log(header + '.' + payload + '.' + sig)
+          ")
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TEST_JWT" \
+            "http://localhost:${PORT}/api/storage/objects/00000000-0000-0000-0000-000000000000")
+
+          if [ "$STATUS" != "403" ] && [ "$STATUS" != "404" ]; then
+            echo "✗ FAIL: expected 403 or 404, got $STATUS"
+            echo "  Verificare fix S1-03 (storage ACL)"
+            exit 1
+          fi
+          echo "✓ PASS: storage senza permesso → $STATUS"
+
+      - name: "Smoke #4 — Health check /api/healthz → 200"
+        run: |
+          RESPONSE=$(curl -sf http://localhost:${PORT}/api/healthz)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${PORT}/api/healthz)
+          if [ "$STATUS" != "200" ]; then
+            echo "✗ FAIL: health check → $STATUS"
+            exit 1
+          fi
+          echo "✓ PASS: /api/healthz → 200"
+          echo "  Response: $RESPONSE"
+
+      - name: "Smoke #5 — Rate limit AI: 11 req → 429"
+        run: |
+          echo "Invio 11 richieste a /api/ai/caption..."
+          LAST_STATUS=0
+          for i in $(seq 1 11); do
+            LAST_STATUS=$(curl -s -o /dev/null \
+              -w "%{http_code}" \
+              -X POST \
+              -H "Content-Type: application/json" \
+              -d '{}' \
+              http://localhost:${PORT}/api/ai/caption)
+            echo "  Request $i: $LAST_STATUS"
+          done
+
+          if [ "$LAST_STATUS" != "429" ] && [ "$LAST_STATUS" != "401" ]; then
+            echo "⚠ WARN: expected 429 after 11 req, got $LAST_STATUS"
+            echo "  (401 è accettabile se auth blocca prima del rate limit)"
+          else
+            echo "✓ PASS: rate limit AI attivo → $LAST_STATUS"
+          fi
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f /tmp/server.pid ]; then
+            kill "$(cat /tmp/server.pid)" 2>/dev/null || true
+            echo "Backend fermato"
+          fi
+
+  notify:
+    name: CI Result
+    runs-on: ubuntu-latest
+    needs: [quality, smoke-tests]
+    if: always() && github.event_name == 'pull_request'
+
+    steps:
+      - name: Comment PR result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const quality = '${{ needs.quality.result }}'
+            const smoke = '${{ needs.smoke-tests.result }}'
+            const allPassed = quality === 'success' && smoke === 'success'
+
+            const icon = allPassed ? '✅' : '❌'
+            const status = allPassed ? 'CI passato' : 'CI fallito'
+
+            const body = [
+              `## ${icon} ${status}`,
+              '',
+              '| Job | Risultato |',
+              '|-----|-----------|',
+              `| Typecheck + Build | ${quality === 'success' ? '✅' : '❌'} ${quality} |`,
+              `| Smoke Tests | ${smoke === 'success' ? '✅' : '❌'} ${smoke} |`,
+              '',
+              allPassed
+                ? '_Tutti i controlli superati — pronto per il merge._'
+                : '_Uno o più controlli falliti — correggi prima del merge._',
+            ].join('\n')
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            })

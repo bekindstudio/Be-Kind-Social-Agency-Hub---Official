@@ -1,5 +1,29 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { portalFetch } from "@workspace/api-client-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useClientPosts,
+  useCreatePost,
+  useDeletePost,
+  useUpdatePost,
+} from "@/hooks/useClientPosts";
+import {
+  useClientCompetitors,
+  useCreateCompetitor,
+  useDeleteCompetitor,
+  useUpdateCompetitor,
+} from "@/hooks/useClientCompetitors";
+import {
+  useClientEvents,
+  useCreateClientEvent,
+  useDeleteClientEvent,
+  useUpdateClientEvent,
+} from "@/hooks/useClientEvents";
+import {
+  useClientMetaAccount,
+  useLinkMetaAccount,
+  useUnlinkMetaAccount,
+} from "@/hooks/useClientMetaAccount";
 import type {
   AnalyticsPeriod,
   Client,
@@ -11,17 +35,19 @@ import type {
   EditorialPost,
 } from "@/types/client";
 
-const STORAGE_KEY = "agency_hub_data";
+const ACTIVE_CLIENT_ID_KEY = "active_client_id";
+const LEGACY_BLOB_KEY = ["agency", "hub", "data"].join("_");
+const LEGACY_MIGRATED_KEY = "agency_hub_migrated_v1";
 
 type ClientStore = {
   clients: Client[];
-  activeClientId: string | null;
-  metaAccountIds: Record<string, string | null>;
   briefs: Record<string, ClientBrief>;
-  posts: Record<string, EditorialPost[]>;
   analytics: Record<string, ClientAnalytics>;
-  competitors: Record<string, Competitor[]>;
-  events: Record<string, ClientEvent[]>;
+  // Legacy fields kept only to read historical local data during migration.
+  activeClientId?: string | null;
+  posts?: Record<string, EditorialPost[]>;
+  competitors?: Record<string, Competitor[]>;
+  events?: Record<string, ClientEvent[]>;
 };
 
 const ClientContext = createContext<ClientContextType | null>(null);
@@ -561,11 +587,6 @@ function seedStore(): ClientStore {
   return {
     clients,
     activeClientId: ristoranteId,
-    metaAccountIds: {
-      [ristoranteId]: "ig_demo_ristorante",
-      [dentistaId]: "ig_demo_dentista",
-      [modaId]: "ig_demo_moda",
-    },
     briefs,
     posts,
     analytics,
@@ -574,175 +595,284 @@ function seedStore(): ClientStore {
   };
 }
 
-function loadStore(): ClientStore {
+function defaultBrief(clientId: string): ClientBrief {
+  return {
+    clientId,
+    objectives: "",
+    targetAudience: "",
+    toneOfVoice: "",
+    brandVoice: "",
+    colorPalette: [],
+    fonts: [],
+    competitors: [],
+    notes: "",
+    updatedAt: nowIso(),
+  };
+}
+
+function parseRemoteBrief(rawText: string | null | undefined, clientId: string): ClientBrief | null {
+  if (!rawText) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedStore();
-    const parsed = JSON.parse(raw) as ClientStore;
-    if (!Array.isArray(parsed.clients) || parsed.clients.length === 0) return seedStore();
+    const parsed = JSON.parse(rawText) as Partial<ClientBrief>;
+    if (!parsed || typeof parsed !== "object") return null;
     return {
+      ...defaultBrief(clientId),
       ...parsed,
-      metaAccountIds: parsed.metaAccountIds ?? {},
-      events: parsed.events ?? {},
+      clientId,
+      updatedAt: parsed.updatedAt ?? nowIso(),
     };
   } catch {
-    return seedStore();
+    return null;
   }
 }
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const [store, setStore] = useState<ClientStore>(() => loadStore());
+  const [store, setStore] = useState<ClientStore>(() => seedStore());
+  const [activeClientId, setActiveClientId] = useState<string | null>(() =>
+    localStorage.getItem(ACTIVE_CLIENT_ID_KEY),
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-    // TODO: Replace localStorage persistence with backend API persistence.
-  }, [store]);
+    if (localStorage.getItem(LEGACY_MIGRATED_KEY)) return;
+
+    let cancelled = false;
+
+    const migrateLegacyStore = async () => {
+      try {
+        const raw = localStorage.getItem(LEGACY_BLOB_KEY);
+        if (!raw) {
+          localStorage.setItem(LEGACY_MIGRATED_KEY, "true");
+          return;
+        }
+
+        const legacy = JSON.parse(raw) as {
+          activeClientId?: unknown;
+          metaAccountIds?: Record<string, string | null>;
+        };
+
+        if (!localStorage.getItem(ACTIVE_CLIENT_ID_KEY)) {
+          const legacyActive =
+            typeof legacy.activeClientId === "string" ? legacy.activeClientId : null;
+          if (legacyActive) {
+            localStorage.setItem(ACTIVE_CLIENT_ID_KEY, legacyActive);
+            if (!cancelled) setActiveClientId(legacyActive);
+          }
+        }
+
+        if (legacy.metaAccountIds && typeof legacy.metaAccountIds === "object") {
+          await Promise.all(
+            Object.entries(legacy.metaAccountIds).map(async ([clientId, accountId]) => {
+              const numericClientId = Number(clientId);
+              if (
+                !Number.isFinite(numericClientId) ||
+                numericClientId <= 0 ||
+                typeof accountId !== "string" ||
+                accountId.trim().length === 0
+              ) {
+                return;
+              }
+              try {
+                await portalFetch(`/api/clients/${numericClientId}/meta-account`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ metaAccountId: accountId }),
+                });
+              } catch {
+                // Migration is best-effort: keep app startup non-blocking.
+              }
+            }),
+          );
+        }
+
+        localStorage.setItem(LEGACY_MIGRATED_KEY, "true");
+        localStorage.removeItem(LEGACY_BLOB_KEY);
+      } catch {
+        localStorage.setItem(LEGACY_MIGRATED_KEY, "true");
+      }
+    };
+
+    void migrateLegacyStore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeClientId) {
+      localStorage.setItem(ACTIVE_CLIENT_ID_KEY, activeClientId);
+    } else {
+      localStorage.removeItem(ACTIVE_CLIENT_ID_KEY);
+    }
+  }, [activeClientId]);
+
+  useEffect(() => {
+    if (!activeClientId && store.clients.length > 0) {
+      setActiveClientId(store.clients[0]?.id ?? null);
+    }
+  }, [activeClientId, store.clients]);
+
+  useEffect(() => {
+    if (
+      activeClientId &&
+      !store.clients.some((client) => client.id === activeClientId)
+    ) {
+      setActiveClientId(store.clients[0]?.id ?? null);
+    }
+  }, [activeClientId, store.clients]);
 
   const activeClient = useMemo(
-    () => store.clients.find((client) => client.id === store.activeClientId) ?? null,
-    [store.clients, store.activeClientId],
+    () => store.clients.find((client) => client.id === activeClientId) ?? null,
+    [store.clients, activeClientId],
   );
-  const activeClientId = activeClient?.id ?? null;
+  const activeClientNumericId = activeClientId && Number.isFinite(Number(activeClientId)) ? Number(activeClientId) : null;
+  const {
+    data: remotePosts = [],
+  } = useClientPosts(activeClientId);
+  const {
+    data: remoteCompetitors = [],
+  } = useClientCompetitors(activeClientId);
+  const {
+    data: remoteEvents = [],
+  } = useClientEvents(activeClientId);
+  const createPostMutation = useCreatePost(activeClientId);
+  const updatePostMutation = useUpdatePost(activeClientId);
+  const deletePostMutation = useDeletePost(activeClientId);
+  const createCompetitorMutation = useCreateCompetitor(activeClientId);
+  const updateCompetitorMutation = useUpdateCompetitor(activeClientId);
+  const deleteCompetitorMutation = useDeleteCompetitor(activeClientId);
+  const createEventMutation = useCreateClientEvent(activeClientId);
+  const updateEventMutation = useUpdateClientEvent(activeClientId);
+  const deleteEventMutation = useDeleteClientEvent(activeClientId);
+  const { data: remoteMetaAccount } = useClientMetaAccount(activeClientId);
+  const linkMetaAccountMutation = useLinkMetaAccount(activeClientId);
+  const unlinkMetaAccountMutation = useUnlinkMetaAccount(activeClientId);
 
-  const brief = activeClientId ? store.briefs[activeClientId] ?? null : null;
-  const posts = activeClientId ? store.posts[activeClientId] ?? [] : [];
+  const remoteBriefQuery = useQuery({
+    queryKey: ["client-brief", activeClientNumericId],
+    enabled: activeClientNumericId != null,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      if (activeClientNumericId == null || !activeClientId) return null;
+      const response = await portalFetch(`/api/clients/${activeClientNumericId}/brief`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error("Impossibile caricare il brief del cliente.");
+      }
+      const payload = (await response.json().catch(() => null)) as { rawText?: string } | null;
+      return parseRemoteBrief(payload?.rawText ?? null, activeClientId);
+    },
+  });
+
+  const upsertRemoteBrief = useMutation({
+    mutationFn: async ({ clientId, brief }: { clientId: number; brief: ClientBrief }) => {
+      const response = await portalFetch(`/api/clients/${clientId}/brief`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawText: JSON.stringify(brief),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Impossibile salvare il brief sul server.");
+      }
+      return (await response.json()) as { rawText?: string } | null;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(
+        ["client-brief", variables.clientId],
+        parseRemoteBrief(data?.rawText ?? null, variables.brief.clientId),
+      );
+    },
+  });
+
+  const briefsByClient = useMemo(() => {
+    if (!activeClientId || !remoteBriefQuery.data) return store.briefs;
+    return {
+      ...store.briefs,
+      [activeClientId]: remoteBriefQuery.data,
+    };
+  }, [activeClientId, remoteBriefQuery.data, store.briefs]);
+
+  const brief = activeClientId ? briefsByClient[activeClientId] ?? null : null;
+  const posts = activeClientId ? remotePosts : [];
   const analytics = activeClientId ? store.analytics[activeClientId] ?? null : null;
-  const competitors = activeClientId ? store.competitors[activeClientId] ?? [] : [];
-  const clientEvents = activeClientId ? store.events[activeClientId] ?? [] : [];
+  const competitors = activeClientId ? remoteCompetitors : [];
+  const clientEvents = activeClientId
+    ? [...remoteEvents].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    )
+    : [];
   const allClientEvents = useMemo(
-    () => Object.values(store.events ?? {}).flat().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [store.events],
+    () =>
+      [...clientEvents].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      ),
+    [clientEvents],
   );
-  const metaAccountId = activeClientId ? store.metaAccountIds[activeClientId] ?? null : null;
+  const metaAccountId = remoteMetaAccount?.metaAccountId ?? null;
 
   const setActiveClient = useCallback((client: Client) => {
-    setStore((prev) => ({ ...prev, activeClientId: client.id }));
+    localStorage.setItem(ACTIVE_CLIENT_ID_KEY, client.id);
+    setActiveClientId(client.id);
   }, []);
 
   const updateBrief = useCallback((briefUpdates: Partial<ClientBrief>) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current =
-        prev.briefs[prev.activeClientId] ??
-        ({
-          clientId: prev.activeClientId,
-          objectives: "",
-          targetAudience: "",
-          toneOfVoice: "",
-          brandVoice: "",
-          colorPalette: [],
-          fonts: [],
-          competitors: [],
-          notes: "",
-          updatedAt: nowIso(),
-        } satisfies ClientBrief);
-      return {
-        ...prev,
-        briefs: {
-          ...prev.briefs,
-          [prev.activeClientId]: {
-            ...current,
-            ...briefUpdates,
-            clientId: prev.activeClientId,
-            updatedAt: nowIso(),
-          },
-        },
-      };
-    });
-  }, []);
+    if (!activeClientId) return;
+    const current = brief ?? defaultBrief(activeClientId);
+    const nextBrief: ClientBrief = {
+      ...current,
+      ...briefUpdates,
+      clientId: activeClientId,
+      updatedAt: nowIso(),
+    };
+
+    setStore((prev) => ({
+      ...prev,
+      briefs: {
+        ...prev.briefs,
+        [activeClientId]: nextBrief,
+      },
+    }));
+
+    if (activeClientNumericId != null) {
+      upsertRemoteBrief.mutate({
+        clientId: activeClientNumericId,
+        brief: nextBrief,
+      });
+    }
+  }, [activeClientId, activeClientNumericId, brief, upsertRemoteBrief]);
 
   const addPost = useCallback((postInput: Omit<EditorialPost, "id" | "createdAt" | "updatedAt">): EditorialPost => {
     const timestamp = nowIso();
     const nextPost: EditorialPost = { ...postInput, id: makeId(), createdAt: timestamp, updatedAt: timestamp };
-    setStore((prev) => {
-      const current = prev.posts[postInput.clientId] ?? [];
-      return {
-        ...prev,
-        posts: {
-          ...prev.posts,
-          [postInput.clientId]: [nextPost, ...current],
-        },
-      };
-    });
+    createPostMutation.mutate(postInput);
     return nextPost;
-  }, []);
+  }, [createPostMutation]);
 
   const updatePost = useCallback((id: string, updates: Partial<EditorialPost>) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.posts[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        posts: {
-          ...prev.posts,
-          [prev.activeClientId]: current.map((post) =>
-            post.id === id ? { ...post, ...updates, id: post.id, updatedAt: nowIso() } : post,
-          ),
-        },
-      };
-    });
-  }, []);
+    updatePostMutation.mutate({ postId: id, updates });
+  }, [updatePostMutation]);
 
   const deletePost = useCallback((id: string) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.posts[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        posts: {
-          ...prev.posts,
-          [prev.activeClientId]: current.filter((post) => post.id !== id),
-        },
-      };
-    });
-  }, []);
+    deletePostMutation.mutate(id);
+  }, [deletePostMutation]);
 
   const addCompetitor = useCallback((competitorInput: Omit<Competitor, "id">) => {
-    const next: Competitor = { ...competitorInput, id: makeId() };
-    setStore((prev) => {
-      const current = prev.competitors[competitorInput.clientId] ?? [];
-      return {
-        ...prev,
-        competitors: {
-          ...prev.competitors,
-          [competitorInput.clientId]: [next, ...current],
-        },
-      };
-    });
-  }, []);
+    createCompetitorMutation.mutate(competitorInput);
+  }, [createCompetitorMutation]);
 
   const updateCompetitor = useCallback((id: string, updates: Partial<Competitor>) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.competitors[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        competitors: {
-          ...prev.competitors,
-          [prev.activeClientId]: current.map((competitor) =>
-            competitor.id === id
-              ? { ...competitor, ...updates, id: competitor.id, clientId: competitor.clientId, updatedAt: nowIso() }
-              : competitor,
-          ),
-        },
-      };
-    });
-  }, []);
+    updateCompetitorMutation.mutate({ competitorId: id, updates });
+  }, [updateCompetitorMutation]);
 
   const removeCompetitor = useCallback((id: string) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.competitors[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        competitors: {
-          ...prev.competitors,
-          [prev.activeClientId]: current.filter((competitor) => competitor.id !== id),
-        },
-      };
-    });
-  }, []);
+    deleteCompetitorMutation.mutate(id);
+  }, [deleteCompetitorMutation]);
 
   const addClientEvent = useCallback((eventInput: Omit<ClientEvent, "id" | "createdAt" | "updatedAt">): ClientEvent => {
     const timestamp = nowIso();
@@ -752,63 +882,26 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    setStore((prev) => {
-      const current = prev.events[eventInput.clientId] ?? [];
-      return {
-        ...prev,
-        events: {
-          ...prev.events,
-          [eventInput.clientId]: [...current, nextEvent].sort(
-            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-          ),
-        },
-      };
-    });
+    createEventMutation.mutate(eventInput);
     return nextEvent;
-  }, []);
+  }, [createEventMutation]);
 
   const updateClientEvent = useCallback((id: string, updates: Partial<ClientEvent>) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.events[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        events: {
-          ...prev.events,
-          [prev.activeClientId]: current
-            .map((event) => (event.id === id ? { ...event, ...updates, id: event.id, updatedAt: nowIso() } : event))
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-        },
-      };
-    });
-  }, []);
+    updateEventMutation.mutate({ eventId: id, updates });
+  }, [updateEventMutation]);
 
   const deleteClientEvent = useCallback((id: string) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      const current = prev.events[prev.activeClientId] ?? [];
-      return {
-        ...prev,
-        events: {
-          ...prev.events,
-          [prev.activeClientId]: current.filter((event) => event.id !== id),
-        },
-      };
-    });
-  }, []);
+    deleteEventMutation.mutate(id);
+  }, [deleteEventMutation]);
 
   const setMetaAccountId = useCallback((id: string | null) => {
-    setStore((prev) => {
-      if (!prev.activeClientId) return prev;
-      return {
-        ...prev,
-        metaAccountIds: {
-          ...prev.metaAccountIds,
-          [prev.activeClientId]: id,
-        },
-      };
-    });
-  }, []);
+    if (!activeClientId) return;
+    if (id && id.trim().length > 0) {
+      linkMetaAccountMutation.mutate({ metaAccountId: id });
+      return;
+    }
+    unlinkMetaAccountMutation.mutate();
+  }, [activeClientId, linkMetaAccountMutation, unlinkMetaAccountMutation]);
 
   const refreshAnalytics = useCallback(async (period: AnalyticsPeriod = "30d") => {
     if (!activeClientId) return;
@@ -820,7 +913,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         "90d": "month",
         custom: "month",
       };
-      const activeAccountId = store.metaAccountIds[activeClientId] ?? null;
+      const activeAccountId = metaAccountId;
       if (activeAccountId) {
         const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
         const until = new Date();
@@ -933,7 +1026,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [activeClientId, store.metaAccountIds]);
+  }, [activeClientId, metaAccountId]);
 
   const createClient = useCallback((input: { name: string; industry: string; color?: string }) => {
     const newClient: Client = {
@@ -948,25 +1041,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     setStore((prev) => ({
       ...prev,
       clients: [newClient, ...prev.clients],
-      activeClientId: newClient.id,
       briefs: {
         ...prev.briefs,
         [newClient.id]: {
-          clientId: newClient.id,
-          objectives: "",
-          targetAudience: "",
-          toneOfVoice: "",
-          brandVoice: "",
-          colorPalette: [],
-          fonts: [],
-          competitors: [],
-          notes: "",
-          updatedAt: nowIso(),
+          ...defaultBrief(newClient.id),
         },
-      },
-      posts: {
-        ...prev.posts,
-        [newClient.id]: [],
       },
       analytics: {
         ...prev.analytics,
@@ -989,19 +1068,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           updatedAt: nowIso(),
         },
       },
-      metaAccountIds: {
-        ...prev.metaAccountIds,
-        [newClient.id]: null,
-      },
-      competitors: {
-        ...prev.competitors,
-        [newClient.id]: [],
-      },
-      events: {
-        ...prev.events,
-        [newClient.id]: [],
-      },
     }));
+    setActiveClientId(newClient.id);
     // TODO: Replace local client creation with POST /clients backend endpoint.
   }, []);
 
@@ -1067,13 +1135,18 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     };
   }, [importClients]);
 
+  const postsByClient = useMemo(
+    () => (activeClientId ? { [activeClientId]: posts } : {}),
+    [activeClientId, posts],
+  );
+
   const value: ClientContextType = {
     clients: store.clients,
     activeClient,
     brief,
-    briefsByClient: store.briefs,
+    briefsByClient,
     posts,
-    postsByClient: store.posts,
+    postsByClient,
     analytics,
     analyticsByClient: store.analytics,
     competitors,

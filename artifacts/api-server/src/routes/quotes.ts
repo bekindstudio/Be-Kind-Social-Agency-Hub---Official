@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { getUserId, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
 
@@ -63,13 +64,8 @@ router.get("/quotes", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.post("/quotes", async (req, res): Promise<void> => {
-  const parsed = CreateQuoteTemplateBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const data = parsed.data;
+router.post("/quotes", validate(CreateQuoteTemplateBody), async (req, res): Promise<void> => {
+  const data = req.body as typeof CreateQuoteTemplateBody._type;
   const userId = getUserId(req);
   if (userId) {
     const accessible = await getAccessibleClientIds(userId);

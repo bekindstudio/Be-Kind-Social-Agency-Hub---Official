@@ -30,6 +30,9 @@ import editorialPlansRouter from "./editorial-plans";
 import dailyFocusRouter from "./daily-focus";
 import timeTrackerRouter from "./time-tracker";
 import trashRouter from "./trash";
+import clientPostsRouter from "./client-posts";
+import clientCompetitorsRouter from "./client-competitors";
+import clientEventsRouter from "./client-events";
 
 const router: IRouter = Router();
 
@@ -61,6 +64,9 @@ router.use(deadlinesRouter);
 router.use(activityLogRouter);
 router.use(clientBriefsRouter);
 router.use(editorialPlansRouter);
+router.use(clientPostsRouter);
+router.use(clientCompetitorsRouter);
+router.use(clientEventsRouter);
 router.use(dailyFocusRouter);
 router.use(timeTrackerRouter);
 router.use(trashRouter);

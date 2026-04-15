@@ -6,10 +6,52 @@ import {
   UpdateClientParams,
   DeleteClientParams,
 } from "@workspace/api-zod";
+import { z } from "zod";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+const createClientSchema = z.object({
+  name: z.string().trim().optional(),
+  ragioneSociale: z.string().trim().optional(),
+  nomeCommerciale: z.string().trim().optional(),
+  email: z.string().trim().nullable().optional(),
+  phone: z.string().trim().nullable().optional(),
+  company: z.string().trim().nullable().optional(),
+  color: z.string().trim().optional(),
+  logoUrl: z.string().trim().nullable().optional(),
+  piva: z.string().trim().nullable().optional(),
+  codiceFiscale: z.string().trim().nullable().optional(),
+  indirizzo: z.string().trim().nullable().optional(),
+  cap: z.string().trim().nullable().optional(),
+  citta: z.string().trim().nullable().optional(),
+  provincia: z.string().trim().nullable().optional(),
+  paese: z.string().trim().nullable().optional(),
+  website: z.string().trim().nullable().optional(),
+  notes: z.string().trim().nullable().optional(),
+  instagramHandle: z.string().trim().nullable().optional(),
+  metaPageId: z.string().trim().nullable().optional(),
+  googleAdsId: z.string().trim().nullable().optional(),
+  driveUrl: z.string().trim().nullable().optional(),
+  reportRecipientEmail: z.string().trim().nullable().optional(),
+  settore: z.string().trim().nullable().optional(),
+  dimensione: z.string().trim().nullable().optional(),
+  brandColor: z.string().trim().nullable().optional(),
+  descrizione: z.string().trim().nullable().optional(),
+  comeAcquisito: z.string().trim().nullable().optional(),
+  clienteDal: z.string().trim().nullable().optional(),
+  noteInterne: z.string().trim().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  accountManagerId: z.union([z.number(), z.string(), z.null()]).optional(),
+}).passthrough();
+
+const updateClientSchema = createClientSchema.extend({
+  contractStatus: z.string().trim().nullable().optional(),
+  monthlyValue: z.union([z.number(), z.string(), z.null()]).optional(),
+  healthScore: z.union([z.number(), z.string(), z.null()]).optional(),
+}).partial().passthrough();
 
 function serializeClient(c: typeof clientsTable.$inferSelect) {
   return {
@@ -147,7 +189,7 @@ router.get("/clients/duplicate-check", async (req, res): Promise<void> => {
   res.json({ matches });
 });
 
-router.post("/clients", async (req, res): Promise<void> => {
+router.post("/clients", validate(createClientSchema), async (req, res): Promise<void> => {
   try {
     const body = req.body as Record<string, any>;
     const parsedAccountManagerId =
@@ -312,7 +354,7 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
   res.json(serializeClient(client));
 });
 
-router.patch("/clients/:id", async (req, res): Promise<void> => {
+router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Promise<void> => {
   const params = UpdateClientParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

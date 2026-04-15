@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Plus, Trash2, Search, ExternalLink, MessageSquare, List, LayoutGrid, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { portalFetch } from "@workspace/api-client-react";
+import { getListClientsQueryKey, portalFetch, useListClients } from "@workspace/api-client-react";
 import { describeApiFailureForUser } from "@/lib/api-response-errors";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
@@ -64,10 +64,8 @@ function dedupeClientRows(rows: ClientRow[]): ClientRow[] {
 export default function Clients() {
   const { toast } = useToast();
   const { clients: contextClients, activeClient, setActiveClient, importClients } = useClientContext();
-  const LOCAL_CLIENTS_KEY = "agency-local-clients";
   const [, navigate] = useLocation();
   const [clients, setClients] = useState<ClientRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [showForm, setShowForm] = useState(false);
@@ -83,98 +81,27 @@ export default function Clients() {
   const [filterSector, setFilterSector] = useState("");
   const [filterHealth, setFilterHealth] = useState("");
   const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
-
-  const readLocalClients = () => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-      const arr = Array.isArray(parsed) ? parsed : [];
-      const deduped = dedupeClientRows(arr).filter((c) => Number(c?.id) < 0);
-      localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(deduped));
-      return deduped;
-    } catch {
-      return [];
-    }
-  };
-
-  const syncLocalClientsToDb = async () => {
-    const localClients = readLocalClients().filter((c: any) => Number(c?.id) < 0);
-    if (localClients.length === 0) return;
-
-    const stillLocal: any[] = [];
-    const synced: any[] = [];
-
-    for (const lc of localClients) {
-      try {
-        const res = await portalFetch("/api/clients", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: lc.name,
-            nomeCommerciale: lc.company ?? lc.name,
-            ragioneSociale: lc.ragioneSociale ?? lc.name,
-            settore: lc.settore ?? null,
-            color: lc.color ?? "#7a8f5c",
-            brandColor: lc.brandColor ?? lc.color ?? "#7a8f5c",
-            logoUrl: lc.logoUrl ?? null,
-            tags: (() => {
-              try { return JSON.parse(lc.tagsJson ?? "[]"); } catch { return []; }
-            })(),
-          }),
-        });
-        if (!res.ok) {
-          stillLocal.push(lc);
-          continue;
-        }
-        const created = await res.json();
-        synced.push(created);
-      } catch {
-        stillLocal.push(lc);
-      }
-    }
-
-    if (synced.length === 0) return;
-
-    localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(stillLocal));
-    setClients((prev) => {
-      const nonLocalPrev = prev.filter((c) => Number(c?.id) >= 0);
-      const byId = new Map<number, any>();
-      [...synced, ...nonLocalPrev, ...stillLocal].forEach((c) => {
-        if (c?.id != null) byId.set(Number(c.id), c);
-      });
-      return Array.from(byId.values());
-    });
-  };
+  const {
+    data: listClientsData,
+    isLoading,
+    refetch: refetchClients,
+  } = useListClients({
+    query: {
+      queryKey: getListClientsQueryKey(),
+      staleTime: 2 * 60 * 1000,
+    },
+  });
 
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      const local = readLocalClients();
-      try {
-        const res = await portalFetch("/api/clients", { credentials: "include" });
-        let remote: ClientRow[] = [];
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          remote = Array.isArray(data) ? data : [];
-        }
-        setClients(dedupeClientRows([...local, ...remote]));
-      } catch {
-        setClients(dedupeClientRows([...local]));
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-
-    // Best effort: if backend is online, move local fallback clients to DB.
-    syncLocalClientsToDb();
-
-    const onOnline = () => {
-      syncLocalClientsToDb();
-    };
-    window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, []);
+    const rows = Array.isArray(listClientsData)
+      ? listClientsData
+      : Array.isArray((listClientsData as any)?.items)
+        ? (listClientsData as any).items
+        : listClientsData
+          ? [listClientsData]
+          : [];
+    setClients(dedupeClientRows(rows as ClientRow[]));
+  }, [listClientsData]);
 
   const filtered = useMemo(() => {
     return clients
@@ -256,50 +183,17 @@ export default function Clients() {
       setShowForm(false);
       navigate(`/clients/${data.id}`);
     } catch {
-      // Solo se la richiesta non arriva al server (rete / DNS / CORS): fallback locale.
-      const localClient = {
-        id: -Date.now(),
-        name: finalName,
-        settore: form.settore ?? null,
-        contractStatus: "nessuno",
-        healthScore: 50,
-        tagsJson: JSON.stringify(String(form.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean)),
-        monthlyValue: 0,
-        brandColor: form.brandColor ?? form.color ?? "#7a8f5c",
-        color: form.color ?? "#7a8f5c",
-        logoUrl: form.logoUrl ?? null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      try {
-        const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-        const local = Array.isArray(parsed) ? parsed : [];
-        localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify([localClient, ...local]));
-        setClients((prev) => dedupeClientRows([localClient, ...prev]));
-        setShowForm(false);
-        setSaveError(
-          "Connessione assente: cliente salvato solo in questo browser. Quando sei online, apri la scheda cliente e usa «Sincronizza sul database».",
-        );
-      } catch {
-        setSaveError("Impossibile salvare il cliente. Riprova.");
-      }
+      setSaveError("Impossibile salvare il cliente. Riprova.");
     } finally {
       setIsSaving(false);
     }
   };
 
   const reloadClients = async () => {
-    const r = await portalFetch("/api/clients", { credentials: "include" });
-    if (r.ok) setClients(await r.json());
+    await refetchClients();
   };
 
   const deleteClientById = async (id: number, showToast = true) => {
-    if (id < 0) {
-      setClients((prev) => prev.filter((c) => c.id !== id));
-      const nextLocal = readLocalClients().filter((c: any) => Number(c?.id) !== id);
-      localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(nextLocal));
-      return { ok: true, trashLogId: null as string | null };
-    }
     const res = await portalFetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { trashLogId?: string };
     if (!res.ok) return { ok: false, trashLogId: null as string | null };

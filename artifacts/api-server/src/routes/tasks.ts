@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and, isNull, inArray } from "drizzle-orm";
-import { db, tasksTable, projectsTable, teamMembersTable } from "@workspace/db";
+import { eq, sql, and, isNull, inArray, desc } from "drizzle-orm";
+import { db, tasksTable, projectsTable, teamMembersTable, activityLog } from "@workspace/db";
 import {
   CreateTaskBody,
   GetTaskParams,
@@ -9,10 +9,24 @@ import {
   DeleteTaskParams,
   ListTasksQueryParams,
 } from "@workspace/api-zod";
+import { z } from "zod";
 import { getUserId } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+const createTaskSchema = CreateTaskBody.extend({
+  tipo: z.string().optional(),
+  categoria: z.string().nullable().optional(),
+  checklistJson: z.string().optional(),
+  pacchettoContenuti: z.string().nullable().optional(),
+  meseRiferimento: z.string().nullable().optional(),
+}).passthrough();
+const createTaskCommentSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+  authorName: z.string().trim().min(1).max(255),
+});
 
 async function getLookupMaps(projectIds: number[], assigneeIds: number[]) {
   const [projects, members] = await Promise.all([
@@ -250,16 +264,10 @@ router.get("/tasks", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/tasks", async (req, res): Promise<void> => {
+router.post("/tasks", validate(createTaskSchema), async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
-
-  const parsed = CreateTaskBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const d = parsed.data;
+  const d = req.body as z.infer<typeof createTaskSchema>;
   const b = req.body as Record<string, unknown>;
   const [task] = await db.insert(tasksTable).values({
     title: d.title,
@@ -277,6 +285,124 @@ router.post("/tasks", async (req, res): Promise<void> => {
   }).returning();
   const enriched = await enrichTask(task);
   res.status(201).json(enriched);
+});
+
+router.get("/tasks/:id/comments", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const taskId = Number(req.params.id);
+  if (!Number.isFinite(taskId) || taskId <= 0) {
+    res.status(400).json({ error: "Task ID non valido" });
+    return;
+  }
+
+  const commentsResult = await db
+    .execute(sql<{
+      id: number;
+      taskId: number;
+      userId: string;
+      authorName: string;
+      content: string;
+      createdAt: Date | string;
+    }>`select
+        id,
+        task_id as "taskId",
+        user_id as "userId",
+        author_name as "authorName",
+        content,
+        created_at as "createdAt"
+      from task_comments
+      where task_id = ${taskId}
+      order by created_at asc`);
+  const comments = (Array.isArray((commentsResult as any)?.rows)
+    ? (commentsResult as any).rows
+    : Array.isArray(commentsResult)
+      ? commentsResult
+      : []) as Array<{
+    id: number;
+    taskId: number;
+    userId: string;
+    authorName: string;
+    content: string;
+    createdAt: Date | string;
+  }>;
+
+  res.json(comments.map((comment) => ({
+    ...comment,
+    createdAt: new Date(comment.createdAt).toISOString(),
+  })));
+});
+
+router.post("/tasks/:id/comments", validate(createTaskCommentSchema), async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const taskId = Number(req.params.id);
+  if (!Number.isFinite(taskId) || taskId <= 0) {
+    res.status(400).json({ error: "Task ID non valido" });
+    return;
+  }
+
+  const { content, authorName } = req.body as z.infer<typeof createTaskCommentSchema>;
+  const insertedResult = await db.execute(sql<{
+    id: number;
+    taskId: number;
+    userId: string;
+    authorName: string;
+    content: string;
+    createdAt: Date | string;
+  }>`insert into task_comments (task_id, user_id, author_name, content)
+      values (${taskId}, ${userId}, ${authorName}, ${content})
+      returning
+        id,
+        task_id as "taskId",
+        user_id as "userId",
+        author_name as "authorName",
+        content,
+        created_at as "createdAt"`);
+  const insertedRows = (Array.isArray((insertedResult as any)?.rows)
+    ? (insertedResult as any).rows
+    : Array.isArray(insertedResult)
+      ? insertedResult
+      : []) as Array<{
+    id: number;
+    taskId: number;
+    userId: string;
+    authorName: string;
+    content: string;
+    createdAt: Date | string;
+  }>;
+  const comment = insertedRows[0];
+  if (!comment) {
+    res.status(500).json({ error: "Errore creazione commento" });
+    return;
+  }
+
+  res.status(201).json({
+    ...comment,
+    createdAt: new Date(comment.createdAt).toISOString(),
+  });
+});
+
+router.get("/tasks/:id/activity", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const taskId = Number(req.params.id);
+  if (!Number.isFinite(taskId) || taskId <= 0) {
+    res.status(400).json({ error: "Task ID non valido" });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(activityLog)
+    .where(and(eq(activityLog.entityType, "task"), eq(activityLog.entityId, taskId)))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(50);
+
+  res.json(rows.map((row) => ({
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  })));
 });
 
 router.get("/tasks/:id", async (req, res): Promise<void> => {

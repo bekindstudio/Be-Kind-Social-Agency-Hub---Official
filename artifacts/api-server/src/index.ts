@@ -1,5 +1,18 @@
-import app from "./app";
 import { logger } from "./lib/logger";
+
+// Guard produzione — blocca avvio se bypass attivo
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.API_AUTH_DISABLED === "true"
+) {
+  console.error(
+    "[SECURITY] FATAL: API_AUTH_DISABLED=true in produzione.\n" +
+    "Imposta API_AUTH_DISABLED=false su Render e riavvia.",
+  );
+  process.exit(1);
+}
+
+const { default: app } = await import("./app");
 
 const rawPort = process.env["PORT"];
 

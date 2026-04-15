@@ -1,6 +1,8 @@
 import express, { type Express, type ErrorRequestHandler } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { supabaseAuthMiddleware } from "./middlewares/supabaseAuthMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -17,6 +19,32 @@ if (isApiAuthBypass()) {
 }
 
 const app: Express = express();
+
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "RATE_LIMIT",
+      message: "Troppe richieste. Riprova tra qualche minuto.",
+    },
+  }),
+);
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: {
+    error: "AI_RATE_LIMIT",
+    message: "Limite richieste AI raggiunto. Riprova tra un minuto.",
+  },
+});
+app.use("/api/ai", aiLimiter);
+app.use("/api/ai-chat", aiLimiter);
+
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",

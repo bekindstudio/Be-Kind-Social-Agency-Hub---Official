@@ -7,10 +7,7 @@ import type { Request } from "express";
  * con privilegi massimi (solo ambienti fidati / demo).
  */
 export function isApiAuthBypass(): boolean {
-  const v = process.env.API_AUTH_DISABLED;
-  // Default to bypass in local/demo environments unless explicitly disabled.
-  if (v == null || v.trim() === "") return true;
-  return v === "true" || v === "1";
+  return process.env.API_AUTH_DISABLED === "true";
 }
 
 /** ID sintetico quando `API_AUTH_DISABLED` è attivo. */

@@ -13,6 +13,7 @@ import {
 import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getAccessibleClientIds, getUserId } from "../lib/access-control";
+import { mapAiError } from "../lib/aiProvider";
 
 const router = Router();
 const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
@@ -407,7 +408,7 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
 
   try {
     const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 8192,
       system: systemPrompt,
       messages: chatMessages,
@@ -448,10 +449,11 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
       } catch {}
     }
   } catch (err: any) {
-    console.error("AI chat error:", err.message);
+    const mapped = mapAiError(err);
+    console.error("AI chat error:", err?.message);
     if (!clientDisconnected) {
       try {
-        res.write(`data: ${JSON.stringify({ error: "AI non disponibile al momento. Riprova tra poco." })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: mapped.error, message: mapped.message, status: mapped.status })}\n\n`);
         res.end();
       } catch {}
     }

@@ -1,12 +1,22 @@
 import { Router, type Request, type Response } from "express";
 import { db, userRoles } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { getUserId, isApiAuthBypass, isEnvAdmin } from "../lib/access-control";
 import { isRequestAdmin } from "../lib/request-admin";
+import { validate } from "../middlewares/validate";
 
 const router = Router();
 
 const VALID_ROLES = ["admin", "account_manager", "creative", "viewer"] as const;
+const roleSchema = z.object({
+  role: z.enum([
+    "admin",
+    "account_manager",
+    "creative",
+    "viewer",
+  ]),
+});
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Amministratore",
@@ -43,20 +53,23 @@ router.get("/roles/my-role", async (req: Request, res: Response): Promise<void> 
     return;
   }
   const [role] = await db.select().from(userRoles).where(eq(userRoles.authUserId, userId));
-  const userRole = role?.role ?? "admin";
+  if (!role?.role) {
+    res.status(403).json({
+      error: "ROLE_NOT_ASSIGNED",
+      message: "Nessun ruolo assegnato a questo account. Contatta un amministratore.",
+    });
+    return;
+  }
+  const userRole = role.role;
   res.json({ role: userRole, permissions: ROLE_PERMISSIONS[userRole] ?? ROLE_PERMISSIONS.admin, label: ROLE_LABELS[userRole] ?? "Membro" });
 });
 
-router.put("/roles/:userId", async (req: Request, res: Response): Promise<void> => {
+router.put("/roles/:userId", validate(roleSchema), async (req: Request, res: Response): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const isAdm = await isRequestAdmin(req);
   if (!isAdm) { res.status(403).json({ error: "Solo gli amministratori possono gestire i ruoli" }); return; }
-  const { role } = req.body;
-  if (!role || !VALID_ROLES.includes(role)) {
-    res.status(400).json({ error: `Ruolo non valido. Valori accettati: ${VALID_ROLES.join(", ")}` });
-    return;
-  }
+  const { role } = req.body as z.infer<typeof roleSchema>;
   const targetUserId = decodeURIComponent(req.params.userId as string);
   const existing = await db.select().from(userRoles).where(eq(userRoles.authUserId, targetUserId));
   if (existing.length > 0) {

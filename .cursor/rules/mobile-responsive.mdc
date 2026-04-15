@@ -1,0 +1,28 @@
+---
+description: Enforce mobile-first responsive UI across the app
+alwaysApply: true
+---
+
+# Mobile-First Responsive Rule
+
+Ogni modifica UI deve essere progettata e verificata prima su mobile, poi estesa a tablet/desktop.
+
+## Requisiti obbligatori
+
+- Parti sempre dal layout mobile (>=320px) e scala progressivamente con breakpoint.
+- Evita larghezze fisse rigide (`width: 1200px`, `w-[900px]`): usa `%`, `max-w-*`, `minmax`, `flex`, `grid`.
+- Testi e bottoni non devono uscire dal viewport mobile.
+- Tabelle/cards/liste devono avere comportamento responsive (stack, scroll orizzontale controllato, o varianti mobile).
+- Form e modali devono restare usabili su schermi piccoli (spaziature, tap target, tastiera mobile).
+- Non introdurre regressioni responsive in pagine già esistenti.
+
+## Checklist prima di chiudere una modifica UI
+
+- Verifica almeno: 320px, 375/390px, 768px, 1024px+.
+- Controlla overflow orizzontale indesiderato.
+- Controlla wrapping testo su titoli, badge, tab, pulsanti.
+- Se aggiungi nuovi componenti, includi stati responsive nel codice iniziale (non "in follow-up").
+
+## Regola operativa per l'agente
+
+Quando implementi o refactori UI, considera la responsività mobile come requisito di default anche se non esplicitamente richiesto.

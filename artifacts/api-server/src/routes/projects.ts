@@ -2,19 +2,49 @@ import { Router, type IRouter } from "express";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import { db, projectsTable, clientsTable, tasksTable, teamMembersTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
 import {
-  CreateProjectBody,
   GetProjectParams,
   UpdateProjectParams,
-  UpdateProjectBody,
   DeleteProjectParams,
   ListProjectsQueryParams,
 } from "@workspace/api-zod";
+import { z } from "zod";
 import { getUserId as getUid, isEnvAdmin, getAccessibleClientIds, filterByClientAccess } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
 import { logger } from "../lib/logger";
 import { collectPgErrorMeta, isUndefinedColumnError, isUndefinedTableError } from "../lib/pg-error";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+const createProjectSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().nullable().optional(),
+  clientId: z.union([z.number(), z.null()]).optional(),
+  status: z.string().trim().optional(),
+  progress: z.number().optional(),
+  deadline: z.string().trim().nullable().optional(),
+  budget: z.union([z.number(), z.string(), z.null()]).optional(),
+  budgetSpeso: z.union([z.number(), z.string(), z.null()]).optional(),
+  category: z.string().trim().nullable().optional(),
+  color: z.string().trim().nullable().optional(),
+  projectTypes: z.array(z.string()).optional(),
+  typeJson: z.array(z.string()).optional(),
+  startDate: z.string().trim().nullable().optional(),
+  endDate: z.string().trim().nullable().optional(),
+  oreStimate: z.union([z.number(), z.null()]).optional(),
+  paymentStructure: z.string().trim().nullable().optional(),
+  billingRate: z.union([z.number(), z.string(), z.null()]).optional(),
+  isRecurring: z.boolean().optional(),
+  recurrenceType: z.string().trim().nullable().optional(),
+  templateId: z.union([z.number(), z.null()]).optional(),
+  notes: z.string().trim().nullable().optional(),
+  projectManagerId: z.union([z.number(), z.string(), z.null()]).optional(),
+  members: z.array(z.object({
+    userId: z.union([z.number(), z.string()]),
+    role: z.string().optional(),
+  })).optional(),
+  autoCreateOnboardingTask: z.boolean().optional(),
+}).passthrough();
 
 function isAdmin(userId: string | null | undefined): boolean {
   if (!userId) return false;
@@ -273,7 +303,7 @@ router.get("/projects", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/projects", async (req, res): Promise<void> => {
+router.post("/projects", validate(createProjectSchema), async (req, res): Promise<void> => {
   const body = req.body as any;
   if (!body?.name?.trim()) { res.status(400).json({ error: "name required" }); return; }
   const userId = getUid(req);

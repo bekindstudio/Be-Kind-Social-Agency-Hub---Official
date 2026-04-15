@@ -436,20 +436,34 @@ router.post("/reports/:id/approve", async (req, res): Promise<void> => {
     const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
-    await db.insert(reportApprovalsTable).values({
-      reportId: id,
-      reviewerId: authUserId ?? "unknown",
-      azione: "approvato",
-      nota,
+    // TRANSACTION: operazioni atomiche su report_approvals, client_reports
+    // Se una fallisce, tutte le modifiche vengono annullate
+    const updated = await db.transaction(async (tx) => {
+      await tx.insert(reportApprovalsTable).values({
+        reportId: id,
+        reviewerId: authUserId ?? "unknown",
+        azione: "approvato",
+        nota,
+      });
+
+      const [row] = await tx.update(clientReportsTable)
+        .set({ status: "approvato", approvedBy: authUserId ?? "unknown", approvedAt: new Date() })
+        .where(eq(clientReportsTable.id, id))
+        .returning();
+
+      if (!row) {
+        throw new Error("REPORT_NOT_FOUND");
+      }
+
+      return row;
     });
 
-    const [updated] = await db.update(clientReportsTable)
-      .set({ status: "approvato", approvedBy: authUserId ?? "unknown", approvedAt: new Date() })
-      .where(eq(clientReportsTable.id, id))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Report non trovato" }); return; }
     res.json(serializeReport(updated));
   } catch (err: any) {
+    if (err?.message === "REPORT_NOT_FOUND") {
+      res.status(404).json({ error: "Report non trovato" });
+      return;
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -461,20 +475,34 @@ router.post("/reports/:id/reject", async (req, res): Promise<void> => {
     const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
-    await db.insert(reportApprovalsTable).values({
-      reportId: id,
-      reviewerId: authUserId ?? "unknown",
-      azione: "modifiche_richieste",
-      nota,
+    // TRANSACTION: operazioni atomiche su report_approvals, client_reports
+    // Se una fallisce, tutte le modifiche vengono annullate
+    const updated = await db.transaction(async (tx) => {
+      await tx.insert(reportApprovalsTable).values({
+        reportId: id,
+        reviewerId: authUserId ?? "unknown",
+        azione: "modifiche_richieste",
+        nota,
+      });
+
+      const [row] = await tx.update(clientReportsTable)
+        .set({ status: "bozza" })
+        .where(eq(clientReportsTable.id, id))
+        .returning();
+
+      if (!row) {
+        throw new Error("REPORT_NOT_FOUND");
+      }
+
+      return row;
     });
 
-    const [updated] = await db.update(clientReportsTable)
-      .set({ status: "bozza" })
-      .where(eq(clientReportsTable.id, id))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Report non trovato" }); return; }
     res.json(serializeReport(updated));
   } catch (err: any) {
+    if (err?.message === "REPORT_NOT_FOUND") {
+      res.status(404).json({ error: "Report non trovato" });
+      return;
+    }
     res.status(500).json({ error: err.message });
   }
 });

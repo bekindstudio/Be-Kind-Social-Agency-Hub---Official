@@ -1,10 +1,40 @@
 import { Router, type IRouter } from "express";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { anthropic, callAi } from "../lib/aiProvider";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+const captionSchema = z.object({
+  clientId: z.string().min(1),
+  brief: z.object({
+    toneOfVoice: z.string(),
+    brandVoice: z.array(z.string()),
+    targetAudience: z.string(),
+    objectives: z.string(),
+    doNotSay: z.string(),
+    hashtags: z.array(z.string()),
+  }),
+  postDetails: z.object({
+    theme: z.string(),
+    contentType: z.string(),
+    objective: z.string(),
+    platform: z.enum(["instagram", "facebook", "linkedin", "tiktok"]),
+    additionalNotes: z.string().optional(),
+    keywords: z.array(z.string()).optional(),
+  }),
+  options: z.object({
+    length: z.enum(["short", "medium", "long"]),
+    includeHashtags: z.boolean(),
+    includeEmoji: z.boolean(),
+    language: z.enum(["italian", "english"]),
+    variants: z.number().int().min(1).max(10),
+  }),
+});
 
 interface CaptionRequest {
   clientId: string;
@@ -167,15 +197,20 @@ async function ensureCaptionHistoryTable(): Promise<void> {
   historyTableEnsured = true;
 }
 
-function getAnthropicClient(): Anthropic {
+function ensureAiEnabled(): void {
   if (PRIVATE_PORTAL_AI_ONLY) {
     throw new Error("Modalita privata attiva: chiamate AI esterne disabilitate.");
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("ANTHROPIC_API_KEY non configurata");
   }
-  return new Anthropic({ apiKey });
+}
+
+function sendAiHttpError(res: any, err: unknown): void {
+  const status = (err as { statusCode?: number })?.statusCode ?? 500;
+  const error = (err as { errorCode?: string })?.errorCode ?? "AI_ERROR";
+  const message = err instanceof Error ? err.message : "Unknown error";
+  res.status(status).json({ error, message });
 }
 
 function buildSystemPrompt(brief: CaptionRequest["brief"]): string {
@@ -497,14 +532,16 @@ function buildPlanSlots(planConfig: PlanRequest["planConfig"]): Array<{
 
 router.post("/ai/ideas", async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as IdeasRequest;
-    const anthropic = getAnthropicClient();
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 3000,
-      system: buildIdeasSystemPrompt(body.brief, body.competitors ?? []),
-      messages: [{ role: "user", content: buildIdeasUserPrompt(body.context, body.options) }],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 3000,
+        system: buildIdeasSystemPrompt(body.brief, body.competitors ?? []),
+        messages: [{ role: "user", content: buildIdeasUserPrompt(body.context, body.options) }],
+      }),
+    );
 
     let parsed: { ideas?: unknown[] };
     try {
@@ -530,14 +567,14 @@ router.post("/ai/ideas", async (req, res): Promise<void> => {
     });
   } catch (err: unknown) {
     console.error("AI ideas error:", err);
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 
 router.post("/ai/plan", async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as PlanRequest;
-    const anthropic = getAnthropicClient();
     const totalPosts = body.planConfig.platforms.reduce((sum, platform) => sum + clamp(Number(platform.postsPerWeek || 0), 0, 7), 0) * body.planConfig.weekCount;
     const system = buildIdeasSystemPrompt(body.brief, body.competitors ?? []);
     const userPrompt = `Genera un piano editoriale in JSON.
@@ -568,12 +605,14 @@ Rispondi SOLO con JSON:
   ]
 }`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      system,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        system,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    );
 
     let parsed: { weeks?: Array<{ weekNumber?: number; theme?: string; posts?: any[] }> };
     try {
@@ -669,14 +708,14 @@ Rispondi SOLO con JSON:
     });
   } catch (err: unknown) {
     console.error("AI plan error:", err);
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 
 router.post("/ai/campaign", async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as CampaignRequest;
-    const anthropic = getAnthropicClient();
     const system = buildIdeasSystemPrompt(body.brief, []);
     const userPrompt = `Genera una campagna social completa con tre fasi: teaser, lancio, follow-up.
 Tema: ${body.campaignDetails.theme}
@@ -714,12 +753,14 @@ Rispondi SOLO con JSON:
   "visualSuggestions": [""]
 }`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2500,
-      system,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2500,
+        system,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    );
 
     let parsed: Record<string, unknown>;
     try {
@@ -736,25 +777,27 @@ Rispondi SOLO con JSON:
     });
   } catch (err: unknown) {
     console.error("AI campaign error:", err);
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 
-router.post("/ai/caption", async (req, res): Promise<void> => {
+router.post("/ai/caption", validate(captionSchema), async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as CaptionRequest;
-    const anthropic = getAnthropicClient();
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
-      system: buildSystemPrompt(body.brief),
-      messages: [
-        {
-          role: "user",
-          content: buildUserPrompt(body.postDetails, body.options),
-        },
-      ],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        system: buildSystemPrompt(body.brief),
+        messages: [
+          {
+            role: "user",
+            content: buildUserPrompt(body.postDetails, body.options),
+          },
+        ],
+      }),
+    );
     const parsed = JSON.parse(extractTextContent(message.content)) as { variants: Array<any> };
     const normalized = (parsed.variants ?? []).map((variant, index) => {
       const caption = String(variant.caption ?? "");
@@ -787,7 +830,7 @@ router.post("/ai/caption", async (req, res): Promise<void> => {
       res.status(500).json({ error: "PARSE_ERROR" });
       return;
     }
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 
@@ -867,8 +910,8 @@ router.get("/ai/caption/history/:clientId", async (req, res): Promise<void> => {
 
 router.post("/ai/caption/improve", async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as ImproveRequest;
-    const anthropic = getAnthropicClient();
     const prompt = `Migliora questa caption seguendo l'istruzione: ${body.instruction}
 Caption originale: ${body.originalCaption}
 Piattaforma: ${body.platform}
@@ -884,12 +927,14 @@ Mantieni il tone of voice del brand e rispondi solo con JSON:
     "notes": "spiega in una frase il miglioramento"
   }
 }`;
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1200,
-      system: buildSystemPrompt(body.brief),
-      messages: [{ role: "user", content: prompt }],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1200,
+        system: buildSystemPrompt(body.brief),
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
     const parsed = JSON.parse(extractTextContent(message.content)) as { variant?: any; variants?: any[] };
     const rawVariant = parsed.variant ?? parsed.variants?.[0] ?? null;
     if (!rawVariant) {
@@ -915,14 +960,14 @@ Mantieni il tone of voice del brand e rispondi solo con JSON:
       res.status(500).json({ error: "PARSE_ERROR" });
       return;
     }
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 
 router.post("/ai/hashtags", async (req, res): Promise<void> => {
   try {
+    ensureAiEnabled();
     const body = req.body as HashtagRequest;
-    const anthropic = getAnthropicClient();
     const count = Math.max(10, Math.min(30, Number(body.count ?? 20)));
     const prompt = `Genera ${count} hashtag per:
 Tema: ${body.theme}
@@ -939,12 +984,14 @@ Rispondi solo con JSON:
     "generico": ["#generico1"]
   }
 }`;
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: "Sei un social media strategist. Rispondi solo in JSON valido.",
-      messages: [{ role: "user", content: prompt }],
-    });
+    const message = await callAi(() =>
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: "Sei un social media strategist. Rispondi solo in JSON valido.",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
     const parsed = JSON.parse(extractTextContent(message.content)) as { hashtags?: string[]; categories?: Record<string, string[]> };
     res.json({
       hashtags: (parsed.hashtags ?? []).map((tag) => String(tag)),
@@ -963,7 +1010,7 @@ Rispondi solo con JSON:
       res.status(500).json({ error: "PARSE_ERROR" });
       return;
     }
-    res.status(500).json({ error: "AI_ERROR", message: err instanceof Error ? err.message : "Unknown error" });
+    sendAiHttpError(res, err);
   }
 });
 

@@ -1,10 +1,23 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, socialAccountsTable, clientsTable } from "@workspace/db";
 import { readFile, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { z } from "zod";
+import { decrypt, encrypt, isEncrypted } from "../lib/encrypt";
+import { getAccessibleClientIds, getUserId } from "../lib/access-control";
+import { logger } from "../lib/logger";
+import { exchangeForLongLivedToken } from "../lib/metaClient";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+const metaTokenSchema = z.object({
+  accessToken: z.string().trim().min(10),
+});
+const clientMetaAccountSchema = z.object({
+  metaAccountId: z.string().trim().min(1),
+  platform: z.enum(["instagram"]).default("instagram"),
+});
 
 const AGENCY_CLIENT_ID = 0;
 
@@ -60,14 +73,24 @@ function mapMetaError(metaError: any) {
 
 const LOCAL_META_TOKEN_PATH = resolve(process.cwd(), ".meta-token.local");
 
+function getPlainMetaToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!isEncrypted(value)) return value;
+  try {
+    return decrypt(value);
+  } catch {
+    return value;
+  }
+}
+
 async function readMetaAccessToken(): Promise<string | null> {
   if (process.env.META_ACCESS_TOKEN && process.env.META_ACCESS_TOKEN.trim().length > 0) {
-    return process.env.META_ACCESS_TOKEN.trim();
+    return getPlainMetaToken(process.env.META_ACCESS_TOKEN.trim());
   }
   try {
     const fileRaw = await readFile(LOCAL_META_TOKEN_PATH, "utf-8");
     const parsed = JSON.parse(fileRaw) as { accessToken?: string };
-    return parsed.accessToken?.trim() || null;
+    return getPlainMetaToken(parsed.accessToken?.trim() || null);
   } catch {
     return null;
   }
@@ -87,28 +110,42 @@ async function clearMetaAccessToken(): Promise<void> {
   }
 }
 
-async function exchangeForLongLivedToken(shortToken: string): Promise<{ token: string; expires: Date }> {
-  const appId = process.env.META_APP_ID!;
-  const appSecret = process.env.META_APP_SECRET!;
-  const url = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
-  url.searchParams.set("grant_type", "fb_exchange_token");
-  url.searchParams.set("client_id", appId);
-  url.searchParams.set("client_secret", appSecret);
-  url.searchParams.set("fb_exchange_token", shortToken);
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error("Token exchange failed: " + await res.text());
-  const data = await res.json() as any;
-  const expiresIn = data.expires_in ?? 5184000;
-  const expires = new Date(Date.now() + expiresIn * 1000);
-  return { token: data.access_token, expires };
-}
-
 async function getAgencyAccount() {
   const [account] = await db
     .select()
     .from(socialAccountsTable)
     .where(and(eq(socialAccountsTable.clientId, AGENCY_CLIENT_ID), eq(socialAccountsTable.isActive, true)));
   return account ?? null;
+}
+
+function parseClientId(raw: string): number | null {
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+async function ensureClientAccess(
+  req: Request,
+  res: Response,
+): Promise<{ userId: string; clientId: number } | null> {
+  const userId = getUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "UNAUTHORIZED" });
+    return null;
+  }
+
+  const clientId = parseClientId(req.params.clientId as string);
+  if (!clientId) {
+    res.status(400).json({ error: "CLIENT_ID_INVALID" });
+    return null;
+  }
+
+  const accessibleIds = await getAccessibleClientIds(userId);
+  if (accessibleIds !== "all" && !accessibleIds.includes(clientId)) {
+    res.status(403).json({ error: "CLIENT_ACCESS_DENIED" });
+    return null;
+  }
+
+  return { userId, clientId };
 }
 
 async function fetchAllMetaData(token: string) {
@@ -237,6 +274,120 @@ function generateMockInsights(range: string, seed = 42) {
   return { mock: true, instagram: ig, metaAds: meta };
 }
 
+// ─── Per-client meta account link ────────────────────────────────────────────
+
+router.get("/clients/:clientId/meta-account", async (req, res): Promise<void> => {
+  const ctx = await ensureClientAccess(req, res);
+  if (!ctx) return;
+
+  try {
+    const [client] = await db
+      .select({
+        id: clientsTable.id,
+        metaIgAccountId: clientsTable.metaIgAccountId,
+      })
+      .from(clientsTable)
+      .where(eq(clientsTable.id, ctx.clientId))
+      .limit(1);
+
+    if (!client?.metaIgAccountId) {
+      res.status(404).json({ error: "META_ACCOUNT_NOT_FOUND" });
+      return;
+    }
+
+    const [socialAccount] = await db
+      .select({
+        provider: socialAccountsTable.provider,
+        tokenExpiresAt: socialAccountsTable.tokenExpiresAt,
+      })
+      .from(socialAccountsTable)
+      .where(
+        and(
+          eq(socialAccountsTable.clientId, ctx.clientId),
+          eq(socialAccountsTable.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    res.json({
+      clientId: ctx.clientId,
+      metaAccountId: client.metaIgAccountId,
+      platform: socialAccount?.provider ?? "instagram",
+      tokenExpiresAt: socialAccount?.tokenExpiresAt?.toISOString() ?? null,
+    });
+  } catch (err) {
+    logger.error({ err, clientId: ctx.clientId }, "Get meta account link error");
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+router.put(
+  "/clients/:clientId/meta-account",
+  validate(clientMetaAccountSchema),
+  async (req, res): Promise<void> => {
+    const ctx = await ensureClientAccess(req, res);
+    if (!ctx) return;
+
+    try {
+      const payload = req.body as z.infer<typeof clientMetaAccountSchema>;
+      const agencyAccount = await getAgencyAccount();
+      const availableIgAccounts = Array.isArray(agencyAccount?.instagramAccounts)
+        ? agencyAccount.instagramAccounts
+        : [];
+      const isKnownMetaAccount = availableIgAccounts.some(
+        (account: any) => String(account?.id ?? "") === payload.metaAccountId,
+      );
+
+      if (!isKnownMetaAccount) {
+        res.status(404).json({
+          error: "META_ACCOUNT_NOT_FOUND",
+          message:
+            "Account Meta non trovato. Collegalo prima dalle Impostazioni Meta.",
+        });
+        return;
+      }
+
+      await db
+        .update(clientsTable)
+        .set({
+          metaIgAccountId: payload.metaAccountId,
+          updatedAt: new Date(),
+        })
+        .where(eq(clientsTable.id, ctx.clientId));
+
+      res.json({
+        success: true,
+        clientId: ctx.clientId,
+        metaAccountId: payload.metaAccountId,
+        platform: payload.platform,
+      });
+    } catch (err) {
+      logger.error({ err, clientId: ctx.clientId }, "Update meta account link error");
+      res.status(500).json({ error: "SERVER_ERROR" });
+    }
+  },
+);
+
+router.delete("/clients/:clientId/meta-account", async (req, res): Promise<void> => {
+  const ctx = await ensureClientAccess(req, res);
+  if (!ctx) return;
+
+  try {
+    await db
+      .update(clientsTable)
+      .set({
+        metaIgAccountId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(clientsTable.id, ctx.clientId));
+
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err, clientId: ctx.clientId }, "Unlink meta account error");
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
 // ─── Generic Meta API Routes (token-based) ───────────────────────────────────
 
 router.get("/meta/accounts", async (_req, res): Promise<void> => {
@@ -291,13 +442,9 @@ router.get("/meta/token/status", async (_req, res): Promise<void> => {
   }
 });
 
-router.post("/meta/token", async (req, res): Promise<void> => {
+router.post("/meta/token", validate(metaTokenSchema), async (req, res): Promise<void> => {
   try {
-    const accessToken = String(req.body?.accessToken ?? "").trim();
-    if (!accessToken) {
-      res.status(400).json({ error: "MISSING_ACCESS_TOKEN" });
-      return;
-    }
+    const accessToken = req.body.accessToken.trim();
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
     if (!appId || !appSecret) {
@@ -422,7 +569,7 @@ router.get("/meta/agency-status", async (_req, res): Promise<void> => {
 });
 
 // POST /api/meta/connect-agency — connect with access token (agency-level)
-router.post("/meta/connect-agency", async (req, res): Promise<void> => {
+router.post("/meta/connect-agency", validate(metaTokenSchema), async (req, res): Promise<void> => {
   const { accessToken } = req.body as { accessToken?: string };
   if (!accessToken || typeof accessToken !== "string" || accessToken.trim().length < 10) {
     res.status(400).json({ error: "Token non valido o mancante" });
@@ -450,7 +597,7 @@ router.post("/meta/connect-agency", async (req, res): Promise<void> => {
       .where(eq(socialAccountsTable.clientId, AGENCY_CLIENT_ID));
 
     const data = {
-      accessToken: longToken,
+      accessToken: encrypt(longToken),
       tokenExpiresAt: expiresAt,
       metaUserId: me.id,
       metaUserName: me.name,
@@ -490,7 +637,7 @@ router.post("/meta/connect-agency", async (req, res): Promise<void> => {
 });
 
 async function autoRenewTokenIfNeeded(account: any): Promise<string> {
-  const token = account.accessToken;
+  const token = getPlainMetaToken(account.accessToken);
   if (!token) throw new Error("No token");
 
   if (account.tokenExpiresAt) {
@@ -500,7 +647,7 @@ async function autoRenewTokenIfNeeded(account: any): Promise<string> {
       try {
         const { token: newToken, expires } = await exchangeForLongLivedToken(token);
         await db.update(socialAccountsTable)
-          .set({ accessToken: newToken, tokenExpiresAt: expires })
+          .set({ accessToken: encrypt(newToken), tokenExpiresAt: expires })
           .where(eq(socialAccountsTable.id, account.id));
         console.log(`Meta token auto-renewed: new expiry ${expires.toISOString()} (~${Math.round((expires.getTime() - Date.now()) / 86400000)} days)`);
         return newToken;
@@ -623,7 +770,11 @@ router.get("/meta/debug-permissions/:clientId", async (req, res): Promise<void> 
   const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
   if (!client) { res.status(404).json({ error: "Client not found" }); return; }
 
-  const token = agencyAccount.accessToken;
+  const token = getPlainMetaToken(agencyAccount.accessToken);
+  if (!token) {
+    res.status(500).json({ error: "Invalid agency token" });
+    return;
+  }
   const allPages = (agencyAccount.pages as any[]) ?? [];
   const allIg = (agencyAccount.instagramAccounts as any[]) ?? [];
   const allAds = (agencyAccount.adAccounts as any[]) ?? [];
@@ -1095,7 +1246,8 @@ async function autoSyncClient(clientId: number, agencyAccount: any): Promise<voi
   const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
   if (!client) return;
 
-  const token = agencyAccount.accessToken;
+  const token = getPlainMetaToken(agencyAccount.accessToken);
+  if (!token) return;
   const allPages = (agencyAccount.pages as any[]) ?? [];
   const allIg = (agencyAccount.instagramAccounts as any[]) ?? [];
   const allAds = (agencyAccount.adAccounts as any[]) ?? [];

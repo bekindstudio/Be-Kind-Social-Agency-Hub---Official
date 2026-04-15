@@ -129,25 +129,13 @@ const PRIORITY_OPTIONS = [
 
 
 export default function ClientDetail({ id }: Props) {
-  const LOCAL_CLIENTS_KEY = "agency-local-clients";
   const [, navigate] = useLocation();
   const clientId = parseInt(id, 10);
-  const isLocalClient = clientId < 0;
-  const localClient = (() => {
-    if (!isLocalClient) return null;
-    try {
-      const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-      const list = Array.isArray(parsed) ? parsed : [];
-      return list.find((c: any) => Number(c.id) === clientId) ?? null;
-    } catch {
-      return null;
-    }
-  })();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: client, isLoading } = useGetClient(clientId, {
-    query: { queryKey: getGetClientQueryKey(clientId), enabled: !!clientId && !isLocalClient },
+    query: { queryKey: getGetClientQueryKey(clientId), enabled: !!clientId },
   });
   const { data: projects } = useListProjects(
     { clientId },
@@ -164,7 +152,6 @@ export default function ClientDetail({ id }: Props) {
 
   const { openDrawer: openAiDrawer } = useAiChat();
   const { clients: contextClients, setActiveClient } = useClientContext();
-  const [syncingLocal, setSyncingLocal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -331,65 +318,6 @@ export default function ClientDetail({ id }: Props) {
     fetchReports();
   };
 
-  const syncLocalClientToServer = useCallback(async () => {
-    if (!isLocalClient || !localClient) return;
-    setSyncingLocal(true);
-    try {
-      let tags: string[] = [];
-      try {
-        const parsed = JSON.parse(localClient.tagsJson ?? "[]");
-        tags = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        tags = [];
-      }
-      const res = await portalFetch("/api/clients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: localClient.name,
-          nomeCommerciale: localClient.company ?? localClient.name,
-          ragioneSociale: localClient.ragioneSociale ?? localClient.name,
-          settore: localClient.settore ?? null,
-          color: localClient.color ?? "#7a8f5c",
-          brandColor: localClient.brandColor ?? localClient.color ?? "#7a8f5c",
-          logoUrl: localClient.logoUrl ?? null,
-          tags,
-        }),
-      });
-      const rawText = await res.text();
-      let created: Record<string, unknown> = {};
-      try {
-        created = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
-      } catch {
-        created = { raw: rawText };
-      }
-      if (!res.ok) {
-        alert(
-          typeof created.error === "string"
-            ? created.error
-            : `Sincronizzazione non riuscita (HTTP ${res.status})`,
-        );
-        return;
-      }
-      const newId = created.id;
-      if (typeof newId !== "number" && typeof newId !== "string") {
-        alert("Risposta API non valida.");
-        return;
-      }
-      try {
-        const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIENTS_KEY) ?? "[]");
-        const list = Array.isArray(parsed) ? parsed : [];
-        const next = list.filter((c: { id?: unknown }) => Number(c.id) !== clientId);
-        localStorage.setItem(LOCAL_CLIENTS_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore storage errors */
-      }
-      navigate(`/clients/${newId}`);
-    } finally {
-      setSyncingLocal(false);
-    }
-  }, [isLocalClient, localClient, clientId, navigate, LOCAL_CLIENTS_KEY]);
-
   const REPORT_STATUS_LABELS: Record<string, string> = {
     bozza: "Bozza",
     in_revisione: "In revisione",
@@ -403,7 +331,7 @@ export default function ClientDetail({ id }: Props) {
     inviato: "bg-blue-100 text-blue-700",
   };
 
-  const editableClient: any = isLocalClient ? localClient : client;
+  const editableClient: any = client;
 
   const startEditing = () => {
     if (!editableClient) return;
@@ -535,8 +463,8 @@ export default function ClientDetail({ id }: Props) {
     );
   };
 
-  if (!isLocalClient && isLoading) return <Layout><div className="p-8 text-muted-foreground">Caricamento...</div></Layout>;
-  const viewClient: any = isLocalClient ? localClient : client;
+  if (isLoading) return <Layout><div className="p-8 text-muted-foreground">Caricamento...</div></Layout>;
+  const viewClient: any = client;
   if (!viewClient) return <Layout><div className="p-8 text-muted-foreground">Cliente non trovato</div></Layout>;
 
   const f = (key: string) => form[key] ?? "";
@@ -582,21 +510,6 @@ export default function ClientDetail({ id }: Props) {
               >
                 <Sparkles size={12} /> Chiedi all'AI su questo cliente
               </button>
-              {isLocalClient && (
-                <div className="mt-2 space-y-2 max-w-md">
-                  <p className="text-[11px] text-amber-700">
-                    Questo record è solo nel browser (salvato senza connessione o da una versione precedente che trattava errori API come offline). Non è sul database finché non lo sincronizzi.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void syncLocalClientToServer()}
-                    disabled={syncingLocal}
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    {syncingLocal ? "Sincronizzazione…" : "Sincronizza sul database"}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 

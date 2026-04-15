@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { getUserId } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
 
@@ -43,13 +44,8 @@ router.get("/contracts", async (_req, res): Promise<void> => {
   res.json(rows.map(serializeContract));
 });
 
-router.post("/contracts", async (req, res): Promise<void> => {
-  const parsed = CreateContractTemplateBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const d = parsed.data;
+router.post("/contracts", validate(CreateContractTemplateBody), async (req, res): Promise<void> => {
+  const d = req.body as z.infer<typeof CreateContractTemplateBody>;
   const variables = parseVariables(req.body);
   const [row] = await db.insert(contractTemplatesTable).values({
     name: d.name,

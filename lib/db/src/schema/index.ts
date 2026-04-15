@@ -31,3 +31,7 @@ export * from "./project-expenses";
 export * from "./project-templates";
 export * from "./project-activity";
 export * from "./trash-log";
+export * from "./task-comments";
+export * from "./client-posts";
+export * from "./client-competitors";
+export * from "./client-events";

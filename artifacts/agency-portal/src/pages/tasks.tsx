@@ -10,6 +10,8 @@ import {
   portalFetch,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTaskComments, useAddTaskComment } from "@/hooks/useTaskComments";
+import { useTaskActivity, taskActivityQueryKey } from "@/hooks/useTaskActivity";
 import { Layout } from "@/components/layout/Layout";
 import {
   Plus, Trash2, Search, ChevronDown, ChevronRight, X, Pencil,
@@ -48,21 +50,6 @@ type TaskRow = {
   meseRiferimento?: string | null;
   createdAt: string;
   updatedAt: string;
-};
-
-type TaskComment = {
-  id: string;
-  taskId: number;
-  authorName: string;
-  content: string;
-  createdAt: string;
-};
-
-type TaskActivityItem = {
-  id: string;
-  taskId: number;
-  action: string;
-  createdAt: string;
 };
 
 // ─── Categories ─────────────────────────────────────────────────────────────
@@ -455,8 +442,6 @@ export default function Tasks() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentsByTask, setCommentsByTask] = useState<Record<number, TaskComment[]>>({});
-  const [activityByTask, setActivityByTask] = useState<Record<number, TaskActivityItem[]>>({});
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => (localStorage.getItem("tasks-view") as any) || "list");
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -466,35 +451,36 @@ export default function Tasks() {
     const templateId = getClientOperationalTemplateId(activeClient.id);
     return getOperationalTemplateById(templateId);
   }, [activeClient?.id]);
+  const detailTaskId = detailTask?.id ?? null;
+  const {
+    data: taskComments = [],
+    isLoading: isCommentsLoading,
+    error: commentsError,
+  } = useTaskComments(detailTaskId);
+  const addTaskComment = useAddTaskComment(detailTaskId);
+  const {
+    data: taskActivity = [],
+    isLoading: isActivityLoading,
+    error: activityError,
+  } = useTaskActivity(detailTaskId);
 
-  useEffect(() => {
+  const addActivity = useCallback(async (taskId: number, action: string, entityName?: string) => {
     try {
-      const c = localStorage.getItem("tasks-comments-v1");
-      const a = localStorage.getItem("tasks-activity-v1");
-      if (c) setCommentsByTask(JSON.parse(c));
-      if (a) setActivityByTask(JSON.parse(a));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("tasks-comments-v1", JSON.stringify(commentsByTask));
-  }, [commentsByTask]);
-
-  useEffect(() => {
-    localStorage.setItem("tasks-activity-v1", JSON.stringify(activityByTask));
-  }, [activityByTask]);
-
-  const addActivity = useCallback((taskId: number, action: string) => {
-    setActivityByTask((prev) => {
-      const nextItem: TaskActivityItem = {
-        id: uid(),
-        taskId,
-        action,
-        createdAt: new Date().toISOString(),
-      };
-      return { ...prev, [taskId]: [nextItem, ...(prev[taskId] ?? [])].slice(0, 80) };
-    });
-  }, []);
+      await portalFetch("/api/activity-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          entityType: "task",
+          entityId: taskId,
+          entityName,
+        }),
+      });
+      await qc.invalidateQueries({ queryKey: taskActivityQueryKey(taskId) });
+    } catch {
+      // Non blocchiamo UX task se il log attivita fallisce
+    }
+  }, [qc]);
 
   const projectList = useMemo(() => {
     if (!projects) return [];
@@ -654,7 +640,7 @@ export default function Tasks() {
     };
 
     const onDone = () => {
-      if (editId) addActivity(editId, "Task aggiornata");
+      if (editId) void addActivity(editId, "Task aggiornata", form.title.trim());
       setShowForm(false);
       setEditId(null);
       setForm(EMPTY_FORM);
@@ -690,7 +676,7 @@ export default function Tasks() {
           if (created?.id != null) {
             applyTaskCacheUpdate((list) => [created as TaskRow, ...list]);
           }
-          if (created?.id) addActivity(created.id, "Task creata");
+          if (created?.id) void addActivity(created.id, "Task creata", created?.title ?? form.title.trim());
           qc.invalidateQueries({ queryKey: listTasksKey });
           toast({ title: "Task creata con successo" });
           onDone();
@@ -713,7 +699,7 @@ export default function Tasks() {
         onSuccess: () => {
           applyTaskCacheUpdate((list) => list.map((t) => (t.id === id ? { ...t, status: newStatus } : t)));
           qc.invalidateQueries({ queryKey: listTasksKey });
-          addActivity(id, `Stato cambiato in ${TASK_STATUS_LABELS[newStatus] ?? newStatus}`);
+          void addActivity(id, `Stato cambiato in ${TASK_STATUS_LABELS[newStatus] ?? newStatus}`);
           if (newStatus === "done") playTaskComplete();
         },
         onError: () => {
@@ -811,7 +797,7 @@ export default function Tasks() {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: listTasksKey });
-          addActivity(task.id, "Checklist aggiornata");
+          void addActivity(task.id, "Checklist aggiornata", task.title);
         },
       }
     );
@@ -819,16 +805,25 @@ export default function Tasks() {
 
   const handleAddComment = () => {
     if (!detailTask || !commentDraft.trim()) return;
-    const next: TaskComment = {
-      id: uid(),
-      taskId: detailTask.id,
-      authorName: "Team",
-      content: commentDraft.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setCommentsByTask((prev) => ({ ...prev, [detailTask.id]: [next, ...(prev[detailTask.id] ?? [])] }));
-    addActivity(detailTask.id, "Commento aggiunto");
-    setCommentDraft("");
+    addTaskComment.mutate(
+      {
+        authorName: "Team",
+        content: commentDraft.trim(),
+      },
+      {
+        onSuccess: async () => {
+          void addActivity(detailTask.id, "Commento aggiunto", detailTask.title);
+          setCommentDraft("");
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Commento non inviato",
+            description: "Riprova tra qualche secondo.",
+          });
+        },
+      },
+    );
   };
 
   const handleOpenDetail = (task: TaskRow) => {
@@ -1335,7 +1330,7 @@ export default function Tasks() {
                       const priority = e.target.value;
                       setDetailTask({ ...detailTask, priority });
                       updateTask.mutate({ id: detailTask.id, data: { priority } }, { onSuccess: () => qc.invalidateQueries({ queryKey: listTasksKey }) });
-                      addActivity(detailTask.id, `Priorità cambiata in ${PRIORITY_LABELS[priority] ?? priority}`);
+                      void addActivity(detailTask.id, `Priorità cambiata in ${PRIORITY_LABELS[priority] ?? priority}`, detailTask.title);
                     }}
                   >
                     {Object.entries(PRIORITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -1373,12 +1368,16 @@ export default function Tasks() {
                   <p className="text-sm font-semibold">Activity log</p>
                 </div>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                  {(activityByTask[detailTask.id] ?? []).map((a) => (
+                  {isActivityLoading && <p className="text-xs text-muted-foreground">Caricamento attività...</p>}
+                  {activityError && <p className="text-xs text-destructive">Impossibile caricare attività task.</p>}
+                  {taskActivity.map((a) => (
                     <div key={a.id} className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5">
                       <span className="text-foreground">{a.action}</span> · {formatDate(a.createdAt)}
                     </div>
                   ))}
-                  {(activityByTask[detailTask.id] ?? []).length === 0 && <p className="text-xs text-muted-foreground">Nessuna attività</p>}
+                  {!isActivityLoading && !activityError && taskActivity.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nessuna attività</p>
+                  )}
                 </div>
               </div>
 
@@ -1395,17 +1394,27 @@ export default function Tasks() {
                     onChange={(e) => setCommentDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleAddComment(); }}
                   />
-                  <button onClick={handleAddComment} className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm">Invia</button>
+                  <button
+                    onClick={handleAddComment}
+                    disabled={addTaskComment.isPending}
+                    className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-60"
+                  >
+                    {addTaskComment.isPending ? "Invio..." : "Invia"}
+                  </button>
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {(commentsByTask[detailTask.id] ?? []).map((c) => (
+                  {isCommentsLoading && <p className="text-xs text-muted-foreground">Caricamento commenti...</p>}
+                  {commentsError && <p className="text-xs text-destructive">Impossibile caricare i commenti del task.</p>}
+                  {taskComments.map((c) => (
                     <div key={c.id} className="bg-muted/40 rounded-lg px-3 py-2">
                       <p className="text-xs font-medium">{c.authorName}</p>
                       <p className="text-sm">{c.content}</p>
                       <p className="text-[11px] text-muted-foreground">{formatDate(c.createdAt)}</p>
                     </div>
                   ))}
-                  {(commentsByTask[detailTask.id] ?? []).length === 0 && <p className="text-xs text-muted-foreground">Nessun commento</p>}
+                  {!isCommentsLoading && !commentsError && taskComments.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nessun commento</p>
+                  )}
                 </div>
               </div>
             </div>

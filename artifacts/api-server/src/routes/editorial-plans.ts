@@ -125,84 +125,91 @@ router.post("/editorial-plans", async (req, res): Promise<void> => {
     return;
   }
 
-  const [plan] = await db
-    .insert(editorialPlansTable)
-    .values({
-      clientId: Number(clientId),
-      month: Number(month),
-      year: Number(year),
-      platformsJson: platformsJson ?? [],
-      packageType: packageType ?? "standard",
-      notesInternal: notesInternal ?? null,
-      createdBy: userId,
-    })
-    .returning();
+  // TRANSACTION: operazioni atomiche su editorial_plans, editorial_slots
+  // Se una fallisce, tutte le modifiche vengono annullate
+  const created = await db.transaction(async (tx) => {
+    const [plan] = await tx
+      .insert(editorialPlansTable)
+      .values({
+        clientId: Number(clientId),
+        month: Number(month),
+        year: Number(year),
+        platformsJson: platformsJson ?? [],
+        packageType: packageType ?? "standard",
+        notesInternal: notesInternal ?? null,
+        createdBy: userId,
+      })
+      .returning();
 
-  if (templateId) {
-    const [template] = await db
-      .select()
-      .from(editorialTemplatesTable)
-      .where(and(eq(editorialTemplatesTable.id, Number(templateId)), isNull(editorialTemplatesTable.deletedAt)));
-    if (template && Array.isArray(template.slotsJson)) {
-      const templateSlots = template.slotsJson as any[];
+    if (templateId) {
+      const [template] = await tx
+        .select()
+        .from(editorialTemplatesTable)
+        .where(and(eq(editorialTemplatesTable.id, Number(templateId)), isNull(editorialTemplatesTable.deletedAt)));
+      if (template && Array.isArray(template.slotsJson)) {
+        const templateSlots = template.slotsJson as any[];
+        const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+        for (let i = 0; i < templateSlots.length; i++) {
+          const ts = templateSlots[i];
+          const day = Math.min(ts.publishDay ?? (i + 1) * Math.floor(daysInMonth / templateSlots.length), daysInMonth);
+          const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          await tx.insert(editorialSlotsTable).values({
+            planId: plan.id,
+            platform: ts.platform ?? "instagram_feed",
+            contentType: ts.contentType ?? "post",
+            categoryId: ts.categoryId ?? null,
+            publishDate: dateStr,
+            publishTime: ts.publishTime ?? null,
+            title: ts.title ?? null,
+            caption: ts.caption ?? null,
+            hashtagsJson: ts.hashtagsJson ?? [],
+            callToAction: ts.callToAction ?? null,
+            status: "da_creare",
+            position: i,
+            createdBy: userId,
+          });
+        }
+      }
+    } else {
+      const platforms = Array.isArray(platformsJson) && platformsJson.length > 0 ? platformsJson : ["instagram_feed"];
+      const countMap: Record<string, number> = { base: 4, standard: 8, premium: 12 };
+      const totalPosts = countMap[packageType ?? "standard"] ?? 8;
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-      for (let i = 0; i < templateSlots.length; i++) {
-        const ts = templateSlots[i];
-        const day = Math.min(ts.publishDay ?? (i + 1) * Math.floor(daysInMonth / templateSlots.length), daysInMonth);
-        const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        await db.insert(editorialSlotsTable).values({
-          planId: plan.id,
-          platform: ts.platform ?? "instagram_feed",
-          contentType: ts.contentType ?? "post",
-          categoryId: ts.categoryId ?? null,
-          publishDate: dateStr,
-          publishTime: ts.publishTime ?? null,
-          title: ts.title ?? null,
-          caption: ts.caption ?? null,
-          hashtagsJson: ts.hashtagsJson ?? [],
-          callToAction: ts.callToAction ?? null,
-          status: "da_creare",
-          position: i,
-          createdBy: userId,
-        });
+
+      const perPlatform = Math.floor(totalPosts / platforms.length);
+      const remainder = totalPosts % platforms.length;
+
+      let pos = 0;
+      for (let pIdx = 0; pIdx < platforms.length; pIdx++) {
+        const platform = platforms[pIdx];
+        const count = perPlatform + (pIdx < remainder ? 1 : 0);
+        for (let i = 0; i < count; i++) {
+          const day = Math.min(Math.round((i + 1) * (daysInMonth / count)), daysInMonth);
+          const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const contentType = platform.includes("reel") || platform === "tiktok" || platform === "youtube_shorts" ? "reel" : platform.includes("stor") ? "story" : "post";
+          await tx.insert(editorialSlotsTable).values({
+            planId: plan.id,
+            platform,
+            contentType,
+            publishDate: dateStr,
+            status: "da_creare",
+            position: pos++,
+            createdBy: userId,
+          });
+        }
       }
     }
-  } else {
-    const platforms = Array.isArray(platformsJson) && platformsJson.length > 0 ? platformsJson : ["instagram_feed"];
-    const countMap: Record<string, number> = { base: 4, standard: 8, premium: 12 };
-    const totalPosts = countMap[packageType ?? "standard"] ?? 8;
-    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
 
-    const perPlatform = Math.floor(totalPosts / platforms.length);
-    const remainder = totalPosts % platforms.length;
+    const slots = await tx
+      .select()
+      .from(editorialSlotsTable)
+      .where(and(eq(editorialSlotsTable.planId, plan.id), isNull(editorialSlotsTable.deletedAt)))
+      .orderBy(asc(editorialSlotsTable.position));
 
-    let pos = 0;
-    for (let pIdx = 0; pIdx < platforms.length; pIdx++) {
-      const platform = platforms[pIdx];
-      const count = perPlatform + (pIdx < remainder ? 1 : 0);
-      for (let i = 0; i < count; i++) {
-        const day = Math.min(Math.round((i + 1) * (daysInMonth / count)), daysInMonth);
-        const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        const contentType = platform.includes("reel") || platform === "tiktok" || platform === "youtube_shorts" ? "reel" : platform.includes("stor") ? "story" : "post";
-        await db.insert(editorialSlotsTable).values({
-          planId: plan.id,
-          platform,
-          contentType,
-          publishDate: dateStr,
-          status: "da_creare",
-          position: pos++,
-          createdBy: userId,
-        });
-      }
-    }
-  }
+    return { plan, slots };
+  });
 
-  const slots = await db
-    .select()
-    .from(editorialSlotsTable)
-    .where(and(eq(editorialSlotsTable.planId, plan.id), isNull(editorialSlotsTable.deletedAt)))
-    .orderBy(asc(editorialSlotsTable.position));
-  res.status(201).json({ ...serializePlan(plan), slots: slots.map(serializeSlot) });
+  res.status(201).json({ ...serializePlan(created.plan), slots: created.slots.map(serializeSlot) });
 });
 
 router.patch("/editorial-plans/:id", async (req, res): Promise<void> => {
@@ -292,58 +299,65 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
   const newMonth = month ?? original.month;
   const newYear = year ?? original.year;
 
-  const [newPlan] = await db.insert(editorialPlansTable).values({
-    clientId: clientId ?? original.clientId,
-    month: Number(newMonth),
-    year: Number(newYear),
-    platformsJson: original.platformsJson,
-    packageType: original.packageType,
-    notesInternal: original.notesInternal,
-    status: "bozza",
-    createdBy: userId,
-  }).returning();
-
-  const originalSlots = await db
-    .select()
-    .from(editorialSlotsTable)
-    .where(and(eq(editorialSlotsTable.planId, id), isNull(editorialSlotsTable.deletedAt)))
-    .orderBy(asc(editorialSlotsTable.position));
-
-  for (const slot of originalSlots) {
-    let newDate = slot.publishDate;
-    if (newDate && (newMonth !== original.month || newYear !== original.year)) {
-      const d = new Date(newDate);
-      const day = Math.min(d.getDate(), new Date(Number(newYear), Number(newMonth), 0).getDate());
-      newDate = `${newYear}-${String(newMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    }
-    await db.insert(editorialSlotsTable).values({
-      planId: newPlan.id,
-      platform: slot.platform,
-      contentType: slot.contentType,
-      categoryId: slot.categoryId,
-      publishDate: newDate,
-      publishTime: slot.publishTime,
-      title: slot.title,
-      caption: slot.caption,
-      hashtagsJson: slot.hashtagsJson,
-      callToAction: slot.callToAction,
-      linkInBio: slot.linkInBio,
-      visualUrl: slot.visualUrl,
-      visualDescription: slot.visualDescription,
-      notesInternal: slot.notesInternal,
-      notesClient: slot.notesClient,
-      status: "da_creare",
-      position: slot.position,
+  // TRANSACTION: operazioni atomiche su editorial_plans, editorial_slots
+  // Se una fallisce, tutte le modifiche vengono annullate
+  const duplicated = await db.transaction(async (tx) => {
+    const [newPlan] = await tx.insert(editorialPlansTable).values({
+      clientId: clientId ?? original.clientId,
+      month: Number(newMonth),
+      year: Number(newYear),
+      platformsJson: original.platformsJson,
+      packageType: original.packageType,
+      notesInternal: original.notesInternal,
+      status: "bozza",
       createdBy: userId,
-    });
-  }
+    }).returning();
 
-  const slots = await db
-    .select()
-    .from(editorialSlotsTable)
-    .where(and(eq(editorialSlotsTable.planId, newPlan.id), isNull(editorialSlotsTable.deletedAt)))
-    .orderBy(asc(editorialSlotsTable.position));
-  res.status(201).json({ ...serializePlan(newPlan), slots: slots.map(serializeSlot) });
+    const originalSlots = await tx
+      .select()
+      .from(editorialSlotsTable)
+      .where(and(eq(editorialSlotsTable.planId, id), isNull(editorialSlotsTable.deletedAt)))
+      .orderBy(asc(editorialSlotsTable.position));
+
+    for (const slot of originalSlots) {
+      let newDate = slot.publishDate;
+      if (newDate && (newMonth !== original.month || newYear !== original.year)) {
+        const d = new Date(newDate);
+        const day = Math.min(d.getDate(), new Date(Number(newYear), Number(newMonth), 0).getDate());
+        newDate = `${newYear}-${String(newMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+      await tx.insert(editorialSlotsTable).values({
+        planId: newPlan.id,
+        platform: slot.platform,
+        contentType: slot.contentType,
+        categoryId: slot.categoryId,
+        publishDate: newDate,
+        publishTime: slot.publishTime,
+        title: slot.title,
+        caption: slot.caption,
+        hashtagsJson: slot.hashtagsJson,
+        callToAction: slot.callToAction,
+        linkInBio: slot.linkInBio,
+        visualUrl: slot.visualUrl,
+        visualDescription: slot.visualDescription,
+        notesInternal: slot.notesInternal,
+        notesClient: slot.notesClient,
+        status: "da_creare",
+        position: slot.position,
+        createdBy: userId,
+      });
+    }
+
+    const slots = await tx
+      .select()
+      .from(editorialSlotsTable)
+      .where(and(eq(editorialSlotsTable.planId, newPlan.id), isNull(editorialSlotsTable.deletedAt)))
+      .orderBy(asc(editorialSlotsTable.position));
+
+    return { newPlan, slots };
+  });
+
+  res.status(201).json({ ...serializePlan(duplicated.newPlan), slots: duplicated.slots.map(serializeSlot) });
 });
 
 router.post("/editorial-slots", async (req, res): Promise<void> => {

@@ -1,20 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  useGetClient,
-  useUpdateClient,
-  useListProjects,
-  useCreateProject,
-  useListTasks,
-  useCreateTask,
-  useListTeamMembers,
-  getGetClientQueryKey,
-  getListProjectsQueryKey,
-  getListTasksQueryKey,
   portalFetch,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
+import { ClientDetailHeader } from "@/components/client/ClientDetailHeader";
+import { ClientMetaSection } from "@/components/client/ClientMetaSection";
+import { ClientReportsSection } from "@/components/client/ClientReportsSection";
+import { ClientProjectsSection } from "@/components/client/ClientProjectsSection";
+import { useClientDetail } from "@/hooks/useClientDetail";
 import {
   ChevronLeft,
   Pencil,
@@ -131,24 +125,20 @@ const PRIORITY_OPTIONS = [
 export default function ClientDetail({ id }: Props) {
   const [, navigate] = useLocation();
   const clientId = parseInt(id, 10);
-  const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const { data: client, isLoading } = useGetClient(clientId, {
-    query: { queryKey: getGetClientQueryKey(clientId), enabled: !!clientId },
-  });
-  const { data: projects } = useListProjects(
-    { clientId },
-    { query: { queryKey: getListProjectsQueryKey({ clientId }) } }
-  );
-  const { data: tasks } = useListTasks(
-    {},
-    { query: { queryKey: getListTasksQueryKey({}) } }
-  );
-  const { data: teamMembers } = useListTeamMembers();
-  const updateClient = useUpdateClient();
-  const createProject = useCreateProject();
-  const createTask = useCreateTask();
+  const {
+    client,
+    isLoading,
+    projects,
+    tasks,
+    teamMembers,
+    updateClient,
+    createProject,
+    createTask,
+    invalidateClient,
+    invalidateProjects,
+    invalidateTasks,
+  } = useClientDetail(clientId);
 
   const { openDrawer: openAiDrawer } = useAiChat();
   const { clients: contextClients, setActiveClient } = useClientContext();
@@ -408,7 +398,7 @@ export default function ClientDetail({ id }: Props) {
       },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getGetClientQueryKey(clientId) });
+          invalidateClient();
           setEditing(false);
           setLogoPreview(null);
         },
@@ -431,7 +421,7 @@ export default function ClientDetail({ id }: Props) {
       },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListProjectsQueryKey({ clientId }) });
+          invalidateProjects();
           setProjectForm({ name: "", description: "", status: "planning", budget: "" });
           setShowProjectForm(false);
         },
@@ -455,7 +445,7 @@ export default function ClientDetail({ id }: Props) {
       },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListTasksQueryKey({}) });
+          invalidateTasks();
           setTaskForm({ title: "", description: "", projectId: "", assigneeId: "", status: "todo", priority: "medium", dueDate: "" });
           setShowTaskForm(false);
         },
@@ -481,65 +471,24 @@ export default function ClientDetail({ id }: Props) {
           </div>
         </Link>
 
-        {/* Header */}
-        <div className="flex items-start justify-between mb-8">
-          <div className="flex items-center gap-5">
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center text-white font-bold text-3xl overflow-hidden shrink-0"
-              style={{ backgroundColor: displayLogo ? "#f0f2ed" : viewClient.color }}
-            >
-              {displayLogo ? (
-                <img src={displayLogo} alt={viewClient.name} className="w-full h-full object-contain p-1" />
-              ) : (
-                String(viewClient.name ?? "C").charAt(0).toUpperCase()
-              )}
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">{viewClient.name}</h1>
-              {viewClient.company && <p className="text-muted-foreground">{viewClient.company}</p>}
-              {viewClient.website && (
-                <a href={viewClient.website} target="_blank" rel="noreferrer"
-                  className="text-sm text-primary hover:underline flex items-center gap-1 mt-0.5">
-                  <Globe size={13} /> {viewClient.website}
-                </a>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">Cliente dal {formatDate(viewClient.createdAt)}</p>
-              <button
-                onClick={() => openAiDrawer({ type: "client", data: { id: clientId, name: viewClient.name, sector: (viewClient as any).sector, activeProjects: clientProjects.length } })}
-                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 transition-colors border border-violet-200 mt-2"
-              >
-                <Sparkles size={12} /> Chiedi all'AI su questo cliente
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            {editing ? (
-              <>
-                <button
-                  onClick={saveEditing}
-                  disabled={updateClient.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                >
-                  <Save size={15} /> {updateClient.isPending ? "Salvataggio..." : "Salva"}
-                </button>
-                <button
-                  onClick={() => { setEditing(false); setLogoPreview(null); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:opacity-80"
-                >
-                  <X size={15} /> Annulla
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={startEditing}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90"
-              >
-                <Pencil size={15} /> Modifica
-              </button>
-            )}
-          </div>
-        </div>
+        <ClientDetailHeader
+          clientId={clientId}
+          viewClient={{
+            ...viewClient,
+            sector: (viewClient as any).sector,
+          }}
+          displayLogo={displayLogo}
+          clientProjectsCount={clientProjects.length}
+          editing={editing}
+          isSaving={updateClient.isPending}
+          onOpenAi={(payload) => openAiDrawer({ type: "client", data: payload })}
+          onSave={saveEditing}
+          onCancel={() => {
+            setEditing(false);
+            setLogoPreview(null);
+          }}
+          onStartEdit={startEditing}
+        />
 
         {/* Edit / View mode */}
         {editing ? (
@@ -713,169 +662,17 @@ export default function ClientDetail({ id }: Props) {
               </Section>
             )}
 
-            {/* ── Meta — Assegnazione Account ── */}
-            <Section
-              title="Meta (Facebook & Instagram)"
-              icon={<Share2 size={15} className="text-primary" />}
-              action={
-                metaStatus?.connected && (metaStatus.assignedPage || metaStatus.assignedIg || metaStatus.assignedAd) ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleMetaSync}
-                      disabled={metaSyncing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50"
-                    >
-                      <RefreshCw size={11} className={metaSyncing ? "animate-spin" : ""} />
-                      {metaSyncing ? "Sincronizzazione..." : "Sincronizza dati"}
-                    </button>
-                    <button
-                      onClick={handleMetaDisconnect}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-xs font-medium hover:opacity-90"
-                    >
-                      <Link2Off size={11} /> Rimuovi
-                    </button>
-                  </div>
-                ) : null
-              }
-            >
-              {!metaStatus?.connected ? (
-                <div className="text-center py-6">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-                    <WifiOff size={20} className="text-blue-400" />
-                  </div>
-                  <p className="text-sm font-semibold mb-1">Account Meta dell'agenzia non collegato</p>
-                  <p className="text-xs text-muted-foreground max-w-xs mx-auto mb-3">
-                    {metaStatus?.reason === "agency_not_connected"
-                      ? "Vai in Impostazioni per collegare l'account Meta dell'agenzia prima di assegnare pagine e account a questo cliente."
-                      : "Connessione Meta non disponibile."}
-                  </p>
-                  <a href="/settings" className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1877F2] text-white rounded-xl text-sm font-semibold hover:opacity-90">
-                    <SettingsIcon size={14} /> Vai a Impostazioni
-                  </a>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className="flex items-center gap-1.5 text-emerald-600 font-medium">
-                      <Wifi size={13} /> Collegato come {metaStatus.metaUserName}
-                    </div>
-                    {metaStatus.tokenExpired && (
-                      <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full font-medium">Token scaduto</span>
-                    )}
-                    {metaStatus.lastSyncedAt && (
-                      <span className="text-muted-foreground ml-auto">
-                        Ultimo sync: {new Date(metaStatus.lastSyncedAt).toLocaleString("it-IT")}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3">
-                    {/* Pagina Facebook */}
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Pagina Facebook</label>
-                      <select
-                        value={metaAssign.pageId}
-                        onChange={(e) => setMetaAssign((prev) => ({ ...prev, pageId: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="">-- Nessuna pagina assegnata --</option>
-                        {(metaStatus.allPages ?? []).map((p: any) => (
-                          <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Account Instagram */}
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Account Instagram Business</label>
-                      <select
-                        value={metaAssign.igId}
-                        onChange={(e) => setMetaAssign((prev) => ({ ...prev, igId: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="">-- Nessun account IG assegnato --</option>
-                        {(metaStatus.allIgAccounts ?? []).map((ig: any) => (
-                          <option key={ig.id} value={ig.id}>@{ig.username} — {ig.followers_count?.toLocaleString("it-IT")} follower</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Account Ads */}
-                    <div>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Account Pubblicitario Meta Ads</label>
-                      <select
-                        value={metaAssign.adId}
-                        onChange={(e) => setMetaAssign((prev) => ({ ...prev, adId: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="">-- Nessun account Ads assegnato --</option>
-                        {(metaStatus.allAdAccounts ?? []).map((ad: any) => (
-                          <option key={ad.id} value={ad.id}>{ad.name} ({ad.id} · {ad.currency})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={handleMetaAssignSave}
-                      disabled={metaSaving}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                    >
-                      {metaSaving ? <><RefreshCw size={13} className="animate-spin" /> Salvataggio...</> : <><Save size={13} /> Salva assegnazioni</>}
-                    </button>
-                    {(metaStatus.allPages?.length === 0 && metaStatus.allIgAccounts?.length === 0 && metaStatus.allAdAccounts?.length === 0) && (
-                      <p className="text-xs text-amber-600">Nessuna pagina o account trovato. Vai in Impostazioni per aggiornare.</p>
-                    )}
-                  </div>
-
-                  {/* Summary of assigned */}
-                  {(metaStatus.assignedPage || metaStatus.assignedIg || metaStatus.assignedAd) && (
-                    <div className="pt-3 border-t border-card-border space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Account assegnati</p>
-                      {metaStatus.assignedPage && (
-                        <div className="flex items-center gap-2 p-2.5 bg-blue-50/50 rounded-xl">
-                          <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                            <Share2 size={12} className="text-blue-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium">{metaStatus.assignedPage.name}</p>
-                            <p className="text-[11px] text-muted-foreground font-mono">Pagina FB · {metaStatus.assignedPage.id}</p>
-                          </div>
-                        </div>
-                      )}
-                      {metaStatus.assignedIg && (
-                        <div className="flex items-center gap-2 p-2.5 bg-pink-50/50 rounded-xl">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0">
-                            {metaStatus.assignedIg.profile_picture_url
-                              ? <img src={metaStatus.assignedIg.profile_picture_url} alt="" className="w-full h-full rounded-full object-cover" />
-                              : <span className="text-white text-[10px] font-bold">{metaStatus.assignedIg.username?.[0]?.toUpperCase()}</span>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium">@{metaStatus.assignedIg.username}</p>
-                            <p className="text-[11px] text-muted-foreground">{metaStatus.assignedIg.followers_count?.toLocaleString("it-IT")} follower</p>
-                          </div>
-                          <a href={`https://instagram.com/${metaStatus.assignedIg.username}`} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
-                            <ExternalLink size={12} />
-                          </a>
-                        </div>
-                      )}
-                      {metaStatus.assignedAd && (
-                        <div className="flex items-center gap-2 p-2.5 bg-amber-50/50 rounded-xl">
-                          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                            <span className="text-amber-700 font-bold text-[10px]">Ads</span>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{metaStatus.assignedAd.name}</p>
-                            <p className="text-[11px] text-muted-foreground font-mono">{metaStatus.assignedAd.id} · {metaStatus.assignedAd.currency}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </Section>
+            <ClientMetaSection
+              Section={Section}
+              metaStatus={metaStatus}
+              handleMetaSync={handleMetaSync}
+              metaSyncing={metaSyncing}
+              handleMetaDisconnect={handleMetaDisconnect}
+              metaAssign={metaAssign}
+              setMetaAssign={setMetaAssign}
+              handleMetaAssignSave={handleMetaAssignSave}
+              metaSaving={metaSaving}
+            />
 
             {(viewClient as any).notes && (
               <Section title="Note" icon={<StickyNote size={15} className="text-primary" />}>
@@ -947,107 +744,19 @@ export default function ClientDetail({ id }: Props) {
               )}
             </Section>
 
-            {/* ── Report mensili ── */}
-            <Section
-              title={`Report Mensili (${reports.length})`}
-              icon={<FileText size={15} className="text-primary" />}
-              action={
-                <button
-                  onClick={() => window.location.href = `/reports?client=${clientId}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
-                >
-                  <Zap size={11} /> Genera Report AI
-                </button>
-              }
-            >
-              {reportsLoading ? (
-                <div className="py-4 text-center text-sm text-muted-foreground">Caricamento...</div>
-              ) : reports.length === 0 ? (
-                <div className="text-center py-5">
-                  <FileText size={28} className="mx-auto text-muted-foreground/30 mb-2" />
-                  <p className="text-sm text-muted-foreground mb-1">Nessun report generato</p>
-                  <p className="text-xs text-muted-foreground">Vai alla sezione Report per generare il primo report AI mensile.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {reports.map((report: any) => (
-                    <div key={report.id} className="flex items-start gap-3 p-3 bg-muted/40 rounded-xl border border-border/50">
-                      <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
-                        report.status === "inviato" ? "bg-blue-100" :
-                        report.status === "approvato" ? "bg-emerald-100" :
-                        report.status === "in_revisione" ? "bg-amber-100" : "bg-muted"
-                      )}>
-                        {report.status === "inviato" ? <Send size={14} className="text-blue-600" /> :
-                         report.status === "approvato" ? <ThumbsUp size={14} className="text-emerald-600" /> :
-                         report.status === "in_revisione" ? <AlertTriangle size={14} className="text-amber-600" /> :
-                         <FileText size={14} className="text-muted-foreground" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold">{report.periodLabel}</p>
-                          <span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", REPORT_STATUS_COLORS[report.status] ?? "bg-muted text-muted-foreground")}>
-                            {REPORT_STATUS_LABELS[report.status] ?? report.status}
-                          </span>
-                          {report.aiFlag && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-medium flex items-center gap-1">
-                              <AlertTriangle size={9} /> Performance basse
-                            </span>
-                          )}
-                        </div>
-                        {report.aiSummary && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">{report.aiSummary}</p>
-                        )}
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          {new Date(report.createdAt).toLocaleDateString("it-IT")}
-                          {report.recipientEmail && ` · ${report.recipientEmail}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {report.status === "in_revisione" && (
-                          <>
-                            <button
-                              onClick={() => handleApproveReport(report.id)}
-                              className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-100 text-emerald-700 rounded-lg hover:opacity-90 font-medium"
-                            >
-                              <ThumbsUp size={11} /> Approva
-                            </button>
-                            <button
-                              onClick={() => handleRejectReport(report.id)}
-                              className="flex items-center gap-1 px-2 py-1 text-xs bg-muted text-muted-foreground rounded-lg hover:opacity-90"
-                            >
-                              Rimanda
-                            </button>
-                          </>
-                        )}
-                        {(report.status === "approvato" || report.status === "bozza") && (
-                          <button
-                            onClick={() => handleSendReport(report)}
-                            disabled={sendingReportId === report.id}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:opacity-90 font-medium disabled:opacity-50"
-                          >
-                            {sendingReportId === report.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
-                            Invia
-                          </button>
-                        )}
-                        {report.status === "inviato" && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <CheckCircle2 size={12} className="text-emerald-500" />
-                            {report.sentAt ? new Date(report.sentAt).toLocaleDateString("it-IT") : "Inviato"}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => handleDeleteReport(report.id)}
-                          className="p-1.5 text-muted-foreground hover:text-destructive rounded-lg"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Section>
+            <ClientReportsSection
+              Section={Section}
+              reports={reports}
+              clientId={clientId}
+              reportsLoading={reportsLoading}
+              REPORT_STATUS_COLORS={REPORT_STATUS_COLORS}
+              REPORT_STATUS_LABELS={REPORT_STATUS_LABELS}
+              handleApproveReport={handleApproveReport}
+              handleRejectReport={handleRejectReport}
+              handleSendReport={handleSendReport}
+              sendingReportId={sendingReportId}
+              handleDeleteReport={handleDeleteReport}
+            />
           </div>
         )}
 
@@ -1087,178 +796,28 @@ export default function ClientDetail({ id }: Props) {
           </div>
         )}
 
-        {/* PROGETTI */}
-        <Section
-          title={`Progetti (${clientProjects.length})`}
-          icon={<FolderKanban size={15} className="text-primary" />}
-          action={
-            <button
-              onClick={() => setShowProjectForm(!showProjectForm)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
-            >
-              <Plus size={13} /> Nuovo Progetto
-            </button>
-          }
-        >
-          {showProjectForm && (
-            <div className="bg-muted/50 border border-border rounded-xl p-4 mb-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Nome *" value={projectForm.name} onChange={(v) => setProjectForm((p) => ({ ...p, name: v }))} placeholder="Nome progetto" />
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stato</label>
-                  <select
-                    className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={projectForm.status}
-                    onChange={(e) => setProjectForm((p) => ({ ...p, status: e.target.value }))}
-                  >
-                    {PROJECT_STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-                <Field label="Descrizione" value={projectForm.description} onChange={(v) => setProjectForm((p) => ({ ...p, description: v }))} placeholder="Descrizione breve" />
-                <Field label="Budget (€)" value={projectForm.budget} onChange={(v) => setProjectForm((p) => ({ ...p, budget: v }))} placeholder="0" />
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={handleAddProject} disabled={createProject.isPending}
-                  className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                  {createProject.isPending ? "Salvataggio..." : "Crea Progetto"}
-                </button>
-                <button onClick={() => setShowProjectForm(false)}
-                  className="px-4 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:opacity-80">
-                  Annulla
-                </button>
-              </div>
-            </div>
-          )}
-
-          {clientProjects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nessun progetto associato.</p>
-          ) : (
-            <div className="grid gap-3">
-              {clientProjects.map((p: any) => (
-                <Link key={p.id} href={`/projects/${p.id}`}>
-                  <div className="bg-background border border-border rounded-xl p-4 cursor-pointer hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium text-sm">{p.name}</p>
-                      <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", STATUS_COLORS[p.status])}>
-                        {STATUS_LABELS[p.status] ?? p.status}
-                      </span>
-                    </div>
-                    {p.description && <p className="text-xs text-muted-foreground mb-3">{p.description}</p>}
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-primary rounded-full" style={{ width: `${p.progress}%` }} />
-                      </div>
-                      <span className="text-xs text-muted-foreground">{p.progress}%</span>
-                    </div>
-                    {p.budget != null && (
-                      <p className="text-xs text-muted-foreground mt-2">Budget: €{p.budget.toLocaleString("it-IT")}</p>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Section>
-
-        {/* TASK */}
-        <div className="mt-6">
-          <Section
-            title={`Task (${clientTasks.length})`}
-            icon={<CheckSquare size={15} className="text-primary" />}
-            action={
-              <button
-                onClick={() => setShowTaskForm(!showTaskForm)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
-              >
-                <Plus size={13} /> Nuovo Task
-              </button>
-            }
-          >
-            {showTaskForm && (
-              <div className="bg-muted/50 border border-border rounded-xl p-4 mb-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Titolo *" value={taskForm.title} onChange={(v) => setTaskForm((t) => ({ ...t, title: v }))} placeholder="Titolo task" />
-                  <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Progetto</label>
-                    <select
-                      className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
-                      value={taskForm.projectId}
-                      onChange={(e) => setTaskForm((t) => ({ ...t, projectId: e.target.value }))}
-                    >
-                      <option value="">Nessun progetto</option>
-                      {clientProjects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Stato</label>
-                    <select
-                      className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
-                      value={taskForm.status}
-                      onChange={(e) => setTaskForm((t) => ({ ...t, status: e.target.value }))}
-                    >
-                      {TASK_STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Priorità</label>
-                    <select
-                      className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
-                      value={taskForm.priority}
-                      onChange={(e) => setTaskForm((t) => ({ ...t, priority: e.target.value }))}
-                    >
-                      {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Assegna a</label>
-                    <select
-                      className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
-                      value={taskForm.assigneeId}
-                      onChange={(e) => setTaskForm((t) => ({ ...t, assigneeId: e.target.value }))}
-                    >
-                      <option value="">Nessuno</option>
-                      {(teamMembers ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scadenza</label>
-                    <input type="date" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
-                      value={taskForm.dueDate}
-                      onChange={(e) => setTaskForm((t) => ({ ...t, dueDate: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={handleAddTask} disabled={createTask.isPending}
-                    className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                    {createTask.isPending ? "Salvataggio..." : "Crea Task"}
-                  </button>
-                  <button onClick={() => setShowTaskForm(false)}
-                    className="px-4 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:opacity-80">
-                    Annulla
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {clientTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessun task per questo cliente.</p>
-            ) : (
-              <div className="space-y-2">
-                {clientTasks.map((t: any) => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background">
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border-2 shrink-0",
-                      t.status === "done" ? "bg-emerald-500 border-emerald-500" : "border-muted-foreground"
-                    )} />
-                    <p className={cn("flex-1 text-sm", t.status === "done" && "line-through text-muted-foreground")}>{t.title}</p>
-                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", PRIORITY_COLORS[t.priority])}>{PRIORITY_LABELS[t.priority]}</span>
-                    <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", TASK_STATUS_COLORS[t.status])}>{TASK_STATUS_LABELS[t.status]}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-        </div>
+        <ClientProjectsSection
+          Section={Section}
+          Field={Field}
+          clientProjects={clientProjects}
+          showProjectForm={showProjectForm}
+          setShowProjectForm={setShowProjectForm}
+          projectForm={projectForm}
+          setProjectForm={setProjectForm}
+          PROJECT_STATUS_OPTIONS={PROJECT_STATUS_OPTIONS}
+          handleAddProject={handleAddProject}
+          createProject={createProject}
+          clientTasks={clientTasks}
+          showTaskForm={showTaskForm}
+          setShowTaskForm={setShowTaskForm}
+          taskForm={taskForm}
+          setTaskForm={setTaskForm}
+          TASK_STATUS_OPTIONS={TASK_STATUS_OPTIONS}
+          PRIORITY_OPTIONS={PRIORITY_OPTIONS}
+          teamMembers={teamMembers}
+          handleAddTask={handleAddTask}
+          createTask={createTask}
+        />
       </div>
     </Layout>
   );

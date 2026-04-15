@@ -1,28 +1,23 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
-  useListTasks,
-  useListProjects,
-  useListTeamMembers,
-  useCreateTask,
-  useUpdateTask,
-  useDeleteTask,
-  getListTasksQueryKey,
   portalFetch,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTaskComments, useAddTaskComment } from "@/hooks/useTaskComments";
-import { useTaskActivity, taskActivityQueryKey } from "@/hooks/useTaskActivity";
+import { useTaskActivity } from "@/hooks/useTaskActivity";
 import { Layout } from "@/components/layout/Layout";
 import {
-  Plus, Trash2, Search, ChevronDown, ChevronRight, X, Pencil,
+  Plus, Trash2, ChevronDown, ChevronRight, X, Pencil,
   CheckSquare, Square, ListChecks, BarChart2, ToggleLeft, ToggleRight,
-  Columns3, List, CalendarDays, MessageSquare, Activity, GripVertical, SlidersHorizontal,
+  Columns3, List, MessageSquare, Activity, GripVertical,
 } from "lucide-react";
 import { cn, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
-import { getClientOperationalTemplateId, getOperationalTemplateById } from "@/lib/operationalTemplates";
 import { useToast } from "@/hooks/use-toast";
-import { useClientContext } from "@/context/ClientContext";
+import { useTasks, type TaskRow } from "@/hooks/useTasks";
+import { TaskFilters } from "@/components/tasks/TaskFilters";
+import { TaskList } from "@/components/tasks/TaskList";
+import { TaskCard } from "@/components/tasks/TaskCard";
+import { TaskDetail } from "@/components/tasks/TaskDetail";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type ChecklistItem = {
@@ -30,26 +25,6 @@ type ChecklistItem = {
   testo: string;
   completato: boolean;
   gruppo: string;
-};
-
-type TaskRow = {
-  id: number;
-  title: string;
-  description?: string | null;
-  projectId?: number | null;
-  projectName?: string | null;
-  assigneeId?: number | null;
-  assigneeName?: string | null;
-  status: string;
-  priority: string;
-  dueDate?: string | null;
-  tipo: string;
-  categoria?: string | null;
-  checklistJson: string;
-  pacchettoContenuti?: string | null;
-  meseRiferimento?: string | null;
-  createdAt: string;
-  updatedAt: string;
 };
 
 // ─── Categories ─────────────────────────────────────────────────────────────
@@ -412,20 +387,24 @@ const EMPTY_FORM = {
 };
 
 export default function Tasks() {
-  const qc = useQueryClient();
   const { toast } = useToast();
-  const { activeClient } = useClientContext();
-  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
-  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
-  const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
-  const projectsQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
-  const { data: tasks, isLoading } = useListTasks(tasksQueryParams as any);
-  const { data: projects } = useListProjects(projectsQueryParams);
-  const { data: members } = useListTeamMembers();
-  const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
-  const deleteTask = useDeleteTask();
-  const listTasksKey = getListTasksQueryKey(tasksQueryParams as any);
+  const {
+    activeClient,
+    activeTemplate,
+    isLoading,
+    taskList,
+    memberList,
+    scopedProjectList,
+    scopedProjectIds,
+    hasScopedProjects,
+    createTask,
+    updateTask,
+    deleteTask,
+    listTasksKey,
+    applyTaskCacheUpdate,
+    addActivity,
+    queryClient: qc,
+  } = useTasks();
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -446,11 +425,6 @@ export default function Tasks() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const draggedTaskRef = useRef<number | null>(null);
-  const activeTemplate = useMemo(() => {
-    if (!activeClient?.id) return null;
-    const templateId = getClientOperationalTemplateId(activeClient.id);
-    return getOperationalTemplateById(templateId);
-  }, [activeClient?.id]);
   const detailTaskId = detailTask?.id ?? null;
   const {
     data: taskComments = [],
@@ -463,75 +437,6 @@ export default function Tasks() {
     isLoading: isActivityLoading,
     error: activityError,
   } = useTaskActivity(detailTaskId);
-
-  const addActivity = useCallback(async (taskId: number, action: string, entityName?: string) => {
-    try {
-      await portalFetch("/api/activity-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          entityType: "task",
-          entityId: taskId,
-          entityName,
-        }),
-      });
-      await qc.invalidateQueries({ queryKey: taskActivityQueryKey(taskId) });
-    } catch {
-      // Non blocchiamo UX task se il log attivita fallisce
-    }
-  }, [qc]);
-
-  const projectList = useMemo(() => {
-    if (!projects) return [];
-    if (Array.isArray(projects)) return projects;
-    // @ts-expect-error runtime safety for unknown API shape
-    if (Array.isArray(projects.items)) return projects.items;
-    return [projects].filter(Boolean);
-  }, [projects]);
-  const memberList = useMemo(() => {
-    if (!members) return [];
-    if (Array.isArray(members)) return members;
-    if (Array.isArray((members as any).items)) return (members as any).items;
-    return [members as any].filter(Boolean);
-  }, [members]);
-  const taskList = useMemo(() => {
-    if (!tasks) return [];
-    if (Array.isArray(tasks)) return tasks as TaskRow[];
-    if (Array.isArray((tasks as any).items)) return (tasks as any).items as TaskRow[];
-    return [tasks as TaskRow].filter(Boolean);
-  }, [tasks]);
-
-  const scopedProjectList = useMemo(() => {
-    if (!activeClient) return projectList;
-    const activeName = activeClient.name.trim().toLowerCase();
-    const byClientId = Number.isFinite(activeClientNumericId)
-      ? projectList.filter((p: any) => Number(p?.clientId) === activeClientNumericId)
-      : [];
-    const byClientName = projectList.filter(
-      (p: any) => String(p?.clientName ?? "").trim().toLowerCase() === activeName
-    );
-    const merged = [...byClientId, ...byClientName];
-    if (merged.length === 0) return projectList;
-    return merged.filter(
-      (p: any, index: number, arr: any[]) => arr.findIndex((x: any) => Number(x?.id) === Number(p?.id)) === index
-    );
-  }, [activeClient, activeClientNumericId, projectList]);
-
-  const scopedProjectIds = useMemo(
-    () => new Set(scopedProjectList.map((p: any) => Number(p?.id)).filter((id: number) => Number.isFinite(id))),
-    [scopedProjectList]
-  );
-  const hasScopedProjects = activeClient != null && scopedProjectIds.size > 0;
-
-  const applyTaskCacheUpdate = useCallback((updater: (list: TaskRow[]) => TaskRow[]) => {
-    qc.setQueryData(listTasksKey, (prev: any) => {
-      if (!prev) return prev;
-      if (Array.isArray(prev)) return updater(prev as TaskRow[]);
-      if (Array.isArray(prev?.items)) return { ...prev, items: updater(prev.items as TaskRow[]) };
-      return prev;
-    });
-  }, [qc, listTasksKey]);
 
   const handleCategoriaChange = useCallback((cat: string) => {
     setForm((f) => ({ ...f, categoria: cat }));
@@ -589,6 +494,18 @@ export default function Tasks() {
       return prioA - prioB;
     });
   }, [taskList, hasScopedProjects, scopedProjectIds, search, filterStatus, filterPriority, filterTipo, filterCategory, filterProject, filterAssignee, filterDateFrom, filterDateTo]);
+  const hasActiveFilters =
+    !!(
+      filterProject ||
+      filterAssignee ||
+      filterDateFrom ||
+      filterDateTo ||
+      filterStatus ||
+      filterPriority ||
+      filterTipo ||
+      filterCategory ||
+      search
+    );
 
   useEffect(() => {
     if (!filterProject) return;
@@ -995,59 +912,44 @@ export default function Tasks() {
           </div>
         )}
 
-        {/* Filters */}
-        <div className="mb-3 flex items-center justify-between md:hidden">
-          <button
-            onClick={() => setShowMobileFilters((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm"
-          >
-            <SlidersHorizontal size={14} />
-            {showMobileFilters ? "Nascondi filtri" : "Mostra filtri"}
-          </button>
-          <span className="text-xs text-muted-foreground">{filtered.length} risultati</span>
-        </div>
-        <div className={cn("mb-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3", !showMobileFilters && "hidden md:grid")}>
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input className="w-full pl-9 pr-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Cerca task..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}>
-            <option value="">Tutti i tipi</option>
-            <option value="semplice">Semplice</option>
-            <option value="avanzata">Avanzata</option>
-          </select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-            <option value="">Tutte le categorie</option>
-            {CATEGORIE.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="">Tutti gli stati</option>
-            {Object.entries(TASK_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)}>
-            <option value="">Tutte le priorita</option>
-            {Object.entries(PRIORITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
-            <option value="">Tutti i progetti</option>
-            {scopedProjectList.map((p: any) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-          </select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
-            <option value="">Tutti gli assegnatari</option>
-            {memberList.map((m: any) => <option key={m.id} value={String(m.id)}>{m.name} {(m as any).surname}</option>)}
-          </select>
-          <div className="flex items-center gap-1.5">
-            <CalendarDays size={14} className="text-muted-foreground shrink-0" />
-            <input type="date" className="px-2 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} title="Da data" />
-            <span className="text-xs text-muted-foreground">-</span>
-            <input type="date" className="px-2 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} title="A data" />
-          </div>
-          {(filterProject || filterAssignee || filterDateFrom || filterDateTo || filterStatus || filterPriority || filterTipo || filterCategory || search) && (
-            <button onClick={() => { setSearch(""); setFilterStatus(""); setFilterPriority(""); setFilterTipo(""); setFilterCategory(""); setFilterProject(""); setFilterAssignee(""); setFilterDateFrom(""); setFilterDateTo(""); }} className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground border border-input rounded-lg bg-background flex items-center gap-1">
-              <X size={12} /> Azzera filtri
-            </button>
-          )}
-        </div>
+        <TaskFilters
+          filteredCount={filtered.length}
+          showMobileFilters={showMobileFilters}
+          onToggleMobileFilters={() => setShowMobileFilters((v) => !v)}
+          search={search}
+          onSearchChange={setSearch}
+          filterTipo={filterTipo}
+          onFilterTipoChange={setFilterTipo}
+          filterCategory={filterCategory}
+          onFilterCategoryChange={setFilterCategory}
+          categories={CATEGORIE}
+          filterStatus={filterStatus}
+          onFilterStatusChange={setFilterStatus}
+          filterPriority={filterPriority}
+          onFilterPriorityChange={setFilterPriority}
+          filterProject={filterProject}
+          onFilterProjectChange={setFilterProject}
+          projectOptions={scopedProjectList as Array<{ id: number | string; name: string }>}
+          filterAssignee={filterAssignee}
+          onFilterAssigneeChange={setFilterAssignee}
+          assigneeOptions={memberList as Array<{ id: number | string; name: string; surname?: string | null }>}
+          filterDateFrom={filterDateFrom}
+          onFilterDateFromChange={setFilterDateFrom}
+          filterDateTo={filterDateTo}
+          onFilterDateToChange={setFilterDateTo}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={() => {
+            setSearch("");
+            setFilterStatus("");
+            setFilterPriority("");
+            setFilterTipo("");
+            setFilterCategory("");
+            setFilterProject("");
+            setFilterAssignee("");
+            setFilterDateFrom("");
+            setFilterDateTo("");
+          }}
+        />
 
         {selectedTaskIds.length > 0 && (
           <div className="fixed bottom-4 left-4 right-4 md:static md:mb-4 md:left-auto md:right-auto z-40 md:z-auto">
@@ -1105,58 +1007,21 @@ export default function Tasks() {
                   <div className="space-y-2">
                     {colTasks.map((t) => {
                       const task = t as TaskRow;
-                      const isAvanzata = task.tipo === "avanzata";
-                      const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
-                      const { pct } = calcProgress(items);
                       return (
-                        <div
+                        <TaskCard
                           key={task.id}
-                          draggable
+                          task={task}
                           onDragStart={() => { draggedTaskRef.current = task.id; }}
                           onDragEnd={() => { draggedTaskRef.current = null; }}
-                          className="bg-card border border-card-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
-                        >
-                          <div className="mb-2">
-                            <input
-                              type="checkbox"
-                              checked={selectedTaskIds.includes(task.id)}
-                              onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
-                              onClick={(e) => e.stopPropagation()}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              className="h-4 w-4 accent-primary"
-                              aria-label={`Seleziona task ${task.title}`}
-                            />
-                          </div>
-                          <p onClick={() => handleOpenEdit(task)} className="text-sm font-medium cursor-pointer hover:text-primary transition-colors line-clamp-2">{task.title}</p>
-                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", task.tipo === "avanzata" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
-                              {task.tipo === "avanzata" ? "Avanzata" : "Semplice"}
-                            </span>
-                            {task.tipo === "avanzata" && task.categoria && (
-                              <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", CATEGORIA_COLORS[task.categoria] ?? "bg-gray-100 text-gray-600")}>
-                                {task.categoria}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span>
-                            {task.assigneeName && (
-                              <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                                <span className="w-4 h-4 rounded-full bg-primary/10 text-primary inline-flex items-center justify-center font-semibold">
-                                  {task.assigneeName.charAt(0).toUpperCase()}
-                                </span>
-                                {task.assigneeName}
-                              </span>
-                            )}
-                            {task.dueDate && <span className={cn("text-[10px] ml-auto", isOverdue(task.dueDate, task.status) ? "text-red-600 font-semibold" : "text-muted-foreground")}>{formatDate(task.dueDate)}</span>}
-                          </div>
-                          {isAvanzata && (
-                            <div className="mt-2">
-                              <ProgressBar pct={pct} />
-                              <p className="text-[10px] text-muted-foreground mt-1">{calcProgress(items).done}/{calcProgress(items).total} completati</p>
-                            </div>
-                          )}
-                        </div>
+                          selected={selectedTaskIds.includes(task.id)}
+                          onToggleSelection={(checked) => toggleTaskSelection(task.id, checked)}
+                          onOpenEdit={() => handleOpenEdit(task)}
+                          parseChecklist={parseChecklist}
+                          calcProgress={calcProgress}
+                          ProgressBar={ProgressBar}
+                          isOverdue={isOverdue}
+                          categoryColors={CATEGORIA_COLORS}
+                        />
                       );
                     })}
                   </div>
@@ -1165,262 +1030,44 @@ export default function Tasks() {
             })}
           </div>
         ) : (
-          <div className="bg-card border border-card-border rounded-xl">
-            <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-card-border bg-muted/30">
-                  <th className="px-3 py-2 text-left">
-                    <input
-                      type="checkbox"
-                      checked={allTasksSelected}
-                      onChange={(e) => toggleSelectAllTasks(e.target.checked)}
-                      className="h-4 w-4 accent-primary"
-                      aria-label="Seleziona tutti i task filtrati"
-                    />
-                  </th>
-                  <th className="px-3 py-2 text-left">Title</th>
-                  <th className="px-3 py-2 text-left">Type</th>
-                  <th className="px-3 py-2 text-left">Category</th>
-                  <th className="px-3 py-2 text-left">Priority</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Assigned to</th>
-                  <th className="px-3 py-2 text-left">Due date</th>
-                  <th className="px-3 py-2 text-left">Progress</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((task) => {
-                  const isAvanzata = task.tipo === "avanzata";
-                  const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
-                  const { done, total, pct } = calcProgress(items);
-                  return (
-                    <tr key={task.id} className="border-b border-card-border/50">
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTaskIds.includes(task.id)}
-                          onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
-                          className="h-4 w-4 accent-primary"
-                          aria-label={`Seleziona task ${task.title}`}
-                        />
-                      </td>
-                      <td className="px-3 py-2 max-w-[280px]">
-                        <button onClick={() => handleOpenEdit(task as TaskRow)} className="font-medium hover:text-primary text-left truncate">
-                          {task.title}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={cn("text-[11px] px-1.5 py-0.5 rounded-full font-medium", isAvanzata ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
-                          {isAvanzata ? "Avanzata" : "Semplice"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{task.categoria ?? "—"}</td>
-                      <td className="px-3 py-2"><span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span></td>
-                      <td className="px-3 py-2"><span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", TASK_STATUS_COLORS[task.status])}>{TASK_STATUS_LABELS[task.status]}</span></td>
-                      <td className="px-3 py-2">{task.assigneeName ?? "—"}</td>
-                      <td className={cn("px-3 py-2", isOverdue(task.dueDate, task.status) ? "text-red-600 font-semibold" : "")}>{task.dueDate ? formatDate(task.dueDate) : "—"}</td>
-                      <td className="px-3 py-2 min-w-[130px]">
-                        {isAvanzata ? (
-                          <div>
-                            <ProgressBar pct={pct} />
-                            <span className="text-[11px] text-muted-foreground">{done}/{total}</span>
-                          </div>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleOpenEdit(task as TaskRow)} className="p-1.5 text-muted-foreground hover:text-foreground" title="Modifica"><Pencil size={14} /></button>
-                          {isAvanzata && <button onClick={() => handleOpenDetail(task as TaskRow)} className="p-1.5 text-primary/70 hover:text-primary" title="Dettaglio"><ListChecks size={14} /></button>}
-                          <button onClick={() => handleDelete(task.id)} className="p-1.5 text-muted-foreground hover:text-destructive" title="Elimina"><Trash2 size={14} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-            <div className="md:hidden divide-y divide-card-border/70">
-              {filtered.map((task) => {
-                const isAvanzata = task.tipo === "avanzata";
-                const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
-                const { done, total, pct } = calcProgress(items);
-                return (
-                  <div key={task.id} className="p-3">
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTaskIds.includes(task.id)}
-                        onChange={(e) => toggleTaskSelection(task.id, e.target.checked)}
-                        className="mt-1 h-4 w-4 accent-primary"
-                        aria-label={`Seleziona task ${task.title}`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <button onClick={() => handleOpenEdit(task as TaskRow)} className="font-medium text-left break-words hover:text-primary">
-                          {task.title}
-                        </button>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", isAvanzata ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
-                            {isAvanzata ? "Avanzata" : "Semplice"}
-                          </span>
-                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span>
-                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", TASK_STATUS_COLORS[task.status])}>{TASK_STATUS_LABELS[task.status]}</span>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-                          <span>Assegnato: {task.assigneeName ?? "—"}</span>
-                          <span>Scadenza: {task.dueDate ? formatDate(task.dueDate) : "—"}</span>
-                        </div>
-                        {isAvanzata && (
-                          <div className="mt-2">
-                            <ProgressBar pct={pct} />
-                            <span className="text-[11px] text-muted-foreground">{done}/{total}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2 flex items-center justify-end gap-1">
-                      <button onClick={() => handleOpenEdit(task as TaskRow)} className="p-2 text-muted-foreground hover:text-foreground" title="Modifica"><Pencil size={15} /></button>
-                      {isAvanzata && <button onClick={() => handleOpenDetail(task as TaskRow)} className="p-2 text-primary/70 hover:text-primary" title="Dettaglio"><ListChecks size={15} /></button>}
-                      <button onClick={() => handleDelete(task.id)} className="p-2 text-muted-foreground hover:text-destructive" title="Elimina"><Trash2 size={15} /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <TaskList
+            filtered={filtered}
+            selectedTaskIds={selectedTaskIds}
+            toggleTaskSelection={toggleTaskSelection}
+            allTasksSelected={allTasksSelected}
+            toggleSelectAllTasks={toggleSelectAllTasks}
+            parseChecklist={parseChecklist}
+            calcProgress={calcProgress}
+            isOverdue={isOverdue}
+            handleOpenEdit={handleOpenEdit}
+            handleOpenDetail={handleOpenDetail}
+            handleDelete={handleDelete}
+            ProgressBar={ProgressBar}
+          />
         )}
       </div>
 
-      {/* Task detail slide-in panel */}
-      {detailTask && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setDetailTask(null)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-2xl bg-card border-l border-card-border shadow-2xl overflow-y-auto">
-            <div className="p-5 border-b border-card-border flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Task Detail</p>
-                <h3 className="font-semibold text-lg">{detailTask.title}</h3>
-              </div>
-              <button onClick={() => setDetailTask(null)} className="p-1.5 hover:bg-muted rounded-lg"><X size={16} /></button>
-            </div>
-            <div className="p-5 space-y-5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Stato</label>
-                  <select
-                    className="w-full mt-1 px-2.5 py-2 border border-input rounded-lg bg-background text-sm"
-                    value={detailTask.status}
-                    onChange={(e) => {
-                      const status = e.target.value;
-                      setDetailTask({ ...detailTask, status });
-                      handleStatusChange(detailTask.id, status);
-                    }}
-                  >
-                    {Object.entries(TASK_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Priorità</label>
-                  <select
-                    className="w-full mt-1 px-2.5 py-2 border border-input rounded-lg bg-background text-sm"
-                    value={detailTask.priority}
-                    onChange={(e) => {
-                      const priority = e.target.value;
-                      setDetailTask({ ...detailTask, priority });
-                      updateTask.mutate({ id: detailTask.id, data: { priority } }, { onSuccess: () => qc.invalidateQueries({ queryKey: listTasksKey }) });
-                      void addActivity(detailTask.id, `Priorità cambiata in ${PRIORITY_LABELS[priority] ?? priority}`, detailTask.title);
-                    }}
-                  >
-                    {Object.entries(PRIORITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {detailTask.tipo === "avanzata" && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <ListChecks size={14} className="text-primary" />
-                    <p className="text-sm font-semibold">Checklist</p>
-                  </div>
-                  <div className="space-y-1 max-h-60 overflow-y-auto border border-card-border rounded-lg p-2">
-                    {parseChecklist(detailTask.checklistJson).map((item) => (
-                      <label key={item.id} className="flex items-start gap-2 text-sm py-1">
-                        <input
-                          type="checkbox"
-                          checked={item.completato}
-                          onChange={() => handleToggleChecklistItem(detailTask, item.id)}
-                          className="mt-0.5"
-                        />
-                        <span className={cn(item.completato && "line-through text-muted-foreground")}>
-                          {item.gruppo ? `${item.gruppo}: ` : ""}{item.testo}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity size={14} className="text-primary" />
-                  <p className="text-sm font-semibold">Activity log</p>
-                </div>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                  {isActivityLoading && <p className="text-xs text-muted-foreground">Caricamento attività...</p>}
-                  {activityError && <p className="text-xs text-destructive">Impossibile caricare attività task.</p>}
-                  {taskActivity.map((a) => (
-                    <div key={a.id} className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5">
-                      <span className="text-foreground">{a.action}</span> · {formatDate(a.createdAt)}
-                    </div>
-                  ))}
-                  {!isActivityLoading && !activityError && taskActivity.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Nessuna attività</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <MessageSquare size={14} className="text-primary" />
-                  <p className="text-sm font-semibold">Comments</p>
-                </div>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    className="flex-1 px-2.5 py-2 border border-input rounded-lg bg-background text-sm"
-                    placeholder="Scrivi un commento..."
-                    value={commentDraft}
-                    onChange={(e) => setCommentDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleAddComment(); }}
-                  />
-                  <button
-                    onClick={handleAddComment}
-                    disabled={addTaskComment.isPending}
-                    className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-60"
-                  >
-                    {addTaskComment.isPending ? "Invio..." : "Invia"}
-                  </button>
-                </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {isCommentsLoading && <p className="text-xs text-muted-foreground">Caricamento commenti...</p>}
-                  {commentsError && <p className="text-xs text-destructive">Impossibile caricare i commenti del task.</p>}
-                  {taskComments.map((c) => (
-                    <div key={c.id} className="bg-muted/40 rounded-lg px-3 py-2">
-                      <p className="text-xs font-medium">{c.authorName}</p>
-                      <p className="text-sm">{c.content}</p>
-                      <p className="text-[11px] text-muted-foreground">{formatDate(c.createdAt)}</p>
-                    </div>
-                  ))}
-                  {!isCommentsLoading && !commentsError && taskComments.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Nessun commento</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TaskDetail
+        detailTask={detailTask}
+        setDetailTask={setDetailTask}
+        handleStatusChange={handleStatusChange}
+        updateTask={updateTask}
+        queryClient={qc}
+        listTasksKey={listTasksKey}
+        addActivity={addActivity}
+        parseChecklist={parseChecklist}
+        handleToggleChecklistItem={handleToggleChecklistItem}
+        taskActivity={taskActivity}
+        isActivityLoading={isActivityLoading}
+        activityError={activityError}
+        commentDraft={commentDraft}
+        setCommentDraft={setCommentDraft}
+        handleAddComment={handleAddComment}
+        addTaskComment={addTaskComment}
+        taskComments={taskComments}
+        isCommentsLoading={isCommentsLoading}
+        commentsError={commentsError}
+      />
     </Layout>
   );
 }

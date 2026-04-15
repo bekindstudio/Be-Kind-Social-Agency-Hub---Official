@@ -10,7 +10,10 @@ import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 import { AutoSaveProvider } from "@/context/AutoSaveContext";
-import { ClientProvider, useClientContext } from "@/context/ClientContext";
+import { useClientContext } from "@/context/ClientContext";
+import { ClientCoreProvider } from "@/context/ClientCoreContext";
+import { EditorialProvider } from "@/context/EditorialContext";
+import { BriefProvider } from "@/context/BriefContext";
 import { Layout } from "@/components/layout/Layout";
 
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -250,17 +253,21 @@ function ShellWithSession() {
     <QueryClientProvider client={queryClient}>
       <AutoSaveProvider>
         <SessionQueryInvalidator />
-        <ClientProvider>
-          <AiChatProvider>
-            <TooltipProvider>
-              <ErrorBoundary>
-                <Router />
-              </ErrorBoundary>
-              <Toaster />
-            </TooltipProvider>
-            <AuthenticatedAiWidgets />
-          </AiChatProvider>
-        </ClientProvider>
+        <ClientCoreProvider>
+          <EditorialProvider>
+            <BriefProvider>
+              <AiChatProvider>
+                <TooltipProvider>
+                  <ErrorBoundary>
+                    <Router />
+                  </ErrorBoundary>
+                  <Toaster />
+                </TooltipProvider>
+                <AuthenticatedAiWidgets />
+              </AiChatProvider>
+            </BriefProvider>
+          </EditorialProvider>
+        </ClientCoreProvider>
       </AutoSaveProvider>
     </QueryClientProvider>
   );

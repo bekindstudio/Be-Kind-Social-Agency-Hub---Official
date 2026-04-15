@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import type { ReportSectionFlags } from "@/components/tools/reports/ReportPreview";
 import type { SavedReport } from "@/components/tools/reports/ReportHistory";
@@ -26,8 +27,33 @@ function monthLabel(value: string): string {
   return date.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 }
 
-function storageKey(clientId: string): string {
-  return `agency_hub_reports_${clientId}`;
+interface ReportHistoryApiRow {
+  id: number | string;
+  clientId: number | string;
+  period?: string | null;
+  periodLabel?: string | null;
+  createdAt?: string | null;
+  noteAggiuntive?: string | null;
+  strategiaProssimoPeriodo?: string | null;
+  riepilogoEsecutivo?: string | null;
+  analisiInsights?: string | null;
+}
+
+function toSavedReport(row: ReportHistoryApiRow): SavedReport {
+  const sections: string[] = [];
+  if (row.riepilogoEsecutivo) sections.push("overview");
+  if (row.analisiInsights) sections.push("performance");
+  if (row.strategiaProssimoPeriodo) sections.push("nextPlan");
+  if (row.noteAggiuntive) sections.push("strategicNotes");
+
+  return {
+    id: String(row.id),
+    clientId: String(row.clientId),
+    period: row.periodLabel ?? row.period ?? "Report",
+    generatedAt: row.createdAt ?? new Date().toISOString(),
+    sections: sections.length > 0 ? sections : ["overview"],
+    notes: row.noteAggiuntive ?? row.strategiaProssimoPeriodo ?? "",
+  };
 }
 
 const sectionLabels: Record<keyof ReportSectionFlags, string> = {
@@ -75,6 +101,7 @@ const quickPresets = [
 export default function ReportsPage() {
   const { activeClient, analytics, posts } = useClientContext();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [introMessage, setIntroMessage] = useState("Nel periodo analizzato abbiamo mantenuto una traiettoria positiva sui KPI principali.");
@@ -84,15 +111,7 @@ export default function ReportsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportAnalytics, setReportAnalytics] = useState<ClientAnalytics | null>(null);
-  const [history, setHistory] = useState<SavedReport[]>(() => {
-    if (!activeClient?.id) return [];
-    try {
-      const raw = localStorage.getItem(storageKey(activeClient.id));
-      return raw ? (JSON.parse(raw) as SavedReport[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [isFallbackData, setIsFallbackData] = useState(false);
 
   const [sections, setSections] = useState<ReportSectionFlags>({
     overview: true,
@@ -104,21 +123,10 @@ export default function ReportsPage() {
   });
 
   const meta = useMetaAnalytics(activeClient?.id ?? "", "30d");
-  useEffect(() => {
-    if (!activeClient?.id) {
-      setHistory([]);
-      return;
-    }
-    try {
-      const raw = localStorage.getItem(storageKey(activeClient.id));
-      setHistory(raw ? (JSON.parse(raw) as SavedReport[]) : []);
-    } catch {
-      setHistory([]);
-    }
-  }, [activeClient?.id]);
 
   useEffect(() => {
     setReportAnalytics(null);
+    setIsFallbackData(false);
   }, [activeClient?.id, month]);
   const effectiveAnalytics = useMemo(() => {
     if (!analytics) return null;
@@ -181,6 +189,24 @@ export default function ReportsPage() {
     const raw = Number(activeClient?.id);
     return Number.isFinite(raw) && raw > 0 ? raw : null;
   }, [activeClient?.id]);
+
+  const historyQuery = useQuery({
+    queryKey: ["reports", "history", selectedClientNumericId],
+    enabled: selectedClientNumericId != null,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!selectedClientNumericId) return [] as SavedReport[];
+      const response = await portalFetch(`/api/reports?clientId=${selectedClientNumericId}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Impossibile caricare lo storico report");
+      }
+      const payload = (await response.json()) as ReportHistoryApiRow[];
+      return payload.map(toSavedReport);
+    },
+  });
+  const history = historyQuery.data ?? [];
 
   const selectedMonthRange = useMemo(() => {
     const [year, monthNum] = month.split("-").map(Number);
@@ -282,30 +308,10 @@ export default function ReportsPage() {
     if (!res.ok) {
       throw new Error(payload?.error ?? "Errore caricamento metriche Meta");
     }
+    setIsFallbackData(Boolean((payload as { mock?: boolean } | null)?.mock));
     const mapped = mapPayloadToAnalytics(payload);
     if (mapped) setReportAnalytics(mapped);
     return payload;
-  };
-
-  const persistHistory = (records: SavedReport[]) => {
-    if (!activeClient?.id) return;
-    localStorage.setItem(storageKey(activeClient.id), JSON.stringify(records));
-    setHistory(records);
-  };
-
-  const saveHistoryEntry = () => {
-    if (!activeClient?.id) return;
-    const entry: SavedReport = {
-      id: crypto.randomUUID(),
-      clientId: activeClient.id,
-      period: monthLabel(month),
-      generatedAt: new Date().toISOString(),
-      sections: Object.entries(sections)
-        .filter(([, enabled]) => enabled)
-        .map(([name]) => name),
-      notes: strategicNotes,
-    };
-    persistHistory([entry, ...history].slice(0, 20));
   };
 
   const handleGeneratePreview = async () => {
@@ -313,10 +319,9 @@ export default function ReportsPage() {
     setIsGeneratingReport(true);
     try {
       await syncAndFetchReportMetrics();
-      saveHistoryEntry();
       toast({ title: "Anteprima aggiornata", description: "Dati aggiornati dal token Meta collegato." });
     } catch (err: any) {
-      saveHistoryEntry();
+      setIsFallbackData(true);
       toast({
         title: "Anteprima salvata",
         description: err?.message ?? "Aggiornamento Meta non disponibile: uso dati locali.",
@@ -333,6 +338,7 @@ export default function ReportsPage() {
     try {
       const { exportReportPdf } = await import("@/components/tools/reports/PdfExporter");
       const serverMetrics = (await syncAndFetchReportMetrics().catch(() => null)) ?? buildFallbackMetrics();
+      setIsFallbackData(Boolean(serverMetrics?.mock));
       if (selectedClientNumericId) {
         await portalFetch("/api/reports", {
           method: "POST",
@@ -352,9 +358,11 @@ export default function ReportsPage() {
             noteAggiuntive: strategicNotes,
           }),
         });
+        await queryClient.invalidateQueries({
+          queryKey: ["reports", "history", selectedClientNumericId],
+        });
       }
       await exportReportPdf(previewRef.current, `report-${activeClient.name}-${month}.pdf`);
-      saveHistoryEntry();
       toast({ title: "Report scaricato", description: "Esportazione PDF completata con successo." });
     } catch {
       toast({ title: "Errore export PDF", description: "Non sono riuscito a esportare il report." });
@@ -569,6 +577,18 @@ export default function ReportsPage() {
             onSync={handleGeneratePreview}
             syncing={meta.isLoading || isGeneratingReport}
           />
+            {isFallbackData && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Dati non aggiornati — Sincronizza Meta per visualizzare metriche reali.
+                <button
+                  type="button"
+                  onClick={handleGeneratePreview}
+                  className="ml-2 inline-flex rounded-md border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100"
+                >
+                  Sincronizza Meta
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="rounded-xl border border-card-border bg-card px-3 py-2.5">
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Users size={12} /> Follower</p>

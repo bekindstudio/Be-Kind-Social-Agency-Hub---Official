@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RouteErrorFallback } from "@/components/shared/RouteErrorFallback";
 import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
@@ -148,101 +149,199 @@ function RouteLoadingFallback() {
   );
 }
 
+function RouteBoundary({
+  routeKey,
+  children,
+}: {
+  routeKey: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <ErrorBoundary key={routeKey} fallback={<RouteErrorFallback />}>
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 function Router() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <Switch>
-        <Route path="/" component={HomeRoute} />
-        {!authDisabled && <Route path="/sign-in" component={SignInPage} />}
-        {!authDisabled && <Route path="/auth/callback" component={AuthCallbackPage} />}
+        <Route path="/">
+          <RouteBoundary routeKey="/">
+            <HomeRoute />
+          </RouteBoundary>
+        </Route>
+        {!authDisabled && (
+          <Route path="/sign-in">
+            <RouteBoundary routeKey="/sign-in">
+              <SignInPage />
+            </RouteBoundary>
+          </Route>
+        )}
+        {!authDisabled && (
+          <Route path="/auth/callback">
+            <RouteBoundary routeKey="/auth/callback">
+              <AuthCallbackPage />
+            </RouteBoundary>
+          </Route>
+        )}
         <Route path="/dashboard">
-          <RequireAuth><Dashboard /></RequireAuth>
+          <RouteBoundary routeKey="/dashboard">
+            <RequireAuth><Dashboard /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/trash">
-          <RequireAuth><Trash /></RequireAuth>
+          <RouteBoundary routeKey="/trash">
+            <RequireAuth><Trash /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/clients">
-          <RequireAuth><Clients /></RequireAuth>
+          <RouteBoundary routeKey="/clients">
+            <RequireAuth><Clients /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/clients/:id">
-          {(params) => <RequireAuth><ClientDetail id={params.id} /></RequireAuth>}
+          {(params) => (
+            <RouteBoundary routeKey={`/clients/${params.id}`}>
+              <RequireAuth><ClientDetail id={params.id} /></RequireAuth>
+            </RouteBoundary>
+          )}
         </Route>
         <Route path="/projects">
-          <RequireAuth><Projects /></RequireAuth>
+          <RouteBoundary routeKey="/projects">
+            <RequireAuth><Projects /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/projects/:id">
-          {(params) => <RequireAuth><ProjectDetail id={params.id} /></RequireAuth>}
+          {(params) => (
+            <RouteBoundary routeKey={`/projects/${params.id}`}>
+              <RequireAuth><ProjectDetail id={params.id} /></RequireAuth>
+            </RouteBoundary>
+          )}
         </Route>
         <Route path="/tasks">
-          <RequireAuth><Tasks /></RequireAuth>
+          <RouteBoundary routeKey="/tasks">
+            <RequireAuth><Tasks /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/team">
-          <RequireAuth><Team /></RequireAuth>
+          <RouteBoundary routeKey="/team">
+            <RequireAuth><Team /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/chat">
-          <RequireAuth><Chat /></RequireAuth>
+          <RouteBoundary routeKey="/chat">
+            <RequireAuth><Chat /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/files">
-          <RequireAuth><Files /></RequireAuth>
+          <RouteBoundary routeKey="/files">
+            <RequireAuth><Files /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/quotes">
-          <RequireAuth><Quotes /></RequireAuth>
+          <RouteBoundary routeKey="/quotes">
+            <RequireAuth><Quotes /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/contracts/new">
-          <RequireAuth><ContractsNew /></RequireAuth>
+          <RouteBoundary routeKey="/contracts/new">
+            <RequireAuth><ContractsNew /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/contracts/templates">
-          <RequireAuth><ContractsTemplates /></RequireAuth>
+          <RouteBoundary routeKey="/contracts/templates">
+            <RequireAuth><ContractsTemplates /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/contracts/classic">
-          <RequireAuth><ContractsClassic /></RequireAuth>
+          <RouteBoundary routeKey="/contracts/classic">
+            <RequireAuth><ContractsClassic /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/contracts">
-          <RequireAuth><Contracts /></RequireAuth>
+          <RouteBoundary routeKey="/contracts">
+            <RequireAuth><Contracts /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/reports">
-          <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
+          <RouteBoundary routeKey="/reports">
+            <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/ai-assistant">
-          <RequireAuth><AiAssistant /></RequireAuth>
+          <RouteBoundary routeKey="/ai-assistant">
+            <RequireAuth><AiAssistant /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/settings">
-          <RequireAuth><Settings /></RequireAuth>
+          <RouteBoundary routeKey="/settings">
+            <RequireAuth><Settings /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools">
-          <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+          <RouteBoundary routeKey="/tools">
+            <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/brief">
-          <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/brief">
+            <RequireAuth><RequireActiveClient><BriefPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/piano-editoriale/:id">
-          {(params) => <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>}
+          {(params) => (
+            <RouteBoundary routeKey={`/tools/piano-editoriale/${params.id}`}>
+              <RequireAuth><RequireActiveClient><EditorialPlanBuilder id={params.id} /></RequireActiveClient></RequireAuth>
+            </RouteBoundary>
+          )}
         </Route>
         <Route path="/tools/time-tracker">
-          <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+          <RouteBoundary routeKey="/tools/time-tracker">
+            <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/calendar">
-          <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/calendar">
+            <RequireAuth><RequireActiveClient><CalendarPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/events">
-          <RequireAuth><RequireActiveClient><EventsPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/events">
+            <RequireAuth><RequireActiveClient><EventsPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/competitors">
-          <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/competitors">
+            <RequireAuth><RequireActiveClient><CompetitorsPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/analytics">
-          <RequireAuth><RequireActiveClient><AnalyticsPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/analytics">
+            <RequireAuth><RequireActiveClient><AnalyticsPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/reports">
-          <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/reports">
+            <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/caption-ai">
-          <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/caption-ai">
+            <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
         <Route path="/tools/content-ideas">
-          <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
+          <RouteBoundary routeKey="/tools/content-ideas">
+            <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
+          </RouteBoundary>
         </Route>
-        <Route component={NotFound} />
+        <Route>
+          <RouteBoundary routeKey="/not-found">
+            <NotFound />
+          </RouteBoundary>
+        </Route>
       </Switch>
     </Suspense>
   );

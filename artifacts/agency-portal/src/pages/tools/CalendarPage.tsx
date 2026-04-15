@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { useClientContext } from "@/context/ClientContext";
@@ -10,6 +11,8 @@ import { WeekView } from "@/components/tools/calendar/WeekView";
 import { ListView } from "@/components/tools/calendar/ListView";
 import { PostDrawer } from "@/components/tools/calendar/PostDrawer";
 import { NewPostModal } from "@/components/tools/calendar/NewPostModal";
+import { useToast } from "@/hooks/use-toast";
+import { portalFetch } from "@workspace/api-client-react";
 
 type CalendarView = "month" | "week" | "list";
 
@@ -82,6 +85,8 @@ export function groupPostsByDate(posts: EditorialPost[]): Record<string, Editori
 
 export default function CalendarPage() {
   const { activeClient, posts, addPost, updatePost, deletePost } = useClientContext();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [view, setView] = useState<CalendarView>(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "list" : "month"));
   const [cursor, setCursor] = useState<Date>(() => new Date());
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
@@ -91,6 +96,58 @@ export default function CalendarPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [newPostDate, setNewPostDate] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
+  const publishPost = useMutation({
+    mutationFn: async (data: {
+      postId: string;
+      clientId: string;
+      caption: string;
+      mediaUrls: string[];
+      platform: "instagram" | "facebook";
+      scheduledTime?: string;
+    }) => {
+      const response = await portalFetch("/api/meta/publish", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error ?? "META_PUBLISH_FAILED"));
+      }
+      return payload as { metaPostId?: string; publishedAt?: string };
+    },
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: ["clients", variables.clientId, "posts"],
+      });
+      setSelectedPost((prev) =>
+        prev && prev.id === variables.postId
+          ? { ...prev, status: "published", updatedAt: new Date().toISOString() }
+          : prev,
+      );
+      toast({
+        title: "Post pubblicato su Meta",
+        description: "La pubblicazione è stata completata con successo.",
+      });
+    },
+    onError: (err) => {
+      const code = err instanceof Error ? err.message : "META_PUBLISH_FAILED";
+      const message =
+        code === "META_ACCOUNT_NOT_LINKED"
+          ? "Nessun account Meta collegato: vai nelle Impostazioni Meta."
+          : code === "META_TOKEN_MISSING" || code === "TOKEN_EXPIRED"
+            ? "Token Meta non valido o scaduto: aggiorna la connessione nelle Impostazioni."
+            : code === "POST_NOT_APPROVED"
+              ? "Puoi pubblicare solo post approvati."
+              : "Errore durante la pubblicazione su Meta.";
+      toast({
+        title: "Pubblicazione non riuscita",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
   const activeTemplate = useMemo(() => {
     if (!activeClient?.id) return null;
     const templateId = getClientOperationalTemplateId(activeClient.id);
@@ -302,6 +359,19 @@ export default function CalendarPage() {
           d.setDate(d.getDate() + 7);
           addPost({ ...post, scheduledDate: d.toISOString(), status: "draft" });
         }}
+        onPublishNow={(post) => {
+          if (!activeClient?.id) return;
+          if (post.platform !== "instagram" && post.platform !== "facebook") return;
+          publishPost.mutate({
+            postId: post.id,
+            clientId: activeClient.id,
+            caption: post.caption,
+            mediaUrls: post.mediaUrls,
+            platform: post.platform,
+            scheduledTime: post.scheduledDate,
+          });
+        }}
+        isPublishing={publishPost.isPending}
       />
 
       <NewPostModal

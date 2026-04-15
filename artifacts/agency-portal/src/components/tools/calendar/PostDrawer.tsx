@@ -10,6 +10,8 @@ interface PostDrawerProps {
   onSave: (id: string, updates: Partial<EditorialPost>) => void;
   onDelete: (id: string) => void;
   onDuplicate: (post: EditorialPost) => void;
+  onPublishNow?: (post: EditorialPost) => void;
+  isPublishing?: boolean;
 }
 
 const statuses: EditorialPost["status"][] = ["draft", "pending_approval", "approved", "published"];
@@ -33,7 +35,16 @@ function timeValue(iso: string): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function PostDrawer({ open, post, onClose, onSave, onDelete, onDuplicate }: PostDrawerProps) {
+export function PostDrawer({
+  open,
+  post,
+  onClose,
+  onSave,
+  onDelete,
+  onDuplicate,
+  onPublishNow,
+  isPublishing = false,
+}: PostDrawerProps) {
   const [draftTag, setDraftTag] = useState("");
   const [local, setLocal] = useState<EditorialPost | null>(post);
 
@@ -106,7 +117,22 @@ export function PostDrawer({ open, post, onClose, onSave, onDelete, onDuplicate 
                     Rifiuta
                   </button>
                 )}
+                {local.status === "approved" && (local.platform === "instagram" || local.platform === "facebook") && onPublishNow && (
+                  <button
+                    type="button"
+                    onClick={() => onPublishNow(local)}
+                    disabled={isPublishing}
+                    className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 disabled:opacity-60"
+                  >
+                    {isPublishing ? "Pubblicazione..." : "Pubblica ora su Meta"}
+                  </button>
+                )}
               </div>
+              {local.status === "published" && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Pubblicato il {new Date(local.updatedAt).toLocaleDateString("it-IT")}
+                </p>
+              )}
             </section>
 
             <section className="space-y-2">

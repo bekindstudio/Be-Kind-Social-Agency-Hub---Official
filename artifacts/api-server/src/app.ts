@@ -44,6 +44,7 @@ const aiLimiter = rateLimit({
 });
 app.use("/api/ai", aiLimiter);
 app.use("/api/ai-chat", aiLimiter);
+app.use("/api/meta/publish", aiLimiter);
 
 const allowedOrigins = [
   "http://localhost:3000",

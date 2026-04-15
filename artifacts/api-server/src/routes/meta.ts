@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, socialAccountsTable, clientsTable } from "@workspace/db";
+import { db, socialAccountsTable, clientsTable, clientPostsTable } from "@workspace/db";
 import { readFile, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -18,6 +18,14 @@ const clientMetaAccountSchema = z.object({
   metaAccountId: z.string().trim().min(1),
   platform: z.enum(["instagram"]).default("instagram"),
 });
+const publishPostSchema = z.object({
+  postId: z.string().uuid(),
+  clientId: z.string().trim().min(1),
+  caption: z.string().default(""),
+  mediaUrls: z.array(z.string()).default([]),
+  platform: z.enum(["instagram", "facebook"]),
+  scheduledTime: z.string().datetime().optional(),
+});
 
 const AGENCY_CLIENT_ID = 0;
 
@@ -33,6 +41,44 @@ async function graphGet(path: string, token: string, params: Record<string, stri
   url.searchParams.set("access_token", token);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const metaError = parsed?.error ?? parsed ?? {};
+    const error = new Error(
+      String(metaError?.message ?? `Graph API error for ${path}: ${text}`),
+    ) as Error & {
+      code?: number;
+      type?: string;
+      fbtrace_id?: string;
+      graphPath?: string;
+    };
+    if (typeof metaError?.code === "number") error.code = metaError.code;
+    if (typeof metaError?.type === "string") error.type = metaError.type;
+    if (typeof metaError?.fbtrace_id === "string") error.fbtrace_id = metaError.fbtrace_id;
+    error.graphPath = path;
+    throw error;
+  }
+  return res.json() as Promise<any>;
+}
+
+async function graphPost(path: string, token: string, body: Record<string, string | undefined> = {}) {
+  const url = new URL(`https://graph.facebook.com/v19.0${path}`);
+  const payload = new URLSearchParams();
+  payload.set("access_token", token);
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === "string" && v.length > 0) payload.set(k, v);
+  }
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: payload.toString(),
+  });
   if (!res.ok) {
     const text = await res.text();
     let parsed: any = null;
@@ -699,6 +745,139 @@ router.post("/meta/disconnect-agency", async (_req, res): Promise<void> => {
     .where(eq(socialAccountsTable.clientId, AGENCY_CLIENT_ID));
   res.json({ success: true });
 });
+
+// POST /api/meta/publish — publish approved post to Meta
+router.post(
+  "/meta/publish",
+  validate(publishPostSchema),
+  async (req, res): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: "UNAUTHORIZED" });
+        return;
+      }
+
+      const payload = req.body as z.infer<typeof publishPostSchema>;
+      const numericClientId = Number(payload.clientId);
+      if (!Number.isFinite(numericClientId) || numericClientId <= 0) {
+        res.status(400).json({ error: "CLIENT_ID_INVALID" });
+        return;
+      }
+
+      const accessibleIds = await getAccessibleClientIds(userId);
+      if (accessibleIds !== "all" && !accessibleIds.includes(numericClientId)) {
+        res.status(403).json({ error: "CLIENT_ACCESS_DENIED" });
+        return;
+      }
+
+      const [post] = await db
+        .select()
+        .from(clientPostsTable)
+        .where(eq(clientPostsTable.id, payload.postId))
+        .limit(1);
+      if (!post || post.clientId !== numericClientId) {
+        res.status(404).json({ error: "POST_NOT_FOUND" });
+        return;
+      }
+      if (post.status !== "approved") {
+        res.status(400).json({ error: "POST_NOT_APPROVED" });
+        return;
+      }
+
+      const [client] = await db
+        .select()
+        .from(clientsTable)
+        .where(eq(clientsTable.id, numericClientId))
+        .limit(1);
+      if (!client) {
+        res.status(404).json({ error: "CLIENT_NOT_FOUND" });
+        return;
+      }
+
+      const agencyAccount = await getAgencyAccount();
+      if (!agencyAccount?.accessToken) {
+        res.status(400).json({
+          error: "META_TOKEN_MISSING",
+          message: "Token Meta agenzia non collegato",
+        });
+        return;
+      }
+
+      const token = await autoRenewTokenIfNeeded(agencyAccount);
+      const pages = Array.isArray(agencyAccount.pages) ? agencyAccount.pages : [];
+      const assignedPage = client.metaPageId
+        ? pages.find((page: any) => String(page?.id ?? "") === String(client.metaPageId))
+        : null;
+      const pageToken = typeof assignedPage?.accessToken === "string" && assignedPage.accessToken.length > 0
+        ? assignedPage.accessToken
+        : token;
+
+      let metaPostId = "";
+      if (payload.platform === "instagram") {
+        if (!client.metaIgAccountId) {
+          res.status(400).json({
+            error: "META_ACCOUNT_NOT_LINKED",
+            message: "Nessun account Instagram business collegato a questo cliente",
+          });
+          return;
+        }
+
+        const container = await graphPost(`/${client.metaIgAccountId}/media`, pageToken, {
+          caption: payload.caption,
+          image_url: payload.mediaUrls[0],
+        });
+        if (!container?.id) {
+          res.status(502).json({
+            error: "META_PUBLISH_FAILED",
+            message: "Container Instagram non valido",
+          });
+          return;
+        }
+
+        const published = await graphPost(`/${client.metaIgAccountId}/media_publish`, pageToken, {
+          creation_id: String(container.id),
+        });
+        metaPostId = String(published?.id ?? "");
+      } else {
+        if (!client.metaPageId) {
+          res.status(400).json({
+            error: "META_PAGE_NOT_LINKED",
+            message: "Nessuna pagina Facebook collegata a questo cliente",
+          });
+          return;
+        }
+        const published = await graphPost(`/${client.metaPageId}/feed`, pageToken, {
+          message: payload.caption,
+          link: payload.mediaUrls[0],
+        });
+        metaPostId = String(published?.id ?? "");
+      }
+
+      await db
+        .update(clientPostsTable)
+        .set({
+          status: "published",
+          updatedAt: new Date(),
+        })
+        .where(eq(clientPostsTable.id, payload.postId));
+
+      res.json({
+        success: true,
+        metaPostId,
+        publishedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      logger.error({ err }, "Publish post error");
+      const mapped = mapMetaError(err);
+      if (mapped.body?.error === "META_API_ERROR" || mapped.body?.error === "TOKEN_EXPIRED" || mapped.body?.error === "INSUFFICIENT_PERMISSIONS") {
+        res.status(mapped.status).json(mapped.body);
+        return;
+      }
+      res.status(500).json({ error: "SERVER_ERROR" });
+    }
+  },
+);
 
 // POST /api/meta/assign/:clientId — assign FB page, IG account, Ad account to a client
 router.post("/meta/assign/:clientId", async (req, res): Promise<void> => {

@@ -1,8 +1,34 @@
 import { AlertCircle, ChevronLeft, Loader2, Zap } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { cn } from "@/lib/utils";
+import type { ReportCreateForm } from "@/types/client";
 
-export function ReportCreate({ state }: { state: any }) {
+type ReportCreateView = "list" | "create" | "detail" | "edit";
+
+interface ReportClientOption {
+  id: number | string;
+  name: string;
+  metaPageId?: string | null;
+  googleAdsId?: string | null;
+}
+
+interface ReportCreateViewModel {
+  view: ReportCreateView;
+  clientList: ReportClientOption[];
+  createForm: ReportCreateForm;
+  setCreateForm: (updater: (form: ReportCreateForm) => ReportCreateForm) => void;
+  defaultMonth: string;
+  defaultQuarter: string;
+  now: Date;
+  TIPO_LABELS: Record<string, string>;
+  getPeriodLabel: (tipo: string, period: string) => string;
+  creating: boolean;
+  createError: string;
+  handleCreate: () => void;
+  setView: (view: ReportCreateView) => void;
+}
+
+export function ReportCreate({ state }: { state: ReportCreateViewModel }) {
   const {
     view,
     clientList,
@@ -21,7 +47,7 @@ export function ReportCreate({ state }: { state: any }) {
 
   if (view !== "create") return null;
 
-  const selectedClient = clientList.find((c: any) => String(c.id) === String(createForm.clientId)) as any;
+  const selectedClient = clientList.find((client) => String(client.id) === String(createForm.clientId));
   const metaConnected = !!selectedClient?.metaPageId;
   const googleConnected = !!selectedClient?.googleAdsId;
   const autoTitle = createForm.clientId
@@ -41,10 +67,10 @@ export function ReportCreate({ state }: { state: any }) {
         <div className="space-y-5">
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Cliente</label>
-            <select value={createForm.clientId} onChange={(e) => setCreateForm((f: any) => ({ ...f, clientId: e.target.value }))}
+            <select value={createForm.clientId} onChange={(e) => setCreateForm((form) => ({ ...form, clientId: e.target.value }))}
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
               <option value="">Seleziona un cliente...</option>
-              {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {clientList.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
           </div>
 
@@ -52,7 +78,7 @@ export function ReportCreate({ state }: { state: any }) {
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Tipo report</label>
             <div className="grid grid-cols-3 gap-2">
               {(["settimanale", "mensile", "trimestrale", "custom"] as const).map((t) => (
-                <button key={t} onClick={() => setCreateForm((f: any) => ({ ...f, tipo: t, period: t === "mensile" ? defaultMonth : t === "trimestrale" ? defaultQuarter : defaultMonth }))}
+                <button key={t} onClick={() => setCreateForm((form) => ({ ...form, tipo: t, period: t === "mensile" ? defaultMonth : t === "trimestrale" ? defaultQuarter : defaultMonth }))}
                   className={cn("py-2.5 rounded-xl text-sm font-medium border transition-all", createForm.tipo === t ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input hover:border-primary/50")}>
                   {TIPO_LABELS[t]}
                 </button>
@@ -63,11 +89,11 @@ export function ReportCreate({ state }: { state: any }) {
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Periodo</label>
             {createForm.tipo === "mensile" && (
-              <input type="month" value={createForm.period} onChange={(e) => setCreateForm((f: any) => ({ ...f, period: e.target.value }))}
+              <input type="month" value={createForm.period} onChange={(e) => setCreateForm((form) => ({ ...form, period: e.target.value }))}
                 className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
             )}
             {createForm.tipo === "trimestrale" && (
-              <select value={createForm.period} onChange={(e) => setCreateForm((f: any) => ({ ...f, period: e.target.value }))}
+              <select value={createForm.period} onChange={(e) => setCreateForm((form) => ({ ...form, period: e.target.value }))}
                 className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
                 {[1, 2, 3, 4].map((q) => {
                   const y = now.getFullYear();
@@ -80,9 +106,9 @@ export function ReportCreate({ state }: { state: any }) {
             )}
             {createForm.tipo === "custom" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input type="date" value={createForm.customFrom} onChange={(e) => setCreateForm((f: any) => ({ ...f, customFrom: e.target.value }))}
+                <input type="date" value={createForm.customFrom} onChange={(e) => setCreateForm((form) => ({ ...form, customFrom: e.target.value }))}
                   className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
-                <input type="date" value={createForm.customTo} onChange={(e) => setCreateForm((f: any) => ({ ...f, customTo: e.target.value }))}
+                <input type="date" value={createForm.customTo} onChange={(e) => setCreateForm((form) => ({ ...form, customTo: e.target.value }))}
                   className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
             )}
@@ -90,7 +116,7 @@ export function ReportCreate({ state }: { state: any }) {
 
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Titolo report</label>
-            <input value={createForm.title || autoTitle} onChange={(e) => setCreateForm((f: any) => ({ ...f, title: e.target.value }))}
+            <input value={createForm.title || autoTitle} onChange={(e) => setCreateForm((form) => ({ ...form, title: e.target.value }))}
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
 
@@ -111,25 +137,25 @@ export function ReportCreate({ state }: { state: any }) {
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
               Riepilogo esecutivo <span className="font-normal text-muted-foreground/60">(opzionale — compilato dall'AI se vuoto)</span>
             </label>
-            <textarea value={createForm.riepilogoEsecutivo} onChange={(e) => setCreateForm((f: any) => ({ ...f, riepilogoEsecutivo: e.target.value }))}
+            <textarea value={createForm.riepilogoEsecutivo} onChange={(e) => setCreateForm((form) => ({ ...form, riepilogoEsecutivo: e.target.value }))}
               rows={4} placeholder="Sintesi del periodo, highlights principali..."
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
           </div>
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Analisi e insights</label>
-            <textarea value={createForm.analisiInsights} onChange={(e) => setCreateForm((f: any) => ({ ...f, analisiInsights: e.target.value }))}
+            <textarea value={createForm.analisiInsights} onChange={(e) => setCreateForm((form) => ({ ...form, analisiInsights: e.target.value }))}
               rows={3} placeholder="Cosa ha funzionato, cosa migliorare..."
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
           </div>
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Strategia prossimo periodo</label>
-            <textarea value={createForm.strategiaProssimoPeriodo} onChange={(e) => setCreateForm((f: any) => ({ ...f, strategiaProssimoPeriodo: e.target.value }))}
+            <textarea value={createForm.strategiaProssimoPeriodo} onChange={(e) => setCreateForm((form) => ({ ...form, strategiaProssimoPeriodo: e.target.value }))}
               rows={3} placeholder="Azioni pianificate, obiettivi..."
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
           </div>
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">Note aggiuntive</label>
-            <textarea value={createForm.noteAggiuntive} onChange={(e) => setCreateForm((f: any) => ({ ...f, noteAggiuntive: e.target.value }))}
+            <textarea value={createForm.noteAggiuntive} onChange={(e) => setCreateForm((form) => ({ ...form, noteAggiuntive: e.target.value }))}
               rows={2} placeholder="Comunicazioni extra per il cliente..."
               className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
           </div>

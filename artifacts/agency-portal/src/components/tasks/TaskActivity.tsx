@@ -1,5 +1,6 @@
 import { Activity } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import type { TaskActivityItem } from "@/types/client";
 
 export function TaskActivity({
   isActivityLoading,
@@ -8,7 +9,7 @@ export function TaskActivity({
 }: {
   isActivityLoading: boolean;
   activityError: unknown;
-  taskActivity: any[];
+  taskActivity: TaskActivityItem[];
 }) {
   return (
     <div>

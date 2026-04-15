@@ -1,5 +1,8 @@
 import { ListChecks, Pencil, Trash2 } from "lucide-react";
 import { cn, PRIORITY_COLORS, PRIORITY_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS, formatDate } from "@/lib/utils";
+import { calcProgress } from "@/lib/taskUtils";
+import type { TaskRow } from "@/types/client";
+import type { ChecklistItem } from "@/components/tasks/TaskChecklist";
 
 export function TaskList({
   filtered,
@@ -8,23 +11,21 @@ export function TaskList({
   allTasksSelected,
   toggleSelectAllTasks,
   parseChecklist,
-  calcProgress,
   isOverdue,
   handleOpenEdit,
   handleOpenDetail,
   handleDelete,
   ProgressBar,
 }: {
-  filtered: any[];
+  filtered: TaskRow[];
   selectedTaskIds: number[];
   toggleTaskSelection: (id: number, checked: boolean) => void;
   allTasksSelected: boolean;
   toggleSelectAllTasks: (checked: boolean) => void;
-  parseChecklist: (json: string) => any[];
-  calcProgress: (items: any[]) => { done: number; total: number; pct: number };
+  parseChecklist: (json: string) => ChecklistItem[];
   isOverdue: (dueDate?: string | null, status?: string) => boolean;
-  handleOpenEdit: (task: any) => void;
-  handleOpenDetail: (task: any) => void;
+  handleOpenEdit: (task: TaskRow) => void;
+  handleOpenDetail: (task: TaskRow) => void;
   handleDelete: (id: number) => void;
   ProgressBar: React.ComponentType<{ pct: number; className?: string }>;
 }) {

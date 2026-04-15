@@ -1,4 +1,7 @@
 import { cn, PRIORITY_COLORS, PRIORITY_LABELS, formatDate } from "@/lib/utils";
+import { calcProgress } from "@/lib/taskUtils";
+import type { TaskRow } from "@/types/client";
+import type { ChecklistItem } from "@/components/tasks/TaskChecklist";
 
 export function TaskCard({
   task,
@@ -8,19 +11,17 @@ export function TaskCard({
   onToggleSelection,
   onOpenEdit,
   parseChecklist,
-  calcProgress,
   ProgressBar,
   isOverdue,
   categoryColors,
 }: {
-  task: any;
+  task: TaskRow;
   onDragStart: () => void;
   onDragEnd: () => void;
   selected: boolean;
   onToggleSelection: (checked: boolean) => void;
   onOpenEdit: () => void;
-  parseChecklist: (json: string) => any[];
-  calcProgress: (items: any[]) => { done: number; total: number; pct: number };
+  parseChecklist: (json: string) => ChecklistItem[];
   ProgressBar: React.ComponentType<{ pct: number; className?: string }>;
   isOverdue: (dueDate?: string | null, status?: string) => boolean;
   categoryColors: Record<string, string>;

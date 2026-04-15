@@ -13,26 +13,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getClientOperationalTemplateId, getOperationalTemplateById } from "@/lib/operationalTemplates";
 import { useClientContext } from "@/context/ClientContext";
 import { taskActivityQueryKey } from "@/hooks/useTaskActivity";
-
-export type TaskRow = {
-  id: number;
-  title: string;
-  description?: string | null;
-  projectId?: number | null;
-  projectName?: string | null;
-  assigneeId?: number | null;
-  assigneeName?: string | null;
-  status: string;
-  priority: string;
-  dueDate?: string | null;
-  tipo: string;
-  categoria?: string | null;
-  checklistJson: string;
-  pacchettoContenuti?: string | null;
-  meseRiferimento?: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+import { MESI } from "@/components/tasks/TaskChecklist";
+import type { TaskFormState } from "@/components/tasks/TaskForm";
+import type { TaskRow } from "@/types/client";
 
 export function useTasks() {
   const qc = useQueryClient();
@@ -88,16 +71,16 @@ export function useTasks() {
     if (!activeClient) return projectList;
     const activeName = activeClient.name.trim().toLowerCase();
     const byClientId = Number.isFinite(activeClientNumericId)
-      ? projectList.filter((p: any) => Number(p?.clientId) === activeClientNumericId)
+      ? projectList.filter((project: { clientId?: unknown }) => Number(project?.clientId) === activeClientNumericId)
       : [];
     const byClientName = projectList.filter(
-      (p: any) => String(p?.clientName ?? "").trim().toLowerCase() === activeName,
+      (project: { clientName?: unknown }) => String(project?.clientName ?? "").trim().toLowerCase() === activeName,
     );
     const merged = [...byClientId, ...byClientName];
     if (merged.length === 0) return projectList;
     return merged.filter(
-      (p: any, index: number, arr: any[]) =>
-        arr.findIndex((x: any) => Number(x?.id) === Number(p?.id)) === index,
+      (project: { id?: unknown }, index: number, arr: Array<{ id?: unknown }>) =>
+        arr.findIndex((current) => Number(current?.id) === Number(project?.id)) === index,
     );
   }, [activeClient, activeClientNumericId, projectList]);
 
@@ -105,7 +88,7 @@ export function useTasks() {
     () =>
       new Set(
         scopedProjectList
-          .map((p: any) => Number(p?.id))
+          .map((project: { id?: unknown }) => Number(project?.id))
           .filter((id: number) => Number.isFinite(id)),
       ),
     [scopedProjectList],
@@ -114,11 +97,14 @@ export function useTasks() {
 
   const applyTaskCacheUpdate = useCallback(
     (updater: (list: TaskRow[]) => TaskRow[]) => {
-      qc.setQueryData(listTasksKey, (prev: any) => {
+      qc.setQueryData(listTasksKey, (prev: unknown) => {
         if (!prev) return prev;
         if (Array.isArray(prev)) return updater(prev as TaskRow[]);
-        if (Array.isArray(prev?.items)) {
-          return { ...prev, items: updater(prev.items as TaskRow[]) };
+        if (typeof prev === "object" && prev != null && "items" in prev) {
+          const prevWithItems = prev as { items?: TaskRow[] };
+          if (Array.isArray(prevWithItems.items)) {
+            return { ...(prev as object), items: updater(prevWithItems.items) };
+          }
         }
         return prev;
       });
@@ -166,3 +152,18 @@ export function useTasks() {
     queryClient: qc,
   };
 }
+
+export const EMPTY_TASK_FORM: TaskFormState = {
+  title: "",
+  description: "",
+  projectId: "",
+  assigneeId: "",
+  status: "todo",
+  priority: "medium",
+  dueDate: "",
+  taskType: "semplice",
+  categoria: "Onboarding Nuovo Cliente",
+  meseRiferimento: MESI[new Date().getMonth()],
+  pacchettoContenuti: "8",
+  tipoReport: "Mensile",
+};

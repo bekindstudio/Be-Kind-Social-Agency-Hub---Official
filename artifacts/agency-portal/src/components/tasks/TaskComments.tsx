@@ -1,5 +1,10 @@
 import { MessageSquare } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import type { TaskComment } from "@/types/client";
+
+type AddTaskCommentMutation = {
+  isPending: boolean;
+};
 
 export function TaskComments({
   commentDraft,
@@ -13,8 +18,8 @@ export function TaskComments({
   commentDraft: string;
   setCommentDraft: (value: string) => void;
   handleAddComment: () => void;
-  addTaskComment: any;
-  taskComments: any[];
+  addTaskComment: AddTaskCommentMutation;
+  taskComments: TaskComment[];
   isCommentsLoading: boolean;
   commentsError: unknown;
 }) {

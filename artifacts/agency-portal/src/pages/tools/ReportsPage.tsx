@@ -1,15 +1,19 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import type { ReportSectionFlags } from "@/components/tools/reports/ReportPreview";
 import type { SavedReport } from "@/components/tools/reports/ReportHistory";
 import { useClientContext } from "@/context/ClientContext";
 import { useMetaAnalytics } from "@/hooks/useMetaAnalytics";
 import { useToast } from "@/hooks/use-toast";
+import { useReportsData } from "@/hooks/useReports";
 import { MetaConnectionBanner } from "@/components/shared/MetaConnectionBanner";
+import { ReportMetrics } from "@/components/tools/reports/ReportMetrics";
+import { ReportFilters } from "@/components/tools/reports/ReportFilters";
 import { portalFetch } from "@workspace/api-client-react";
 import type { ClientAnalytics } from "@/types/client";
-import { CalendarRange, Download, FileBarChart2, Sparkles, Wand2, Gauge, TrendingUp, Users, CalendarClock } from "lucide-react";
+import { buildFallbackMetrics, monthLabel } from "@/lib/reportUtils";
+import { Sparkles } from "lucide-react";
 
 const ReportPreview = lazy(async () => {
   const mod = await import("@/components/tools/reports/ReportPreview");
@@ -21,40 +25,6 @@ const ReportHistory = lazy(async () => {
   return { default: mod.ReportHistory };
 });
 
-function monthLabel(value: string): string {
-  const [year, month] = value.split("-");
-  const date = new Date(Number(year), Number(month) - 1, 1);
-  return date.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
-}
-
-interface ReportHistoryApiRow {
-  id: number | string;
-  clientId: number | string;
-  period?: string | null;
-  periodLabel?: string | null;
-  createdAt?: string | null;
-  noteAggiuntive?: string | null;
-  strategiaProssimoPeriodo?: string | null;
-  riepilogoEsecutivo?: string | null;
-  analisiInsights?: string | null;
-}
-
-function toSavedReport(row: ReportHistoryApiRow): SavedReport {
-  const sections: string[] = [];
-  if (row.riepilogoEsecutivo) sections.push("overview");
-  if (row.analisiInsights) sections.push("performance");
-  if (row.strategiaProssimoPeriodo) sections.push("nextPlan");
-  if (row.noteAggiuntive) sections.push("strategicNotes");
-
-  return {
-    id: String(row.id),
-    clientId: String(row.clientId),
-    period: row.periodLabel ?? row.period ?? "Report",
-    generatedAt: row.createdAt ?? new Date().toISOString(),
-    sections: sections.length > 0 ? sections : ["overview"],
-    notes: row.noteAggiuntive ?? row.strategiaProssimoPeriodo ?? "",
-  };
-}
 
 const sectionLabels: Record<keyof ReportSectionFlags, string> = {
   overview: "Panoramica metriche",
@@ -185,159 +155,26 @@ export default function ReportsPage() {
     [activeClient?.name, month, introMessage, nextGoals, strategicNotes, includeCompetitors, sections, selectedAnalytics, nextMonthPosts],
   );
 
-  const selectedClientNumericId = useMemo(() => {
-    const raw = Number(activeClient?.id);
-    return Number.isFinite(raw) && raw > 0 ? raw : null;
-  }, [activeClient?.id]);
-
-  const historyQuery = useQuery({
-    queryKey: ["reports", "history", selectedClientNumericId],
-    enabled: selectedClientNumericId != null,
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      if (!selectedClientNumericId) return [] as SavedReport[];
-      const response = await portalFetch(`/api/reports?clientId=${selectedClientNumericId}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Impossibile caricare lo storico report");
-      }
-      const payload = (await response.json()) as ReportHistoryApiRow[];
-      return payload.map(toSavedReport);
-    },
+  const {
+    selectedClientNumericId,
+    selectedMonthRange,
+    history,
+    syncAndFetchReportMetrics,
+    handleGeneratePreview,
+  } = useReportsData({
+    activeClientId: activeClient?.id,
+    month,
+    setReportAnalytics,
+    setIsFallbackData,
   });
-  const history = historyQuery.data ?? [];
-
-  const selectedMonthRange = useMemo(() => {
-    const [year, monthNum] = month.split("-").map(Number);
-    const start = new Date(year, (monthNum ?? 1) - 1, 1);
-    const end = new Date(year, monthNum ?? 1, 0);
-    return {
-      since: start.toISOString().slice(0, 10),
-      until: end.toISOString().slice(0, 10),
-    };
-  }, [month]);
-
-  const buildFallbackMetrics = () => ({
-    mock: true,
-    instagram: {
-      summary: {
-        followers: effectiveAnalytics?.followers ?? 0,
-        followerGrowth: effectiveAnalytics?.followersGrowth ?? 0,
-        reach: effectiveAnalytics?.reach ?? 0,
-        impressions: effectiveAnalytics?.impressions ?? 0,
-        engagementRate: effectiveAnalytics?.engagementRate ?? 0,
-        profileViews: effectiveAnalytics?.profileViews ?? 0,
-      },
-      topPosts: (effectiveAnalytics?.topPosts ?? []).map((post) => ({
-        id: post.id,
-        caption: post.caption,
-        mediaType: post.mediaType,
-        timestamp: post.timestamp,
-        likes: post.likeCount,
-        comments: post.commentsCount,
-        reach: post.reach,
-        impressions: 0,
-        engagementRate: post.engagementRate,
-      })),
-    },
-    metaAds: null,
-  });
-
-  const mapPayloadToAnalytics = (payload: any): ClientAnalytics | null => {
-    const ig = payload?.instagram;
-    if (!ig?.summary) return null;
-    const summary = ig.summary;
-    const labels: string[] = Array.isArray(ig.followerTrend?.labels) ? ig.followerTrend.labels : [];
-    const data: number[] = Array.isArray(ig.followerTrend?.data) ? ig.followerTrend.data : [];
-    const reachTotal = Number(summary.reach ?? 0);
-    const impressionsTotal = Number(summary.impressions ?? 0);
-    const dailyData = labels.map((label, index) => ({
-      date: label,
-      followers: Number(data[index] ?? summary.followers ?? 0),
-      reach: Math.round(reachTotal / Math.max(1, labels.length || 1)),
-      impressions: Math.round(impressionsTotal / Math.max(1, labels.length || 1)),
-      engagement: Number(summary.engagementRate ?? 0),
-    }));
-    const topPosts = (ig.topPosts ?? []).map((post: any, index: number) => ({
-      id: String(post.id ?? `report-post-${index}`),
-      caption: String(post.caption ?? post.description ?? ""),
-      mediaType: String(post.mediaType ?? post.type ?? "IMAGE"),
-      timestamp: String(post.timestamp ?? post.date ?? new Date().toISOString()),
-      likeCount: Number(post.likeCount ?? post.likes ?? 0),
-      commentsCount: Number(post.commentsCount ?? post.comments ?? 0),
-      reach: Number(post.reach ?? 0),
-      engagementRate: Number(post.engagementRate ?? post.engagement ?? 0),
-      thumbnailUrl: post.thumbnailUrl,
-    }));
-    return {
-      clientId: activeClient?.id ?? "",
-      period: "report",
-      followers: Number(summary.followers ?? 0),
-      followersPrevious: Math.max(0, Number(summary.followers ?? 0) - Number(summary.followerGrowth ?? 0)),
-      followersGrowth: Number(summary.followerGrowthPct ?? 0),
-      reach: reachTotal,
-      reachPrevious: 0,
-      impressions: impressionsTotal,
-      engagementRate: Number(summary.engagementRate ?? 0),
-      engagementRatePrevious: 0,
-      postsPublished: topPosts.length,
-      profileViews: Number(summary.profileViews ?? 0),
-      dailyData,
-      topPosts,
-      updatedAt: new Date().toISOString(),
-    };
-  };
-
-  const syncAndFetchReportMetrics = async () => {
-    if (!selectedClientNumericId) return null;
-    const qs = new URLSearchParams({
-      range: "30d",
-      since: selectedMonthRange.since,
-      until: selectedMonthRange.until,
-      sync: "true",
-    });
-    await portalFetch(`/api/meta/sync/${selectedClientNumericId}?since=${selectedMonthRange.since}&until=${selectedMonthRange.until}`, {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => null);
-    const res = await portalFetch(`/api/meta/insights/${selectedClientNumericId}?${qs.toString()}`, {
-      credentials: "include",
-    });
-    const payload = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new Error(payload?.error ?? "Errore caricamento metriche Meta");
-    }
-    setIsFallbackData(Boolean((payload as { mock?: boolean } | null)?.mock));
-    const mapped = mapPayloadToAnalytics(payload);
-    if (mapped) setReportAnalytics(mapped);
-    return payload;
-  };
-
-  const handleGeneratePreview = async () => {
-    if (!activeClient) return;
-    setIsGeneratingReport(true);
-    try {
-      await syncAndFetchReportMetrics();
-      toast({ title: "Anteprima aggiornata", description: "Dati aggiornati dal token Meta collegato." });
-    } catch (err: any) {
-      setIsFallbackData(true);
-      toast({
-        title: "Anteprima salvata",
-        description: err?.message ?? "Aggiornamento Meta non disponibile: uso dati locali.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGeneratingReport(false);
-    }
-  };
+  const handleGeneratePreviewClick = () => handleGeneratePreview(activeClient?.name, setIsGeneratingReport);
 
   const handleExport = async () => {
     if (!previewRef.current || !activeClient) return;
     setIsExporting(true);
     try {
       const { exportReportPdf } = await import("@/components/tools/reports/PdfExporter");
-      const serverMetrics = (await syncAndFetchReportMetrics().catch(() => null)) ?? buildFallbackMetrics();
+      const serverMetrics = (await syncAndFetchReportMetrics().catch(() => null)) ?? buildFallbackMetrics(effectiveAnalytics);
       setIsFallbackData(Boolean(serverMetrics?.mock));
       if (selectedClientNumericId) {
         await portalFetch("/api/reports", {
@@ -450,163 +287,55 @@ export default function ReportsPage() {
         </section>
 
         <div className="grid grid-cols-1 xl:grid-cols-[390px_minmax(0,1fr)] gap-4">
-          <aside className="rounded-2xl border border-card-border bg-card p-4 md:p-5 h-fit xl:sticky xl:top-3 space-y-5 shadow-sm">
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <FileBarChart2 size={18} className="text-emerald-600" />
-                Configurazione report
-              </h2>
-              <p className="text-sm text-muted-foreground">Personalizza contenuti, blocchi e testi strategici prima dell'export.</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block text-sm">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Periodo</span>
-                <div className="relative mt-1">
-                  <CalendarRange size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="month"
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2"
-                  />
-                </div>
-              </label>
-              <label className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 mt-5 text-sm">
-                <input type="checkbox" checked={includeCompetitors} onChange={(e) => setIncludeCompetitors(e.target.checked)} />
-                Includi competitors
-              </label>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Blocchi nel report</p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSectionsPreset("full")}
-                  className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
-                >
-                  Completo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSectionsPreset("essential")}
-                  className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
-                >
-                  Essenziale
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(sections) as Array<keyof ReportSectionFlags>).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSections((prev) => ({ ...prev, [key]: !prev[key] }))}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      sections[key]
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {sectionLabels[key]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Preset rapidi</p>
-              <div className="flex flex-wrap gap-2">
-                {quickPresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => applyPreset(preset.id)}
-                    className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="block text-sm">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Messaggio introduttivo</span>
-              <textarea value={introMessage} onChange={(e) => setIntroMessage(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-            </label>
-
-            <label className="block text-sm">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Obiettivi prossimo mese</span>
-              <textarea value={nextGoals} onChange={(e) => setNextGoals(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-            </label>
-
-            <label className="block text-sm">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Note strategiche</span>
-              <textarea value={strategicNotes} onChange={(e) => setStrategicNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                onClick={handleGeneratePreview}
-                disabled={isGeneratingReport}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-medium disabled:opacity-60 transition-all hover:-translate-y-0.5"
-              >
-                <Wand2 size={15} />
-                {isGeneratingReport ? "Aggiorno..." : "Genera anteprima"}
-              </button>
-              <button
-                onClick={handleExport}
-                disabled={isExporting}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60 hover:bg-emerald-700 transition-all hover:-translate-y-0.5"
-              >
-                <Download size={15} />
-                {isExporting ? "PDF in corso..." : "Esporta PDF"}
-              </button>
-            </div>
-
-            <Suspense fallback={<div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">Caricamento storico report...</div>}>
-              <ReportHistory reports={history} onRegenerate={regenerate} />
-            </Suspense>
-          </aside>
+          <ReportFilters
+            state={{
+              month,
+              includeCompetitors,
+              sections,
+              introMessage,
+              nextGoals,
+              strategicNotes,
+              isGeneratingReport,
+              isExporting,
+            }}
+            setState={{
+              setMonth,
+              setIncludeCompetitors,
+              setSections,
+              setIntroMessage,
+              setNextGoals,
+              setStrategicNotes,
+            }}
+            labels={{
+              sectionLabels,
+              quickPresets,
+            }}
+            actions={{
+              onApplyPreset: applyPreset,
+              onSetSectionsPreset: setSectionsPreset,
+              onGeneratePreview: handleGeneratePreviewClick,
+              onExport: handleExport,
+            }}
+            historyNode={(
+              <Suspense fallback={<div className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">Caricamento storico report...</div>}>
+                <ReportHistory reports={history} onRegenerate={regenerate} />
+              </Suspense>
+            )}
+          />
 
           <section className="space-y-4">
           <MetaConnectionBanner
             error={meta.error}
             isStale={meta.isStale}
             lastSyncAt={meta.lastSyncAt}
-            onSync={handleGeneratePreview}
+            onSync={handleGeneratePreviewClick}
             syncing={meta.isLoading || isGeneratingReport}
           />
-            {isFallbackData && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Dati non aggiornati — Sincronizza Meta per visualizzare metriche reali.
-                <button
-                  type="button"
-                  onClick={handleGeneratePreview}
-                  className="ml-2 inline-flex rounded-md border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100"
-                >
-                  Sincronizza Meta
-                </button>
-              </div>
-            )}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="rounded-xl border border-card-border bg-card px-3 py-2.5">
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Users size={12} /> Follower</p>
-                <p className="text-base font-semibold">{selectedAnalytics?.followers?.toLocaleString("it-IT") ?? "0"}</p>
-              </div>
-              <div className="rounded-xl border border-card-border bg-card px-3 py-2.5">
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1"><TrendingUp size={12} /> Reach</p>
-                <p className="text-base font-semibold">{selectedAnalytics?.reach?.toLocaleString("it-IT") ?? "0"}</p>
-              </div>
-              <div className="rounded-xl border border-card-border bg-card px-3 py-2.5">
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Gauge size={12} /> Engagement</p>
-                <p className="text-base font-semibold">{(selectedAnalytics?.engagementRate ?? 0).toFixed(2)}%</p>
-              </div>
-              <div className="rounded-xl border border-card-border bg-card px-3 py-2.5">
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1"><CalendarClock size={12} /> Post</p>
-                <p className="text-base font-semibold">{selectedAnalytics?.postsPublished ?? 0}</p>
-              </div>
-            </div>
+            <ReportMetrics
+              analytics={selectedAnalytics}
+              isFallback={isFallbackData}
+              onSync={handleGeneratePreviewClick}
+            />
             <div className="rounded-2xl border border-card-border bg-card p-3 md:p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <p className="text-sm font-medium text-foreground">Anteprima live</p>

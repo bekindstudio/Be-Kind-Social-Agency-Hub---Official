@@ -154,6 +154,127 @@ export interface ClientEvent {
   updatedAt: string;
 }
 
+export interface TaskRow {
+  id: number;
+  title: string;
+  description?: string | null;
+  projectId?: number | null;
+  projectName?: string | null;
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  status: string;
+  priority: string;
+  dueDate?: string | null;
+  tipo: string;
+  categoria?: string | null;
+  checklistJson: string;
+  pacchettoContenuti?: string | null;
+  meseRiferimento?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskComment {
+  id: number;
+  taskId: number;
+  userId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface TaskActivityItem {
+  id: number;
+  action: string;
+  entityType: string;
+  entityId: number;
+  entityName: string | null;
+  details: string | null;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+export interface ReportCreateForm {
+  clientId: string;
+  tipo: string;
+  period: string;
+  customFrom: string;
+  customTo: string;
+  title: string;
+  riepilogoEsecutivo: string;
+  analisiInsights: string;
+  strategiaProssimoPeriodo: string;
+  noteAggiuntive: string;
+}
+
+export interface ReportDetailState {
+  id: number;
+  clientId: number;
+  status: string;
+  tipo: string;
+  period: string;
+  periodLabel: string;
+  titolo?: string;
+  riepilogoEsecutivo?: string;
+  analisiInsights?: string;
+  strategiaProssimoPeriodo?: string;
+  noteAggiuntive?: string;
+  aiSummary?: string;
+  aiFlag?: boolean;
+  aiFlags?: string[];
+  recipientEmail?: string;
+  subject?: string;
+  sentAt?: string;
+  inviatoAt?: string;
+  createdAt?: string;
+  clientName?: string;
+  clientEmail?: string;
+  approvals?: Array<{
+    azione: string;
+    nota?: string | null;
+    createdAt?: string;
+  }>;
+  kpiSocialJson?: {
+    summary?: {
+      username?: string;
+      followers?: number;
+      followerGrowth?: number;
+      followerGrowthPct?: number;
+      reach?: number;
+      impressions?: number;
+      engagementRate?: number;
+    };
+    followerTrend?: { labels?: string[]; data?: number[] };
+    postEngagement?: { labels?: string[]; likes?: number[]; comments?: number[]; saves?: number[] };
+    topPosts?: unknown[];
+    featuredPosts?: unknown[];
+  } | null;
+  kpiMetaJson?: {
+    summary?: {
+      totalSpend?: number;
+      impressions?: number;
+      reach?: number;
+      ctr?: number;
+      cpc?: number;
+      roas?: number;
+    };
+    spendTrend?: { labels?: string[]; spend?: number[]; conversions?: number[] };
+  } | null;
+  kpiGoogleJson?: {
+    summary?: {
+      spend?: number;
+      impressions?: number;
+    };
+  } | null;
+  metricsJson?: {
+    instagram?: unknown;
+    metaAds?: unknown;
+    googleAds?: unknown;
+  } | null;
+  topContenutiJson?: unknown[];
+}
+
 export interface ClientContextType {
   clients: Client[];
   activeClient: Client | null;

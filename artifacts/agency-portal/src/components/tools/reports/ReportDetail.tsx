@@ -1,4 +1,5 @@
 import { Bar, Line } from "react-chartjs-2";
+import type { ChartOptions } from "chart.js";
 import {
   AlertTriangle,
   BarChart2,
@@ -35,8 +36,158 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { cn } from "@/lib/utils";
+import type { ReportDetailState } from "@/types/client";
 
-export function ReportDetail({ state }: { state: any }) {
+type ReportView = "list" | "create" | "detail" | "edit";
+
+type ReportTocItem = {
+  id: string;
+  label: string;
+};
+
+type ReportEditForm = Partial<ReportDetailState> & {
+  recipientEmail?: string;
+  subject?: string;
+};
+
+type SetReportEditForm = (updater: (form: ReportEditForm) => ReportEditForm) => void;
+
+type SendResult = {
+  sent?: boolean;
+  to?: string;
+  previewHtml?: string;
+  error?: string;
+} | null;
+
+type IgSummary = {
+  followers?: number;
+  followerGrowth?: number;
+  followerGrowthPct?: number;
+  reach?: number;
+  engagementRate?: number;
+};
+
+type MetaSummary = {
+  totalSpend?: number;
+  roas?: number;
+  impressions?: number;
+  reach?: number;
+  ctr?: number;
+  cpc?: number;
+};
+
+type TopPost = {
+  mediaType?: string;
+  thumbnailUrl?: string;
+  mediaUrl?: string;
+  permalink?: string;
+  description?: string;
+  date?: string;
+  type?: string;
+  caption?: string;
+  likes?: number;
+  comments?: number;
+  saves?: number;
+  reach?: number;
+};
+
+type FeaturedPost = {
+  award?: string;
+};
+
+interface ReportDetailViewModel {
+  selectedReport: ReportDetailState;
+  setView: (view: ReportView) => void;
+  setSelectedReport: (report: ReportDetailState | null) => void;
+  view: ReportView;
+  STATUS_COLORS: Record<string, string>;
+  STATUS_LABELS: Record<string, string>;
+  TIPO_LABELS: Record<string, string>;
+  qualityScore: number;
+  isLive: boolean;
+  canEdit: boolean;
+  isEditing: boolean;
+  handleSaveEdits: () => void;
+  saving: boolean;
+  canSubmitReview: boolean;
+  doAction: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
+  actionLoading: string;
+  canApprove: boolean;
+  setShowRejectModal: (open: boolean) => void;
+  canSend: boolean;
+  setSendResult: (result: SendResult) => void;
+  setShowSendModal: (open: boolean) => void;
+  canConfirmClient: boolean;
+  handleExportPDF: () => void;
+  handleDelete: (id: number) => void;
+  handleRefreshLive: () => void;
+  liveLoading: boolean;
+  liveDateFrom: string;
+  setLiveDateFrom: (value: string) => void;
+  liveDateTo: string;
+  setLiveDateTo: (value: string) => void;
+  AiReportButton: React.ComponentType<{ report: ReportDetailState; igSummary: IgSummary; metaSummary: MetaSummary }>;
+  igSummary: IgSummary;
+  metaSummary: MetaSummary;
+  REPORT_TOC: ReadonlyArray<ReportTocItem>;
+  activeTocId: string;
+  printRef: React.RefObject<HTMLDivElement | null>;
+  editForm: ReportEditForm;
+  setEditForm: SetReportEditForm;
+  hasNoData: boolean;
+  hasIg: boolean;
+  hasMeta: boolean;
+  hasGoogle: boolean;
+  KpiCard: React.ComponentType<{
+    label: string;
+    value: string | number;
+    sub?: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    trend?: { value: number; positive?: boolean };
+    color?: string;
+  }>;
+  fmt: (n: number, prefix?: string) => string;
+  fmtEur: (n: number) => string;
+  ig: {
+    followerTrend?: { labels?: string[]; data?: number[] };
+    postEngagement?: { labels?: string[]; likes?: number[]; comments?: number[]; saves?: number[] };
+  };
+  meta: {
+    spendTrend?: { labels?: string[]; spend?: number[]; conversions?: number[] };
+  };
+  google: {
+    summary?: { spend?: number };
+  };
+  topPosts: TopPost[];
+  featuredPosts: FeaturedPost[];
+  igUsername: string;
+  lineOptions: ChartOptions<"line">;
+  barOptions: ChartOptions<"bar">;
+  dualAxisOptions: ChartOptions<"line">;
+  showRejectModal: boolean;
+  rejectNote: string;
+  setRejectNote: (value: string) => void;
+  showSendModal: boolean;
+  sendResult: SendResult;
+  sendEmail: string;
+  setSendEmail: (value: string) => void;
+  handleSend: () => void;
+  setShowSendModalState: (open: boolean) => void;
+  setSendResultState: (result: SendResult) => void;
+  setLiveData: (data: unknown | null) => void;
+}
+
+export function ReportDetail({ state }: { state: ReportDetailViewModel | { selectedReport: null } }) {
+  if (!state.selectedReport) {
+    return (
+      <Layout>
+        <div className="p-8 flex items-center justify-center">
+          <Loader2 className="animate-spin text-muted-foreground" size={24} />
+        </div>
+      </Layout>
+    );
+  }
+
   const {
     selectedReport,
     setView,
@@ -103,16 +254,6 @@ export function ReportDetail({ state }: { state: any }) {
     setShowSendModalState,
     setSendResultState,
   } = state;
-
-  if (!selectedReport) {
-    return (
-      <Layout>
-        <div className="p-8 flex items-center justify-center">
-          <Loader2 className="animate-spin text-muted-foreground" size={24} />
-        </div>
-      </Layout>
-    );
-  }
 
   const r = selectedReport;
 
@@ -202,7 +343,7 @@ export function ReportDetail({ state }: { state: any }) {
           <div className="mb-6 bg-muted/30 border border-card-border rounded-xl p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Storico revisioni</p>
             <div className="space-y-2">
-              {r.approvals.map((a: any, i: number) => (
+              {r.approvals.map((a, i: number) => (
                 <div key={i} className="flex items-start gap-2 text-sm">
                   <span className={cn("mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-white text-xs", a.azione === "approvato" ? "bg-emerald-500" : "bg-amber-500")}>
                     {a.azione === "approvato" ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}
@@ -222,7 +363,7 @@ export function ReportDetail({ state }: { state: any }) {
           <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2"><AlertTriangle size={14} /> Problemi rilevati dall'AI</p>
             <ul className="space-y-1">
-              {r.aiFlags.map((f: any, i: number) => <li key={i} className="text-xs text-amber-700 flex items-start gap-1.5"><span className="mt-0.5">-</span>{f}</li>)}
+              {r.aiFlags.map((f, i: number) => <li key={i} className="text-xs text-amber-700 flex items-start gap-1.5"><span className="mt-0.5">-</span>{f}</li>)}
             </ul>
           </div>
         )}
@@ -261,7 +402,7 @@ export function ReportDetail({ state }: { state: any }) {
           <aside className="hidden lg:block sticky top-6 bg-card border border-card-border rounded-xl p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Indice report</p>
             <div className="space-y-1">
-              {REPORT_TOC.map((s: any) => (
+              {REPORT_TOC.map((s) => (
                 <button key={s.id} onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
                   className={cn("w-full text-left text-xs px-2 py-1.5 rounded-md transition-colors", activeTocId === s.id ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted text-muted-foreground hover:text-foreground")}>
                   {s.label}
@@ -291,7 +432,7 @@ export function ReportDetail({ state }: { state: any }) {
             <section id="exec" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><FileText size={16} className="text-primary" /> Riepilogo Esecutivo</h3>
               {isEditing ? (
-                <textarea value={editForm.riepilogoEsecutivo ?? ""} onChange={(e) => setEditForm((f: any) => ({ ...f, riepilogoEsecutivo: e.target.value }))}
+                <textarea value={editForm.riepilogoEsecutivo ?? ""} onChange={(e) => setEditForm((form) => ({ ...form, riepilogoEsecutivo: e.target.value }))}
                   rows={8} className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
               ) : (
                 <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/80">
@@ -334,7 +475,7 @@ export function ReportDetail({ state }: { state: any }) {
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Crescita follower</p>
                       <div className="h-52">
-                        <Line data={{ labels: ig.followerTrend.labels ?? [], datasets: [{ label: "Follower", data: ig.followerTrend.data ?? [], borderColor: "#7a8f5c", backgroundColor: "rgba(122,143,92,0.12)", borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0 }] }} options={lineOptions as any} />
+                        <Line data={{ labels: ig.followerTrend.labels ?? [], datasets: [{ label: "Follower", data: ig.followerTrend.data ?? [], borderColor: "#7a8f5c", backgroundColor: "rgba(122,143,92,0.12)", borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0 }] }} options={lineOptions} />
                       </div>
                     </div>
                   )}
@@ -342,7 +483,7 @@ export function ReportDetail({ state }: { state: any }) {
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Engagement per contenuto</p>
                       <div className="h-52">
-                        <Bar data={{ labels: ig.postEngagement.labels ?? [], datasets: [{ label: "Like", data: ig.postEngagement.likes ?? [], backgroundColor: "#7a8f5c", borderRadius: 4 }, { label: "Commenti", data: ig.postEngagement.comments ?? [], backgroundColor: "#a4b87a", borderRadius: 4 }, { label: "Salvataggi", data: ig.postEngagement.saves ?? [], backgroundColor: "#c8d9a0", borderRadius: 4 }] }} options={barOptions as any} />
+                        <Bar data={{ labels: ig.postEngagement.labels ?? [], datasets: [{ label: "Like", data: ig.postEngagement.likes ?? [], backgroundColor: "#7a8f5c", borderRadius: 4 }, { label: "Commenti", data: ig.postEngagement.comments ?? [], backgroundColor: "#a4b87a", borderRadius: 4 }, { label: "Salvataggi", data: ig.postEngagement.saves ?? [], backgroundColor: "#c8d9a0", borderRadius: 4 }] }} options={barOptions} />
                       </div>
                     </div>
                   )}
@@ -350,7 +491,7 @@ export function ReportDetail({ state }: { state: any }) {
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Top contenuti</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {topPosts.slice(0, 3).map((p: any, i: number) => {
+                        {topPosts.slice(0, 3).map((p, i: number) => {
                           const imgSrc = p.mediaType === "VIDEO" ? (p.thumbnailUrl ? `/api/meta/media-proxy?url=${encodeURIComponent(p.thumbnailUrl)}` : null) : (p.mediaUrl ? `/api/meta/media-proxy?url=${encodeURIComponent(p.mediaUrl)}` : null);
                           const awardLabel = featuredPosts[i]?.award ?? null;
                           return (
@@ -386,7 +527,7 @@ export function ReportDetail({ state }: { state: any }) {
                                   <span className="flex items-center gap-1"><Heart size={11} className="text-rose-400" /> {fmt(p.likes ?? 0)}</span>
                                   <span className="flex items-center gap-1"><Megaphone size={11} /> {fmt(p.comments ?? 0)}</span>
                                   <span className="flex items-center gap-1"><Bookmark size={11} /> {fmt(p.saves ?? 0)}</span>
-                                  {p.reach > 0 && <span className="flex items-center gap-1"><Eye size={11} /> {fmt(p.reach)}</span>}
+                                  {p.reach != null && p.reach > 0 && <span className="flex items-center gap-1"><Eye size={11} /> {fmt(p.reach)}</span>}
                                 </div>
                                 {igUsername && <p className="text-[10px] text-muted-foreground mt-2">Via Instagram · @{igUsername}</p>}
                               </div>
@@ -414,7 +555,7 @@ export function ReportDetail({ state }: { state: any }) {
                   <div className="mb-6">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">Spesa giornaliera</p>
                     <div className="h-52">
-                      <Line data={{ labels: meta.spendTrend.labels ?? [], datasets: [{ label: "Spesa (EUR)", data: meta.spendTrend.spend ?? [], borderColor: "#7a8f5c", backgroundColor: "rgba(122,143,92,0.12)", borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, yAxisID: "y" }, { label: "Conversioni", data: meta.spendTrend.conversions ?? [], borderColor: "#4a6741", backgroundColor: "transparent", borderWidth: 2, borderDash: [4, 3], tension: 0.4, pointRadius: 0, yAxisID: "y1" }] }} options={dualAxisOptions as any} />
+                      <Line data={{ labels: meta.spendTrend.labels ?? [], datasets: [{ label: "Spesa (EUR)", data: meta.spendTrend.spend ?? [], borderColor: "#7a8f5c", backgroundColor: "rgba(122,143,92,0.12)", borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, yAxisID: "y" }, { label: "Conversioni", data: meta.spendTrend.conversions ?? [], borderColor: "#4a6741", backgroundColor: "transparent", borderWidth: 2, borderDash: [4, 3], tension: 0.4, pointRadius: 0, yAxisID: "y1" }] }} options={dualAxisOptions} />
                     </div>
                   </div>
                 )}
@@ -424,7 +565,7 @@ export function ReportDetail({ state }: { state: any }) {
             <section id="insights" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><BarChart2 size={16} className="text-primary" /> Analisi e Insights</h3>
               {isEditing ? (
-                <textarea value={editForm.analisiInsights ?? ""} onChange={(e) => setEditForm((f: any) => ({ ...f, analisiInsights: e.target.value }))} rows={6} placeholder="Cosa ha funzionato bene, cosa ha funzionato meno, motivazioni e contesto..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+                <textarea value={editForm.analisiInsights ?? ""} onChange={(e) => setEditForm((form) => ({ ...form, analisiInsights: e.target.value }))} rows={6} placeholder="Cosa ha funzionato bene, cosa ha funzionato meno, motivazioni e contesto..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
               ) : (
                 <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/80">{r.analisiInsights || <span className="text-muted-foreground italic">Nessuna analisi compilata</span>}</div>
               )}
@@ -433,7 +574,7 @@ export function ReportDetail({ state }: { state: any }) {
             <section id="strategy" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><Target size={16} className="text-primary" /> Strategia Prossimo Periodo</h3>
               {isEditing ? (
-                <textarea value={editForm.strategiaProssimoPeriodo ?? ""} onChange={(e) => setEditForm((f: any) => ({ ...f, strategiaProssimoPeriodo: e.target.value }))} rows={6} placeholder="Azioni pianificate, modifiche alla strategia, obiettivi, budget consigliato..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+                <textarea value={editForm.strategiaProssimoPeriodo ?? ""} onChange={(e) => setEditForm((form) => ({ ...form, strategiaProssimoPeriodo: e.target.value }))} rows={6} placeholder="Azioni pianificate, modifiche alla strategia, obiettivi, budget consigliato..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
               ) : (
                 <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/80">{r.strategiaProssimoPeriodo || <span className="text-muted-foreground italic">Nessuna strategia compilata</span>}</div>
               )}
@@ -442,7 +583,7 @@ export function ReportDetail({ state }: { state: any }) {
             <section id="notes" className="bg-card border border-card-border rounded-xl p-6 shadow-sm">
               <h3 className="text-base font-bold mb-4 flex items-center gap-2"><FileText size={16} className="text-muted-foreground" /> Note Aggiuntive</h3>
               {isEditing ? (
-                <textarea value={editForm.noteAggiuntive ?? ""} onChange={(e) => setEditForm((f: any) => ({ ...f, noteAggiuntive: e.target.value }))} rows={4} placeholder="Comunicazioni extra per il cliente..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+                <textarea value={editForm.noteAggiuntive ?? ""} onChange={(e) => setEditForm((form) => ({ ...form, noteAggiuntive: e.target.value }))} rows={4} placeholder="Comunicazioni extra per il cliente..." className="w-full px-3 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
               ) : (
                 <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/80">{r.noteAggiuntive || <span className="text-muted-foreground italic">Nessuna nota</span>}</div>
               )}
@@ -503,7 +644,7 @@ export function ReportDetail({ state }: { state: any }) {
                     <div className="text-center py-6">
                       <CheckCircle2 size={40} className="text-emerald-500 mx-auto mb-3" />
                       <p className="font-semibold text-lg">Report inviato</p>
-                      <p className="text-sm text-muted-foreground mt-1">Email inviata a {sendResult.to}</p>
+                      <p className="text-sm text-muted-foreground mt-1">Email inviata a {sendResult.to ?? "destinatario"}</p>
                     </div>
                   ) : sendResult.previewHtml ? (
                     <div>
@@ -512,7 +653,7 @@ export function ReportDetail({ state }: { state: any }) {
                       </div>
                       <button onClick={() => {
                         const w = window.open("", "_blank");
-                        if (w) { w.document.write(sendResult.previewHtml); w.document.close(); }
+                        if (w) { w.document.write(sendResult.previewHtml ?? ""); w.document.close(); }
                       }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90">
                         <Eye size={14} /> Visualizza anteprima email
                       </button>

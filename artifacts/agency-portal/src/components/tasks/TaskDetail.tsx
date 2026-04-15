@@ -1,7 +1,21 @@
 import { ListChecks, X } from "lucide-react";
+import type { QueryClient } from "@tanstack/react-query";
 import { cn, PRIORITY_LABELS, TASK_STATUS_LABELS, formatDate } from "@/lib/utils";
 import { TaskActivity } from "@/components/tasks/TaskActivity";
 import { TaskComments } from "@/components/tasks/TaskComments";
+import type { ChecklistItem } from "@/components/tasks/TaskChecklist";
+import type { TaskActivityItem, TaskComment, TaskRow } from "@/types/client";
+
+type UpdateTaskMutation = {
+  mutate: (
+    variables: { id: number; data: { priority?: string } },
+    options?: { onSuccess?: () => void },
+  ) => void;
+};
+
+type AddTaskCommentMutation = {
+  isPending: boolean;
+};
 
 export function TaskDetail({
   detailTask,
@@ -24,23 +38,23 @@ export function TaskDetail({
   isCommentsLoading,
   commentsError,
 }: {
-  detailTask: any;
-  setDetailTask: (task: any) => void;
+  detailTask: TaskRow | null;
+  setDetailTask: (task: TaskRow | null) => void;
   handleStatusChange: (id: number, status: string) => void;
-  updateTask: any;
-  queryClient: any;
-  listTasksKey: any;
+  updateTask: UpdateTaskMutation;
+  queryClient: QueryClient;
+  listTasksKey: readonly unknown[];
   addActivity: (taskId: number, action: string, entityName?: string) => Promise<void>;
-  parseChecklist: (json: string) => any[];
-  handleToggleChecklistItem: (task: any, itemId: string) => void;
-  taskActivity: any[];
+  parseChecklist: (json: string) => ChecklistItem[];
+  handleToggleChecklistItem: (task: TaskRow, itemId: string) => void;
+  taskActivity: TaskActivityItem[];
   isActivityLoading: boolean;
   activityError: unknown;
   commentDraft: string;
   setCommentDraft: (value: string) => void;
   handleAddComment: () => void;
-  addTaskComment: any;
-  taskComments: any[];
+  addTaskComment: AddTaskCommentMutation;
+  taskComments: TaskComment[];
   isCommentsLoading: boolean;
   commentsError: unknown;
 }) {

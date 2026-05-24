@@ -31,8 +31,8 @@ const AGENCY_CLIENT_ID = 0;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getRedirectUri(req: any): string {
-  const domain = process.env.REPLIT_DEV_DOMAIN || req.get("host");
+function getRedirectUri(req: Request): string {
+  const domain = process.env.PUBLIC_APP_DOMAIN || req.get("host");
   return `https://${domain}/api/meta/callback`;
 }
 

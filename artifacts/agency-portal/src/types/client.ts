@@ -297,7 +297,7 @@ export interface ClientContextType {
   addCompetitor: (competitor: Omit<Competitor, "id">) => void;
   updateCompetitor: (id: string, updates: Partial<Competitor>) => void;
   removeCompetitor: (id: string) => void;
-  addClientEvent: (event: Omit<ClientEvent, "id" | "createdAt" | "updatedAt">) => ClientEvent;
+  addClientEvent: (event: Omit<ClientEvent, "id" | "createdAt" | "updatedAt">) => Promise<ClientEvent>;
   updateClientEvent: (id: string, updates: Partial<ClientEvent>) => void;
   deleteClientEvent: (id: string) => void;
   refreshAnalytics: (period?: AnalyticsPeriod) => Promise<void>;

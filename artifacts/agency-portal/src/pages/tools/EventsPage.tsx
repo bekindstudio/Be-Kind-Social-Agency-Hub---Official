@@ -122,7 +122,7 @@ export default function EventsPage() {
     setEditingEventId(null);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!activeClient) return;
     const title = form.title.trim();
     if (!title || !form.date || !form.endDate) {
@@ -147,12 +147,21 @@ export default function EventsPage() {
       resetForm();
       return;
     }
-    addClientEvent({
-      clientId: activeClient.id,
-      ...payload,
-    });
-    toast({ title: "Evento aggiunto" });
-    resetForm();
+    try {
+      await addClientEvent({
+        clientId: activeClient.id,
+        ...payload,
+      });
+      toast({ title: "Evento aggiunto" });
+      resetForm();
+    } catch {
+      toast({
+        title: "Creazione evento non riuscita",
+        description:
+          "Non sono riuscito a salvare l'evento. Se stai usando un cliente demo locale, seleziona un cliente sincronizzato dal server.",
+        variant: "destructive",
+      });
+    }
   };
 
   const beginEdit = (eventId: string) => {
@@ -366,7 +375,9 @@ export default function EventsPage() {
                 />
                 <button
                   type="button"
-                  onClick={handleSubmit}
+                  onClick={() => {
+                    void handleSubmit();
+                  }}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
                 >
                   {editingEventId ? <Pencil size={14} /> : <Plus size={14} />}

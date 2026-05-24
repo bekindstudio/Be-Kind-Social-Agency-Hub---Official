@@ -40,7 +40,7 @@ export interface BriefContextType {
   removeCompetitor: (id: string) => void;
   clientEvents: ClientEvent[];
   allClientEvents: ClientEvent[];
-  addClientEvent: (e: CreateEventInput) => ClientEvent;
+  addClientEvent: (e: CreateEventInput) => Promise<ClientEvent>;
   updateClientEvent: (id: string, u: UpdateEventInput) => void;
   deleteClientEvent: (id: string) => void;
 }
@@ -49,12 +49,6 @@ const BriefContext = createContext<BriefContextType | null>(null);
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function makeId(): string {
-  const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === "function") return c.randomUUID();
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function defaultBrief(clientId: string): ClientBrief {
@@ -239,16 +233,9 @@ export function BriefProvider({ children }: { children: ReactNode }) {
   );
 
   const addClientEvent = useCallback(
-    (eventInput: CreateEventInput): ClientEvent => {
-      const timestamp = nowIso();
-      const nextEvent: ClientEvent = {
-        ...eventInput,
-        id: makeId(),
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      createEventMutation.mutate(eventInput);
-      return nextEvent;
+    async (eventInput: CreateEventInput): Promise<ClientEvent> => {
+      const created = await createEventMutation.mutateAsync(eventInput);
+      return created;
     },
     [createEventMutation],
   );

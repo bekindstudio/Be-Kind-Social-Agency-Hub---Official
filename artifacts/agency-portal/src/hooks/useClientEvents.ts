@@ -93,6 +93,9 @@ export function useCreateClientEvent(clientId: string | null) {
       return normalizeEvent(payload, clientId);
     },
     onMutate: async (input) => {
+      if (!numericClientId || !clientId) {
+        return { previous: queryClient.getQueryData<ClientEvent[]>(key) };
+      }
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<ClientEvent[]>(key);
       const optimistic: ClientEvent = {

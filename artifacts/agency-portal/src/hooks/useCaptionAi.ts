@@ -103,10 +103,15 @@ function writeHistory(clientId: string, items: CaptionHistoryItem[]): void {
   localStorage.setItem(historyKey(clientId), JSON.stringify(items.slice(0, 50)));
 }
 
-function mapError(errorCode?: string): string {
-  if (errorCode === "AI_ERROR") return "Errore nella generazione - riprova tra un momento";
-  if (errorCode === "PARSE_ERROR") return "Risposta non valida - riprova";
-  return "Controlla la connessione";
+function mapError(errorCode?: string, backendMessage?: string): string {
+  if (errorCode === "AI_RATE_LIMIT") return "Limite richieste AI raggiunto. Riprova tra poco.";
+  if (errorCode === "AI_TIMEOUT") return "Il servizio AI ha impiegato troppo tempo. Riprova.";
+  if (errorCode === "AI_OVERLOADED") return "Servizio AI temporaneamente sovraccarico. Riprova.";
+  if (errorCode === "AI_CONTEXT_TOO_LONG") return "Prompt troppo lungo. Riduci testo e riprova.";
+  if (errorCode === "AI_ERROR" && backendMessage) return backendMessage;
+  if (errorCode === "PARSE_ERROR") return "Risposta AI non valida. Riprova.";
+  if (backendMessage) return backendMessage;
+  return "Errore di connessione o server non disponibile.";
 }
 
 export function getCaptionHistory(clientId: string): CaptionHistoryItem[] {
@@ -164,7 +169,7 @@ export function useCaptionAi(clientId: string): UseCaptionAiReturn {
         });
         const payload = await response.json();
         if (!response.ok) {
-          setError(mapError(payload?.error));
+          setError(mapError(payload?.error, payload?.message));
           return;
         }
         const nextVariants = (payload.variants ?? []) as CaptionVariant[];
@@ -221,7 +226,7 @@ export function useCaptionAi(clientId: string): UseCaptionAiReturn {
       });
       const payload = await response.json();
       if (!response.ok) {
-        setError(mapError(payload?.error));
+        setError(mapError(payload?.error, payload?.message));
         return null;
       }
       return payload.variant as CaptionVariant;
@@ -244,7 +249,7 @@ export function useCaptionAi(clientId: string): UseCaptionAiReturn {
       });
       const payload = await response.json();
       if (!response.ok) {
-        setError(mapError(payload?.error));
+        setError(mapError(payload?.error, payload?.message));
         return null;
       }
       return {

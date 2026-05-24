@@ -33,6 +33,7 @@ import trashRouter from "./trash";
 import clientPostsRouter from "./client-posts";
 import clientCompetitorsRouter from "./client-competitors";
 import clientEventsRouter from "./client-events";
+import cronRouter from "./cron";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(clientEventsRouter);
 router.use(dailyFocusRouter);
 router.use(timeTrackerRouter);
 router.use(trashRouter);
+router.use(cronRouter);
 
 export default router;

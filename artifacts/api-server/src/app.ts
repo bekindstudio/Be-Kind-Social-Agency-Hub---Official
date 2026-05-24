@@ -20,6 +20,12 @@ if (isApiAuthBypass()) {
 
 const app: Express = express();
 
+// Dietro il reverse proxy della piattaforma (Vercel/Render): fidati di un solo
+// hop in modo che req.ip e express-rate-limit leggano il client reale da
+// X-Forwarded-For. Usare il numero 1 (non `true`) evita il warning permissivo
+// di express-rate-limit.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(
   rateLimit({

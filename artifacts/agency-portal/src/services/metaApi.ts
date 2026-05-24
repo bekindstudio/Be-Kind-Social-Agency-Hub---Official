@@ -40,7 +40,10 @@ export type MetaApiError = {
   message?: string;
 };
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// Same-origin di default: in produzione l'API è servita su /api dalla stessa
+// Vercel Function del portale; in locale la proxy /api di Vite inoltra all'api-server.
+// VITE_API_URL resta come override opzionale (deploy separati).
+const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 async function readJson<T>(request: Promise<Response>): Promise<T> {
   const response = await request;

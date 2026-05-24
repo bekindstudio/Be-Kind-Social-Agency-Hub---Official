@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { portalFetch } from "@workspace/api-client-react";
 import { FileText, Sparkles, Loader2, ClipboardPaste, Trash2, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/featureFlags";
 import { generateStrategyPDF } from "@/lib/strategy-pdf";
 import { useClientContext } from "@/context/ClientContext";
 import type { ClientBrief, SocialPlatform } from "@/types/client";
@@ -328,6 +329,7 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
   };
 
   useEffect(() => {
+    if (!AI_ENABLED) return;
     if (pasteTick === 0) return;
     if (!autoFillOnPaste) return;
     if (lastAutoFillPasteTickRef.current === pasteTick) return;
@@ -493,15 +495,17 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
             <p className="text-xs text-muted-foreground">
               Incolla qui le domande e le risposte del questionario compilato dal cliente. L'AI le organizzeranno automaticamente.
             </p>
-            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={autoFillOnPaste}
-                onChange={(e) => setAutoFillOnPaste(e.target.checked)}
-                className="h-4 w-4 accent-primary"
-              />
-              Autocompilazione al paste
-            </label>
+            {AI_ENABLED && (
+              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={autoFillOnPaste}
+                  onChange={(e) => setAutoFillOnPaste(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                Autocompilazione al paste
+              </label>
+            )}
             <textarea
               className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono"
               rows={12}
@@ -523,13 +527,15 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Salva Testo
               </button>
-              <button onClick={handleParse} disabled={parsing || !rawText.trim()} className={cn(
-                "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                "bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
-              )}>
-                {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                Organizza con AI + Compila Brief
-              </button>
+              {AI_ENABLED && (
+                <button onClick={handleParse} disabled={parsing || !rawText.trim()} className={cn(
+                  "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                  "bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+                )}>
+                  {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  Organizza con AI + Compila Brief
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -577,18 +583,20 @@ export function ClientBriefSection({ clientId, clientName }: { clientId: number;
         {showStrategy && (
           <div className="pl-6 space-y-3">
             <div className="flex gap-2 flex-wrap">
-              <button onClick={handleGenerateStrategy} disabled={generating || (!brief?.rawText?.trim() && !hasParsed)} className={cn(
-                "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              )}>
-                {generating ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generazione in corso...</>
-                ) : hasStrategy ? (
-                  <><RefreshCw className="w-3.5 h-3.5" /> Rigenera Strategia</>
-                ) : (
-                  <><Sparkles className="w-3.5 h-3.5" /> Genera Strategia</>
-                )}
-              </button>
+              {AI_ENABLED && (
+                <button onClick={handleGenerateStrategy} disabled={generating || (!brief?.rawText?.trim() && !hasParsed)} className={cn(
+                  "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                  "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                )}>
+                  {generating ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generazione in corso...</>
+                  ) : hasStrategy ? (
+                    <><RefreshCw className="w-3.5 h-3.5" /> Rigenera Strategia</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5" /> Genera Strategia</>
+                  )}
+                </button>
+              )}
               {hasParsed && (
                 <button
                   onClick={() => {

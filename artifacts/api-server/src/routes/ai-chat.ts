@@ -14,8 +14,12 @@ import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getAccessibleClientIds, getUserId } from "../lib/access-control";
 import { mapAiError } from "../lib/aiProvider";
+import { requireAiEnabled } from "../lib/ai-flag";
 
 const router = Router();
+
+// Tutte le rotte della chat AI sono dietro il flag AI_ENABLED (503 se disabilitate).
+router.use(requireAiEnabled);
 const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
   (process.env.PRIVATE_PORTAL_AI_ONLY ?? "true").trim().toLowerCase(),
 );

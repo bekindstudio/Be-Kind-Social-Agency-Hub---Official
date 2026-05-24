@@ -6,8 +6,12 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { anthropic, callAi } from "../lib/aiProvider";
 import { validate } from "../middlewares/validate";
+import { requireAiEnabled } from "../lib/ai-flag";
 
 const router: IRouter = Router();
+
+// Tutte le rotte AI sono dietro il flag AI_ENABLED (503 se disabilitate).
+router.use(requireAiEnabled);
 
 const captionSchema = z.object({
   clientId: z.string().min(1),

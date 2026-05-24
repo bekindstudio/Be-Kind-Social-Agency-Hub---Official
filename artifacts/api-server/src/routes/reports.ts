@@ -4,6 +4,7 @@ import { db, clientReportsTable, reportApprovalsTable, clientsTable } from "@wor
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
+import { isAiEnabled } from "../lib/ai-flag";
 
 const router: IRouter = Router();
 
@@ -44,6 +45,8 @@ function detectPoorPerformance(metrics: any): string[] {
 }
 
 async function generateAISummary(clientName: string, period: string, metrics: any, performanceFlags: string[], isRealData = false): Promise<string> {
+  // AI disabilitata: il report si genera comunque, senza il riepilogo AI.
+  if (!isAiEnabled()) return "Analisi non disponibile.";
   const openai = getOpenAIClient();
   const igRaw = metrics?.instagram ?? {};
   const adsRaw = metrics?.metaAds ?? {};

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { AI_ENABLED, AI_NAV_HREFS } from "@/lib/featureFlags";
 import {
   LayoutDashboard,
   Users,
@@ -152,7 +153,10 @@ export function Sidebar() {
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navGroups.map((group, gi) => {
-          const visibleItems = roleLoading ? group.items : group.items.filter(({ href }) => {
+          const groupItems = AI_ENABLED
+            ? group.items
+            : group.items.filter(({ href }) => !AI_NAV_HREFS.has(href));
+          const visibleItems = roleLoading ? groupItems : groupItems.filter(({ href }) => {
             const perm = hrefPermissionMap[href];
             return !perm || hasPermission(perm);
           });

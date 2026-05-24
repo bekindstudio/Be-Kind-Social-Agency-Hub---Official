@@ -3,6 +3,7 @@ import { db, clientBriefs, clientsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { isAiEnabled } from "../lib/ai-flag";
 
 const router: IRouter = Router();
 const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
@@ -86,6 +87,13 @@ router.put("/clients/:clientId/brief", async (req, res): Promise<void> => {
 });
 
 router.post("/clients/:clientId/brief/parse", async (req, res): Promise<void> => {
+  if (!isAiEnabled()) {
+    res.status(503).json({
+      error: "AI_DISABLED",
+      message: "Le funzioni AI sono temporaneamente disabilitate.",
+    });
+    return;
+  }
   const ctx = await checkClientAccess(req, res);
   if (!ctx) return;
 
@@ -146,6 +154,13 @@ ${brief[0].rawText}`
 });
 
 router.post("/clients/:clientId/brief/generate-strategy", async (req, res): Promise<void> => {
+  if (!isAiEnabled()) {
+    res.status(503).json({
+      error: "AI_DISABLED",
+      message: "Le funzioni AI sono temporaneamente disabilitate.",
+    });
+    return;
+  }
   const ctx = await checkClientAccess(req, res);
   if (!ctx) return;
 

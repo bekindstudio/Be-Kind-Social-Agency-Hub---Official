@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { portalFetch } from "@workspace/api-client-react";
+import { AI_ENABLED } from "@/lib/featureFlags";
 import { Layout } from "@/components/layout/Layout";
 import {
   Plus,
@@ -221,7 +222,7 @@ export default function Tools() {
             </h2>
           </div>
           <nav className="flex-1 p-2 space-y-0.5">
-            {TOOLS.map((tool) => (
+            {TOOLS.filter((tool) => AI_ENABLED || tool.id !== "content-ideas-ai").map((tool) => (
               <button
                 key={tool.id}
                 onClick={() => {

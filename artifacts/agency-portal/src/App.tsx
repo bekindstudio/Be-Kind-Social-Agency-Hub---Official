@@ -8,6 +8,7 @@ import { RouteErrorFallback } from "@/components/shared/RouteErrorFallback";
 import { AiChatProvider } from "@/components/ai-chat/AiChatContext";
 import { AiFloatingButton } from "@/components/ai-chat/AiFloatingButton";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
+import { AI_ENABLED } from "@/lib/featureFlags";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { AUTH_DISABLED as authDisabled } from "@/config/auth-mode";
 import { AutoSaveProvider } from "@/context/AutoSaveContext";
@@ -116,6 +117,7 @@ function RequireActiveClient({ children }: { children: React.ReactNode }) {
 
 function AuthenticatedAiWidgets() {
   const { authDisabled: off, session } = useSupabaseAuth();
+  if (!AI_ENABLED) return null;
   if (off || session) {
     return (
       <>
@@ -270,11 +272,13 @@ function Router() {
             <RequireAuth><Redirect to="/tools/reports" /></RequireAuth>
           </RouteBoundary>
         </Route>
-        <Route path="/ai-assistant">
-          <RouteBoundary routeKey="/ai-assistant">
-            <RequireAuth><AiAssistant /></RequireAuth>
-          </RouteBoundary>
-        </Route>
+        {AI_ENABLED && (
+          <Route path="/ai-assistant">
+            <RouteBoundary routeKey="/ai-assistant">
+              <RequireAuth><AiAssistant /></RequireAuth>
+            </RouteBoundary>
+          </Route>
+        )}
         <Route path="/settings">
           <RouteBoundary routeKey="/settings">
             <RequireAuth><Settings /></RequireAuth>
@@ -327,16 +331,20 @@ function Router() {
             <RequireAuth><RequireActiveClient><ReportsPage /></RequireActiveClient></RequireAuth>
           </RouteBoundary>
         </Route>
-        <Route path="/tools/caption-ai">
-          <RouteBoundary routeKey="/tools/caption-ai">
-            <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
-          </RouteBoundary>
-        </Route>
-        <Route path="/tools/content-ideas">
-          <RouteBoundary routeKey="/tools/content-ideas">
-            <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
-          </RouteBoundary>
-        </Route>
+        {AI_ENABLED && (
+          <Route path="/tools/caption-ai">
+            <RouteBoundary routeKey="/tools/caption-ai">
+              <RequireAuth><RequireActiveClient><CaptionAiPage /></RequireActiveClient></RequireAuth>
+            </RouteBoundary>
+          </Route>
+        )}
+        {AI_ENABLED && (
+          <Route path="/tools/content-ideas">
+            <RouteBoundary routeKey="/tools/content-ideas">
+              <RequireAuth><RequireActiveClient><ContentIdeasPage /></RequireActiveClient></RequireAuth>
+            </RouteBoundary>
+          </Route>
+        )}
         <Route>
           <RouteBoundary routeKey="/not-found">
             <NotFound />

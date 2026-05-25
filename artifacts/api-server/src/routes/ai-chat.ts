@@ -19,7 +19,10 @@ import { requireAiEnabled } from "../lib/ai-flag";
 const router = Router();
 
 // Tutte le rotte della chat AI sono dietro il flag AI_ENABLED (503 se disabilitate).
-router.use(requireAiEnabled);
+// Scopato al prefisso "/anthropic" (i path di questo router): senza path, un
+// router.use() montato senza prefisso bloccherebbe il traffico pass-through
+// verso gli altri router registrati dopo, mandandoli in 503.
+router.use("/anthropic", requireAiEnabled);
 const PRIVATE_PORTAL_AI_ONLY = !["false", "0", "off", "no"].includes(
   (process.env.PRIVATE_PORTAL_AI_ONLY ?? "true").trim().toLowerCase(),
 );

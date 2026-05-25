@@ -11,7 +11,11 @@ import { requireAiEnabled } from "../lib/ai-flag";
 const router: IRouter = Router();
 
 // Tutte le rotte AI sono dietro il flag AI_ENABLED (503 se disabilitate).
-router.use(requireAiEnabled);
+// IMPORTANTE: scopare il guard al prefisso "/ai". Questo router è montato senza
+// path (router.use(aiRouter)) PRIMA di molti altri (storage, notifications, …):
+// un use() senza path bloccherebbe ogni richiesta che lo attraversa, mandando
+// in 503 tutte le rotte registrate dopo. Con "/ai" il guard scatta solo qui.
+router.use("/ai", requireAiEnabled);
 
 const captionSchema = z.object({
   clientId: z.string().min(1),

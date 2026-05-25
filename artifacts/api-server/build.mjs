@@ -15,7 +15,12 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [
+      // index.mjs: avvio long-running (app.listen) per locale/Render
+      path.resolve(artifactDir, "src/index.ts"),
+      // vercel.mjs: export dell'app Express come handler per la Vercel Function
+      path.resolve(artifactDir, "src/vercel.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",

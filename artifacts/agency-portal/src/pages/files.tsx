@@ -13,6 +13,7 @@ import { cn, formatDate, formatFileSize } from "@/lib/utils";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { portalFetch } from "@workspace/api-client-react";
 import { useClientContext } from "@/context/ClientContext";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 function FileIcon({ type }: { type: string }) {
   const t = type.toLowerCase();
@@ -106,14 +107,16 @@ export default function Files() {
           body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
         });
         if (!reqRes.ok) throw new Error("Upload URL request failed");
-        const { uploadURL, objectPath } = await reqRes.json();
+        const { bucket, path, token, objectPath } = await reqRes.json();
 
-        const uploadRes = await fetch(uploadURL, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
+        // Upload straight to Supabase Storage with the signed token. Using the
+        // SDK ensures the correct multipart format Supabase expects for the
+        // signed-upload endpoint (a raw PUT does not work for browser Files).
+        const supabase = getSupabaseBrowserClient();
+        const { error: uploadErr } = await supabase.storage
+          .from(bucket)
+          .uploadToSignedUrl(path, token, file, { contentType: file.type });
+        if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
         const fileUrl = `/api/storage/objects${objectPath}`;
         const fileType = detectFileType(file.name, file.type);

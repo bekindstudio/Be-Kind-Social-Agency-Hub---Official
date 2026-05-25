@@ -68,11 +68,19 @@ function objectPathToStorageKey(objectPath: string): string {
 
 export class ObjectStorageService {
   /**
-   * Create a one-shot signed upload URL the browser PUTs the file to directly,
-   * keeping large uploads off the Vercel Function (4.5 MB request-body limit).
-   * Returns the same `{ uploadURL, objectPath }` shape the previous impl did.
+   * Create a one-shot signed upload token the browser uploads the file to
+   * directly (via supabase-js `uploadToSignedUrl`), keeping large uploads off
+   * the Vercel Function (4.5 MB request-body limit). Returns the bucket, the
+   * storage key (`path`) and the `token` the client needs, plus the legacy
+   * `uploadURL`/`objectPath`.
    */
-  async createUpload(): Promise<{ uploadURL: string; objectPath: string }> {
+  async createUpload(): Promise<{
+    uploadURL: string;
+    objectPath: string;
+    bucket: string;
+    path: string;
+    token: string;
+  }> {
     await ensureBucket();
     const admin = getSupabaseAdmin();
     const bucket = getBucketName();
@@ -85,7 +93,13 @@ export class ObjectStorageService {
       throw new Error(`Failed to create signed upload URL: ${error?.message ?? "unknown"}`);
     }
 
-    return { uploadURL: data.signedUrl, objectPath: `/objects/${storageKey}` };
+    return {
+      uploadURL: data.signedUrl,
+      objectPath: `/objects/${storageKey}`,
+      bucket,
+      path: data.path ?? storageKey,
+      token: data.token,
+    };
   }
 
   /** Download the raw bytes of an object (used by the API download route and Drive sync). */

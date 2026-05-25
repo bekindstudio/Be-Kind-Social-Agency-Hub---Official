@@ -45,8 +45,8 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   }
 
   try {
-    const { uploadURL, objectPath } = await objectStorageService.createUpload();
-    res.json({ uploadURL, objectPath });
+    const upload = await objectStorageService.createUpload();
+    res.json(upload);
   } catch (error) {
     req.log.error({ err: error }, "Error generating upload URL");
     res.status(500).json({ error: "Failed to generate upload URL" });

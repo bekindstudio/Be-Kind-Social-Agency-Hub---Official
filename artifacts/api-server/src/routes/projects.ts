@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, inArray } from "drizzle-orm";
-import { db, projectsTable, clientsTable, tasksTable, teamMembersTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
+import { db, projectsTable, clientsTable, tasksTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
 import {
   GetProjectParams,
   UpdateProjectParams,
@@ -61,6 +61,25 @@ function canViewProject(
   return false;
 }
 
+/**
+ * Controllo di accesso completo a un singolo progetto: combina la visibilità
+ * (privacy) con l'accesso al cliente proprietario. Da usare in TUTTE le route
+ * che operano su un progetto puntuale (GET/PATCH/DELETE/archive/duplicate/workspace)
+ * per evitare IDOR (un utente con accesso al cliente A non deve poter toccare
+ * progetti del cliente B).
+ */
+async function userCanAccessProject(
+  project: typeof projectsTable.$inferSelect,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!canViewProject(project, userId)) return false;
+  if (userId && project.clientId != null) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(project.clientId)) return false;
+  }
+  return true;
+}
+
 function coerceDate(value: Date | string | null | undefined): Date | null {
   if (value == null) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -113,77 +132,6 @@ function calcHealth(input: {
   return "on-track";
 }
 
-async function seedProjectTemplates() {
-  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
-  const existing = await db.select().from(projectTemplatesTable);
-  if (existing.length > 0) return;
-  await db.insert(projectTemplatesTable).values([
-    { name: "Social Media Management", type: "Social", isSystem: "true", description: "Template mensile social", structureJson: JSON.stringify({ phases: ["Strategia", "Produzione", "Pubblicazione", "Report"] }) },
-    { name: "Campagna ADV Meta", type: "ADV Meta", isSystem: "true", description: "Template campagna Meta", structureJson: JSON.stringify({ phases: ["Brief", "Setup", "Launch", "Ottimizzazione"] }) },
-    { name: "Campagna ADV Google", type: "ADV Google", isSystem: "true", description: "Template campagna Google", structureJson: JSON.stringify({ phases: ["Keyword", "Setup", "Launch", "Report"] }) },
-    { name: "Lancio Prodotto", type: "Altro", isSystem: "true", description: "Template full campaign", structureJson: JSON.stringify({ phases: ["Teasing", "Lancio", "Follow-up"] }) },
-    { name: "Restyling Brand Identity", type: "Branding", isSystem: "true", description: "Template branding", structureJson: JSON.stringify({ phases: ["Audit", "Concept", "Execution", "Delivery"] }) },
-    { name: "Sito Web", type: "Web", isSystem: "true", description: "Template web", structureJson: JSON.stringify({ phases: ["UX", "Design", "Dev", "QA", "Go-live"] }) },
-  ]);
-}
-
-async function seedProjectsIfEmpty() {
-  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
-  const count = await db.select().from(projectsTable).where(isNull(projectsTable.deletedAt));
-  if (count.length > 0) return;
-  await seedProjectTemplates();
-
-  const clients = await db.select().from(clientsTable);
-  const members = await db.select().from(teamMembersTable).limit(4);
-  if (clients.length === 0) return;
-  const fiore = clients.find((c) => c.name.includes("Fiore")) ?? clients[0];
-  const tech = clients.find((c) => c.name.includes("TechNova")) ?? clients[0];
-  const rossi = clients.find((c) => c.name.includes("Rossi")) ?? clients[0];
-  const now = new Date();
-  const d30 = new Date(); d30.setDate(now.getDate() + 30);
-  const d10 = new Date(); d10.setDate(now.getDate() + 10);
-  const dm5 = new Date(); dm5.setDate(now.getDate() - 5);
-  const d15 = new Date(); d15.setDate(now.getDate() + 15);
-
-  const [p1, p2, p3, p4] = await db.insert(projectsTable).values([
-    { clientId: fiore.id, name: "Campagna Social Spring 2025", description: "Piano editoriale stagionale e produzione contenuti", typeJson: JSON.stringify(["Social Media"]), status: "active", healthStatus: "on-track", progress: 67, budget: "5000", budgetSpeso: "3200", deadline: d30.toISOString().slice(0, 10), color: "#d946ef", oreStimate: 80, oreLavorate: 48, paymentStructure: "Mensile ricorrente" },
-    { clientId: tech.id, name: "Lancio TechNova X1", description: "Campagna multi-canale performance", typeJson: JSON.stringify(["ADV Meta", "ADV Google"]), status: "active", healthStatus: "at-risk", progress: 38, budget: "22000", budgetSpeso: "18500", deadline: d10.toISOString().slice(0, 10), color: "#3b82f6", oreStimate: 160, oreLavorate: 120, paymentStructure: "A milestone" },
-    { clientId: rossi.id, name: "Restyling Brand Identity", description: "Nuova identità visiva completa", typeJson: JSON.stringify(["Branding"]), status: "on-hold", healthStatus: "delayed", progress: 40, budget: "5000", budgetSpeso: "2800", deadline: dm5.toISOString().slice(0, 10), color: "#f97316", oreStimate: 90, oreLavorate: 52, paymentStructure: "Una tantum" },
-    { clientId: fiore.id, name: "Newsletter Mensile Aprile", description: "Piano newsletter e automazioni", typeJson: JSON.stringify(["Email Marketing"]), status: "active", healthStatus: "on-track", progress: 30, budget: "800", budgetSpeso: "400", deadline: d15.toISOString().slice(0, 10), color: "#d946ef", oreStimate: 16, oreLavorate: 7, paymentStructure: "Mensile ricorrente", isRecurring: true, recurrenceType: "monthly" },
-  ]).returning();
-
-  try {
-    const mid = members[0]?.id;
-    for (const p of [p1, p2, p3, p4]) {
-      if (mid) await db.insert(projectMembersTable).values({ projectId: p.id, userId: mid, role: "Project Manager" });
-      await db.insert(projectMilestonesTable).values({ projectId: p.id, name: "Kickoff", description: "Avvio progetto", dueDate: new Date().toISOString().slice(0, 10), status: "achieved", linkedTasksJson: "[]" });
-      await db.insert(projectActivityTable).values({ projectId: p.id, action: "Project created", detailsJson: JSON.stringify({ seed: true }) });
-    }
-
-    await db.insert(tasksTable).values([
-      { projectId: p1.id, title: "Calendario contenuti approvato", status: "done", priority: "high" },
-      { projectId: p1.id, title: "Produzione reels settimana 1", status: "done", priority: "medium" },
-      { projectId: p1.id, title: "Copy carosello promozionale", status: "done", priority: "medium" },
-      { projectId: p1.id, title: "Programmazione contenuti", status: "done", priority: "high" },
-      { projectId: p1.id, title: "Report metà mese", status: "in-progress", priority: "medium" },
-      { projectId: p1.id, title: "Ottimizzazione CTA", status: "in-progress", priority: "high" },
-      { projectId: p2.id, title: "Setup campaign structure", status: "done", priority: "high" },
-      { projectId: p2.id, title: "Pixel QA", status: "done", priority: "urgent" },
-      { projectId: p2.id, title: "Creative set A/B", status: "done", priority: "high" },
-      { projectId: p2.id, title: "Launch wave 1", status: "in-progress", priority: "urgent" },
-      { projectId: p2.id, title: "Google Search ad group", status: "in-progress", priority: "high" },
-      { projectId: p2.id, title: "Fix conversion API", status: "todo", priority: "urgent", dueDate: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10) },
-      { projectId: p2.id, title: "Retargeting audience sync", status: "todo", priority: "high", dueDate: new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10) },
-      { projectId: p2.id, title: "Budget pacing review", status: "todo", priority: "medium", dueDate: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10) },
-    ]);
-  } catch (err) {
-    logger.warn(
-      { err },
-      "seedProjectsIfEmpty: righe collegate (members/milestones/activity/tasks) non inserite — verifica migrazione 20260410190000_satellite_tables_and_fks.sql",
-    );
-  }
-}
-
 router.get("/projects", async (req, res): Promise<void> => {
   const query = ListProjectsQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -192,8 +140,6 @@ router.get("/projects", async (req, res): Promise<void> => {
   }
 
   try {
-    if (process.env.SEED_DEMO_DATA === "true") await seedProjectsIfEmpty();
-
     const userId = getUid(req);
 
     const projectConditions: any[] = [isNull(projectsTable.deletedAt)];
@@ -425,17 +371,9 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  if (!canViewProject(project, userId)) {
+  if (!(await userCanAccessProject(project, userId))) {
     res.status(403).json({ error: "Accesso non autorizzato" });
     return;
-  }
-
-  if (userId && project.clientId) {
-    const accessible = await getAccessibleClientIds(userId);
-    if (accessible !== "all" && !accessible.includes(project.clientId)) {
-      res.status(403).json({ error: "Accesso negato a questo progetto" });
-      return;
-    }
   }
 
   const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
@@ -460,7 +398,7 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Project not found" });
     return;
   }
-  if (!canViewProject(existing, userId)) {
+  if (!(await userCanAccessProject(existing, userId))) {
     res.status(403).json({ error: "Accesso non autorizzato" });
     return;
   }
@@ -508,6 +446,17 @@ router.post("/projects/:id/archive", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const userId = getUid(req);
+
+  const [existing] = await db
+    .select()
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
+  if (!existing) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(existing, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
+    return;
+  }
+
   const [project] = await db
     .update(projectsTable)
     .set({ status: "archived" })
@@ -521,12 +470,26 @@ router.post("/projects/:id/archive", async (req, res): Promise<void> => {
 router.post("/projects/:id/duplicate", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const userId = getUid(req);
   const { copyTasks = true, clientId = null, startDate = null, endDate = null } = (req.body ?? {}) as any;
   const [existing] = await db
     .select()
     .from(projectsTable)
     .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!existing) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(existing, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
+    return;
+  }
+  // Se viene richiesto di assegnare la copia a un altro cliente, l'utente deve
+  // avere accesso anche a quel cliente di destinazione.
+  if (clientId != null && userId) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(Number(clientId))) {
+      res.status(403).json({ error: "Accesso negato al cliente di destinazione" });
+      return;
+    }
+  }
   const [dup] = await db.insert(projectsTable).values({
     ...existing,
     id: undefined as any,
@@ -560,19 +523,37 @@ router.post("/projects/:id/duplicate", async (req, res): Promise<void> => {
 });
 
 router.get("/project-templates", async (_req, res): Promise<void> => {
-  if (process.env.SEED_DEMO_DATA === "true") await seedProjectTemplates();
-  const rows = await db.select().from(projectTemplatesTable);
-  res.json(rows.map((r) => ({ ...r, structure: (() => { try { return JSON.parse(r.structureJson ?? "{}"); } catch { return {}; } })() })));
+  try {
+    const rows = await db.select().from(projectTemplatesTable);
+    res.json(rows.map((r) => ({ ...r, structure: (() => { try { return JSON.parse(r.structureJson ?? "{}"); } catch { return {}; } })() })));
+  } catch (err) {
+    const meta = collectPgErrorMeta(err);
+    logger.error({ err, pg: meta }, "GET /project-templates failed");
+    if (isUndefinedTableError(meta)) {
+      res.status(503).json({
+        error: "Migrazioni database mancanti",
+        hint: "Esegui le migrazioni in `supabase/migrations/` (tabella project_templates).",
+        pgCode: meta.code,
+      });
+      return;
+    }
+    res.status(500).json({ error: "Errore caricamento template progetti", pgCode: meta.code });
+  }
 });
 
 router.get("/projects/:id/workspace", async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const userId = getUid(req);
   const [project] = await db
     .select()
     .from(projectsTable)
     .where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(project, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
+    return;
+  }
 
   const [tasks, members, milestones, expenses, activity, templates, clients] = await Promise.all([
     db
@@ -634,7 +615,7 @@ router.delete("/projects/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Project not found" });
     return;
   }
-  if (!canViewProject(existing, userId)) {
+  if (!(await userCanAccessProject(existing, userId))) {
     res.status(403).json({ error: "Accesso non autorizzato" });
     return;
   }

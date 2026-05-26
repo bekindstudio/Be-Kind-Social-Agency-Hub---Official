@@ -53,7 +53,7 @@ function ClientBadge({ client, size }: { client: Client | null; size: "sm" | "md
 }
 
 export function ClientSelector() {
-  const { clients, activeClient, setActiveClient, createClient, importClients } = useClientContext();
+  const { clients, activeClient, setActiveClient, importClients } = useClientContext();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -86,13 +86,9 @@ export function ClientSelector() {
     const nextName = name.trim();
     const nextIndustry = industry.trim();
     const nextColor = color;
-    createClient({ name, industry, color });
-    setName("");
-    setIndustry("");
-    setColor("#4F46E5");
-    setShowCreate(false);
-    setOpen(false);
     try {
+      // Crea SOLO via API e usa l'id reale del DB (niente record locale fantasma
+      // con id non numerico, che rompeva la navigazione a /clients/:id).
       const response = await portalFetch("/api/clients", {
         method: "POST",
         credentials: "include",
@@ -107,22 +103,27 @@ export function ClientSelector() {
       });
       if (!response.ok) throw new Error("save_failed");
       const data = await response.json();
-      importClients([
-        {
-          id: String(data.id),
-          name: String(data.name ?? nextName),
-          logo: data.logoUrl ?? undefined,
-          color: data.brandColor ?? data.color ?? nextColor,
-          industry: String(data.settore ?? nextIndustry),
-          status: "active",
-          createdAt: String(data.createdAt ?? new Date().toISOString()),
-        },
-      ]);
+      const created: Client = {
+        id: String(data.id),
+        name: String(data.name ?? nextName),
+        logo: data.logoUrl ?? undefined,
+        color: data.brandColor ?? data.color ?? nextColor,
+        industry: String(data.settore ?? nextIndustry),
+        status: "active",
+        createdAt: String(data.createdAt ?? new Date().toISOString()),
+      };
+      importClients([created]);
+      setActiveClient(created);
+      setName("");
+      setIndustry("");
+      setColor("#4F46E5");
+      setShowCreate(false);
+      setOpen(false);
     } catch {
       toast({
         variant: "destructive",
-        title: "Cliente creato solo localmente",
-        description: "Il backend non era raggiungibile. Riprova quando la connessione è stabile.",
+        title: "Errore nella creazione del cliente",
+        description: "Il server non era raggiungibile. Riprova quando la connessione è stabile.",
       });
     } finally {
       setSaving(false);

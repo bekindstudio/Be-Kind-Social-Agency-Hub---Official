@@ -124,7 +124,7 @@ app.use(supabaseAuthMiddleware);
 //  - /me                 ritorna {userId:null} per il check auth lato client
 // Questo chiude in un solo punto tutti gli endpoint dati (difesa centralizzata,
 // coerente col login sempre obbligatorio lato frontend).
-const PUBLIC_API_PATHS = new Set(["/healthz", "/me"]);
+const PUBLIC_API_PATHS = new Set(["/healthz", "/me", "/version"]);
 app.use("/api", (req, res, next) => {
   if (req.method === "OPTIONS") { next(); return; }
   const p = req.path;

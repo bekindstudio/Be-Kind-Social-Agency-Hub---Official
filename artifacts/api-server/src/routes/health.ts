@@ -9,6 +9,11 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
+// Marker di build: verifica quale codice gira davvero in produzione.
+router.get("/version", (_req, res) => {
+  res.json({ marker: "BUILD-MARKER-20260526-A", seedsDisabled: true });
+});
+
 router.get("/me", (req, res) => {
   res.json({ userId: getUserId(req as any) });
 });

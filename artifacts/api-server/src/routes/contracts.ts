@@ -12,6 +12,12 @@ import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
 
+// Login obbligatorio su tutti i modelli di contratto (path scopato).
+router.use("/contracts", (req, res, next) => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
+  next();
+});
+
 function parseId(raw: string): number | null {
   const n = parseInt(raw, 10);
   return isNaN(n) || n <= 0 ? null : n;

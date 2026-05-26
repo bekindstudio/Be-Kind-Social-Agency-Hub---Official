@@ -6,7 +6,7 @@ import rateLimit from "express-rate-limit";
 import { supabaseAuthMiddleware } from "./middlewares/supabaseAuthMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { isApiAuthBypass } from "./lib/access-control";
+import { isApiAuthBypass, getUserId } from "./lib/access-control";
 
 if (isApiAuthBypass()) {
   logger.warn(
@@ -115,6 +115,29 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use(supabaseAuthMiddleware);
+
+// Gate di autenticazione globale: ogni rotta /api richiede un utente loggato,
+// tranne gli endpoint pubblici (path relativi al mount /api):
+//  - /healthz            health check
+//  - /public/*           config pubblica (es. supabase-config per il browser)
+//  - /cron/*             job schedulati (protetti internamente da CRON_SECRET)
+//  - /me                 ritorna {userId:null} per il check auth lato client
+// Questo chiude in un solo punto tutti gli endpoint dati (difesa centralizzata,
+// coerente col login sempre obbligatorio lato frontend).
+const PUBLIC_API_PATHS = new Set(["/healthz", "/me"]);
+app.use("/api", (req, res, next) => {
+  if (req.method === "OPTIONS") { next(); return; }
+  const p = req.path;
+  if (PUBLIC_API_PATHS.has(p) || p.startsWith("/public/") || p.startsWith("/cron/")) {
+    next();
+    return;
+  }
+  if (!getUserId(req)) {
+    res.status(401).json({ error: "Non autenticato" });
+    return;
+  }
+  next();
+});
 
 app.use("/api", router);
 

@@ -53,9 +53,20 @@ const updateClientSchema = createClientSchema.extend({
   healthScore: z.union([z.number(), z.string(), z.null()]).optional(),
 }).partial().passthrough();
 
+function safeJsonArray(value: string | null | undefined): unknown[] {
+  try {
+    const v = JSON.parse(value ?? "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
 function serializeClient(c: typeof clientsTable.$inferSelect) {
   return {
     ...c,
+    contacts: safeJsonArray(c.contactsJson),
+    services: safeJsonArray(c.servicesJson),
     createdAt: c.createdAt ? new Date(c.createdAt as any).toISOString() : null,
     updatedAt: c.updatedAt ? new Date(c.updatedAt as any).toISOString() : null,
   };
@@ -172,6 +183,13 @@ router.post("/clients", validate(createClientSchema), async (req, res): Promise<
         comeAcquisito: body.comeAcquisito ?? null,
         clienteDal: body.clienteDal ?? null,
         noteInterne: body.noteInterne ?? null,
+        pec: body.pec ?? null,
+        sdi: body.sdi ?? null,
+        iban: body.iban ?? null,
+        metodoPagamento: body.metodoPagamento ?? null,
+        terminiPagamento: body.terminiPagamento ?? null,
+        contactsJson: JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []),
+        servicesJson: JSON.stringify(Array.isArray(body.services) ? body.services : []),
         tagsJson: JSON.stringify(Array.isArray(body.tags) ? body.tags : []),
         accountManagerId: Number.isFinite(parsedAccountManagerId as number) ? parsedAccountManagerId : null,
       }).returning();
@@ -297,12 +315,14 @@ router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Pro
   const updates: Record<string, unknown> = {};
   const body = req.body as Record<string, any>;
   const fields = [
-    "name","email","phone","company","color","logoUrl","ragioneSociale","piva","codiceFiscale","indirizzo","cap","citta","provincia","paese","website","notes","instagramHandle","metaPageId","googleAdsId","driveUrl","reportRecipientEmail","nomeCommerciale","settore","dimensione","brandColor","descrizione","comeAcquisito","clienteDal","noteInterne","accountManagerId","contractStatus","monthlyValue","healthScore",
+    "name","email","phone","company","color","logoUrl","ragioneSociale","piva","codiceFiscale","indirizzo","cap","citta","provincia","paese","website","notes","instagramHandle","metaPageId","googleAdsId","driveUrl","reportRecipientEmail","nomeCommerciale","settore","dimensione","brandColor","descrizione","comeAcquisito","clienteDal","noteInterne","accountManagerId","contractStatus","monthlyValue","healthScore","pec","sdi","iban","metodoPagamento","terminiPagamento",
   ];
   for (const f of fields) {
     if (body[f] !== undefined) updates[f] = body[f];
   }
   if (body.tags !== undefined) updates.tagsJson = JSON.stringify(Array.isArray(body.tags) ? body.tags : []);
+  if (body.contacts !== undefined) updates.contactsJson = JSON.stringify(Array.isArray(body.contacts) ? body.contacts : []);
+  if (body.services !== undefined) updates.servicesJson = JSON.stringify(Array.isArray(body.services) ? body.services : []);
 
   const [existing] = await db
     .select()

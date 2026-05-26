@@ -341,6 +341,11 @@ export default function ClientDetail({ id }: Props) {
       citta: editableClient.citta ?? "",
       provincia: editableClient.provincia ?? "",
       paese: editableClient.paese ?? "Italia",
+      pec: (editableClient as any).pec ?? "",
+      sdi: (editableClient as any).sdi ?? "",
+      iban: (editableClient as any).iban ?? "",
+      metodoPagamento: (editableClient as any).metodoPagamento ?? "",
+      terminiPagamento: (editableClient as any).terminiPagamento ?? "",
       notes: editableClient.notes ?? "",
       instagramHandle: editableClient.instagramHandle ?? "",
       metaPageId: editableClient.metaPageId ?? "",
@@ -386,6 +391,11 @@ export default function ClientDetail({ id }: Props) {
           ragioneSociale: form.ragioneSociale || null,
           piva: form.piva || null,
           codiceFiscale: form.codiceFiscale || null,
+          pec: form.pec || null,
+          sdi: form.sdi || null,
+          iban: form.iban || null,
+          metodoPagamento: form.metodoPagamento || null,
+          terminiPagamento: form.terminiPagamento || null,
           indirizzo: form.indirizzo || null,
           cap: form.cap || null,
           citta: form.citta || null,
@@ -568,6 +578,11 @@ export default function ClientDetail({ id }: Props) {
                 <Field label="Città" value={f("citta")} onChange={set("citta")} placeholder="Milano" />
                 <Field label="Provincia" value={f("provincia")} onChange={set("provincia")} placeholder="MI" />
                 <Field label="Paese" value={f("paese")} onChange={set("paese")} placeholder="Italia" />
+                <Field label="PEC" value={f("pec")} onChange={set("pec")} placeholder="pec@esempio.it" />
+                <Field label="Codice SDI" value={f("sdi")} onChange={set("sdi")} placeholder="0000000" />
+                <Field label="IBAN" value={f("iban")} onChange={set("iban")} placeholder="IT00 X000..." />
+                <Field label="Metodo di pagamento" value={f("metodoPagamento")} onChange={set("metodoPagamento")} placeholder="Bonifico" />
+                <Field label="Termini di pagamento" value={f("terminiPagamento")} onChange={set("terminiPagamento")} placeholder="30gg" />
               </div>
             </Section>
 
@@ -627,7 +642,7 @@ export default function ClientDetail({ id }: Props) {
               )}
             </Section>
 
-            {((viewClient as any).ragioneSociale || (viewClient as any).piva || (viewClient as any).codiceFiscale || (viewClient as any).indirizzo) && (
+            {((viewClient as any).ragioneSociale || (viewClient as any).piva || (viewClient as any).codiceFiscale || (viewClient as any).indirizzo || (viewClient as any).pec || (viewClient as any).sdi || (viewClient as any).iban || (viewClient as any).metodoPagamento || (viewClient as any).terminiPagamento) && (
               <Section title="Dati di Fatturazione" icon={<Receipt size={15} className="text-primary" />}>
                 <div className="grid grid-cols-3 gap-4">
                   {FIELD("Ragione Sociale", (viewClient as any).ragioneSociale)}
@@ -638,6 +653,11 @@ export default function ClientDetail({ id }: Props) {
                   {FIELD("Città", (viewClient as any).citta)}
                   {FIELD("Provincia", (viewClient as any).provincia)}
                   {FIELD("Paese", (viewClient as any).paese)}
+                  {FIELD("PEC", (viewClient as any).pec)}
+                  {FIELD("Codice SDI", (viewClient as any).sdi)}
+                  {FIELD("IBAN", (viewClient as any).iban)}
+                  {FIELD("Metodo di pagamento", (viewClient as any).metodoPagamento)}
+                  {FIELD("Termini di pagamento", (viewClient as any).terminiPagamento)}
                 </div>
               </Section>
             )}

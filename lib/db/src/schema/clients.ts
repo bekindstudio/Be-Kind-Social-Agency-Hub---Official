@@ -21,6 +21,14 @@ export const clientsTable = pgTable("clients", {
   paese: text("paese").default("Italia"),
   website: text("website"),
   notes: text("notes"),
+  // Fatturazione estesa + referenti
+  pec: text("pec"),
+  sdi: text("sdi"),
+  iban: text("iban"),
+  metodoPagamento: text("metodo_pagamento"),
+  terminiPagamento: text("termini_pagamento"),
+  contactsJson: text("contacts_json").notNull().default("[]"),
+  servicesJson: text("services_json").notNull().default("[]"),
   // Social / integrazioni
   instagramHandle: text("instagram_handle"),
   metaPageId: text("meta_page_id"),

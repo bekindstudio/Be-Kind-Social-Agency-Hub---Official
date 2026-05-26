@@ -190,6 +190,7 @@ export default function Clients() {
           createdAt: String(data.createdAt ?? new Date().toISOString()),
         },
       ]);
+      void refetchClients(); // mantieni fresca la cache react-query della lista
       setShowForm(false);
       navigate(`/clients/${data.id}`);
     } catch {
@@ -208,6 +209,7 @@ export default function Clients() {
     const data = (await res.json().catch(() => ({}))) as { trashLogId?: string };
     if (!res.ok) return { ok: false, trashLogId: null as string | null };
     setClients((prev) => prev.filter((c) => c.id !== id));
+    void refetchClients(); // mantieni fresca la cache react-query della lista
     const trashLogId = typeof data.trashLogId === "string" ? data.trashLogId : null;
     if (showToast) {
       toast({

@@ -380,6 +380,9 @@ export default function ClientDetail({ id }: Props) {
           website: form.website || null,
           logoUrl: form.logoUrl || null,
           color: form.color || undefined,
+          // brandColor è il campo letto per primo da card/selector/badge:
+          // aggiornalo insieme a color per evitare colori incoerenti.
+          brandColor: form.color || undefined,
           ragioneSociale: form.ragioneSociale || null,
           piva: form.piva || null,
           codiceFiscale: form.codiceFiscale || null,

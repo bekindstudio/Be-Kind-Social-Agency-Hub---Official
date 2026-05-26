@@ -10,8 +10,16 @@ router.get("/healthz", (_req, res) => {
 });
 
 // Marker di build: verifica quale codice gira davvero in produzione.
+// `adminIdsConfigured` espone SOLO se la env ADMIN_SUPABASE_USER_IDS è valorizzata
+// (booleano, nessun valore sensibile) per diagnosticare il filtro accessi clienti.
 router.get("/version", (_req, res) => {
-  res.json({ marker: "BUILD-MARKER-20260526-B", seedsDisabled: true });
+  const adminRaw = [
+    process.env.ADMIN_SUPABASE_USER_IDS ?? "",
+    process.env.ADMIN_AUTH_USER_IDS ?? "",
+    process.env.ADMIN_CLERK_USER_IDS ?? "",
+  ].join(",");
+  const adminCount = adminRaw.split(",").map((s) => s.trim()).filter(Boolean).length;
+  res.json({ marker: "BUILD-MARKER-20260526-C", seedsDisabled: true, adminIdsConfigured: adminCount });
 });
 
 router.get("/me", (req, res) => {

@@ -163,7 +163,7 @@ router.get("/clients", async (req, res): Promise<void> => {
     .where(isNull(clientsTable.deletedAt))
     .orderBy(clientsTable.name);
 
-  if (!userId || isEnvAdmin(userId)) {
+  if (isEnvAdmin(userId)) {
     res.json(clients.map(serializeClient));
     return;
   }
@@ -179,11 +179,15 @@ router.get("/clients", async (req, res): Promise<void> => {
 });
 
 router.get("/clients/duplicate-check", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const q = String(req.query.q ?? "").trim().toLowerCase();
   const piva = String(req.query.piva ?? "").trim();
   if (!q && !piva) { res.json({ matches: [] }); return; }
+  const accessible = isEnvAdmin(userId) ? "all" : await getAccessibleClientIds(userId);
   const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   const matches = clients.filter((c) => {
+    if (accessible !== "all" && !accessible.includes(c.id)) return false;
     const byName = q && (c.name?.toLowerCase().includes(q) || (c.ragioneSociale ?? "").toLowerCase().includes(q));
     const byPiva = piva && (c.piva ?? "") === piva;
     return Boolean(byName || byPiva);
@@ -336,6 +340,7 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
     return;
   }
   const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const [client] = await db
     .select()
     .from(clientsTable)
@@ -345,7 +350,7 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  if (userId && !isEnvAdmin(userId)) {
+  if (!isEnvAdmin(userId)) {
     const accessible = await getAccessibleClientIds(userId);
     if (accessible !== "all" && !accessible.includes(client.id)) {
       res.status(403).json({ error: "Accesso negato a questo cliente" });

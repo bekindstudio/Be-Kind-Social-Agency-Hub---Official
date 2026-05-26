@@ -34,6 +34,16 @@ function normalizeName(name: string): string {
   return String(name ?? "").trim().toLowerCase();
 }
 
+/** Parsing tollerante dei tag: mai lanciare (evita crash della lista clienti). */
+function safeTags(json: string | null | undefined): string[] {
+  try {
+    const v = JSON.parse(json ?? "[]");
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 function dedupeClientRows(rows: ClientRow[]): ClientRow[] {
   const positiveNameSet = new Set(
     rows
@@ -394,7 +404,7 @@ export default function Clients() {
                     </div>
                   </div>
                   <div className="px-4 pb-4">
-                    <div className="flex flex-wrap gap-1 mb-3">{(JSON.parse(client.tagsJson ?? "[]") as string[]).slice(0, 4).map((tag) => <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tag}</span>)}</div>
+                    <div className="flex flex-wrap gap-1 mb-3">{safeTags(client.tagsJson).slice(0, 4).map((tag) => <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tag}</span>)}</div>
                     <div className="flex items-center justify-between">
                       <div className="text-xs text-muted-foreground">€ {Number(client.monthlyValue ?? 0).toLocaleString("it-IT")}/mese</div>
                       <div className="flex items-center gap-1">
@@ -413,7 +423,7 @@ export default function Clients() {
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allClientsSelected} onChange={(e) => toggleSelectAllClients(e.target.checked)} className="h-4 w-4 accent-primary" aria-label="Seleziona tutti i clienti filtrati" /></th><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-left">Contratto</th><th className="px-3 py-2 text-left">Valore mensile</th><th className="px-3 py-2 text-left">Ultima attività</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
-              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{(JSON.parse(c.tagsJson ?? "[]") as string[]).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
+              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{safeTags(c.tagsJson).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
             </table>
           </div>
         )}

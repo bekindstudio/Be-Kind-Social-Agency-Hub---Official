@@ -177,9 +177,9 @@ router.get("/reports", async (req, res): Promise<void> => {
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
     const author = req.query.author as string | undefined;
 
-    // Seed demo reports when table is empty
+    // Seed demo reports when table is empty (only if SEED_DEMO_DATA is on)
     const countRows = await db.select({ count: sql<number>`count(*)::int` }).from(clientReportsTable);
-    if ((countRows[0]?.count ?? 0) === 0) {
+    if (process.env.SEED_DEMO_DATA === "true" && (countRows[0]?.count ?? 0) === 0) {
       const clients = await db.select().from(clientsTable).limit(3);
       const now = new Date();
       const monthLabel = now.toLocaleDateString("it-IT", { month: "long", year: "numeric" });

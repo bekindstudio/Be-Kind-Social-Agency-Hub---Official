@@ -229,7 +229,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
     return;
   }
 
-  await seedAdvancedTasks();
+  if (process.env.SEED_DEMO_DATA === "true") await seedAdvancedTasks();
 
   const rawClientId = req.query.clientId;
   const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;

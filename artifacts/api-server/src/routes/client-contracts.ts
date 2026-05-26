@@ -195,7 +195,7 @@ async function seedIfEmpty() {
 }
 
 router.get("/client-contracts", async (req, res): Promise<void> => {
-  await seedIfEmpty();
+  if (process.env.SEED_DEMO_DATA === "true") await seedIfEmpty();
   await autoUpdateExpired();
   const userId = getUserId(req);
   const rows = await db

@@ -153,7 +153,7 @@ async function seedMockClients() {
 }
 
 router.get("/clients", async (req, res): Promise<void> => {
-  await seedMockClients();
+  if (process.env.SEED_DEMO_DATA === "true") await seedMockClients();
   const userId = getUserId(req);
   const clients = await db
     .select()

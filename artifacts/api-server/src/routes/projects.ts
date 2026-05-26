@@ -190,7 +190,7 @@ router.get("/projects", async (req, res): Promise<void> => {
   }
 
   try {
-    await seedProjectsIfEmpty();
+    if (process.env.SEED_DEMO_DATA === "true") await seedProjectsIfEmpty();
 
     const userId = getUid(req);
 
@@ -558,7 +558,7 @@ router.post("/projects/:id/duplicate", async (req, res): Promise<void> => {
 });
 
 router.get("/project-templates", async (_req, res): Promise<void> => {
-  await seedProjectTemplates();
+  if (process.env.SEED_DEMO_DATA === "true") await seedProjectTemplates();
   const rows = await db.select().from(projectTemplatesTable);
   res.json(rows.map((r) => ({ ...r, structure: (() => { try { return JSON.parse(r.structureJson ?? "{}"); } catch { return {}; } })() })));
 });

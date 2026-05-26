@@ -90,96 +90,9 @@ function generateDailyData(
 }
 
 function seedStore(): ClientCoreStore {
-  const createdAt = nowIso();
-  const ristoranteId = makeId();
-  const dentistaId = makeId();
-  const modaId = makeId();
-
-  const clients: Client[] = [
-    {
-      id: ristoranteId,
-      name: "Trattoria Da Nino",
-      industry: "Ristorazione",
-      color: "#4F46E5",
-      status: "active",
-      createdAt,
-    },
-    {
-      id: dentistaId,
-      name: "Studio Dentistico Sorriso",
-      industry: "Salute",
-      color: "#0EA5E9",
-      status: "active",
-      createdAt,
-    },
-    {
-      id: modaId,
-      name: "Atelier Moda Urbana",
-      industry: "Fashion Retail",
-      color: "#DB2777",
-      status: "paused",
-      createdAt,
-    },
-  ];
-
-  const analytics: Record<string, ClientAnalytics> = {
-    [ristoranteId]: {
-      clientId: ristoranteId,
-      accountId: "ig_demo_ristorante",
-      period: "ultimo_30_giorni",
-      followers: 12480,
-      followersPrevious: 11980,
-      followersGrowth: 4.2,
-      reach: 86200,
-      reachPrevious: 80300,
-      impressions: 124900,
-      engagementRate: 5.4,
-      engagementRatePrevious: 4.8,
-      postsPublished: 19,
-      profileViews: 4220,
-      dailyData: generateDailyData(12200, 2600, 4100, 4.6),
-      topPosts: [],
-      updatedAt: createdAt,
-    },
-    [dentistaId]: {
-      clientId: dentistaId,
-      accountId: "ig_demo_dentista",
-      period: "ultimo_30_giorni",
-      followers: 3210,
-      followersPrevious: 3175,
-      followersGrowth: 1.1,
-      reach: 18700,
-      reachPrevious: 17550,
-      impressions: 25100,
-      engagementRate: 2.9,
-      engagementRatePrevious: 2.6,
-      postsPublished: 6,
-      profileViews: 940,
-      dailyData: generateDailyData(3150, 620, 880, 2.5),
-      topPosts: [],
-      updatedAt: createdAt,
-    },
-    [modaId]: {
-      clientId: modaId,
-      accountId: "ig_demo_moda",
-      period: "ultimo_30_giorni",
-      followers: 28100,
-      followersPrevious: 28280,
-      followersGrowth: -0.6,
-      reach: 105400,
-      reachPrevious: 110200,
-      impressions: 162700,
-      engagementRate: 3.7,
-      engagementRatePrevious: 4.1,
-      postsPublished: 12,
-      profileViews: 8100,
-      dailyData: generateDailyData(27900, 3300, 5100, 3.9),
-      topPosts: [],
-      updatedAt: createdAt,
-    },
-  };
-
-  return { clients, analytics };
+  // Nessun cliente demo: lo store parte VUOTO e viene popolato solo dai clienti
+  // reali caricati da /api/clients (vedi loadPortalClients più sotto).
+  return { clients: [], analytics: {} };
 }
 
 export function ClientCoreProvider({ children }: { children: ReactNode }) {

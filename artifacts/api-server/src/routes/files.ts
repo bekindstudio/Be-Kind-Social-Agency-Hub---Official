@@ -7,6 +7,7 @@ import {
   ListFilesQueryParams,
 } from "@workspace/api-zod";
 import { syncFileToGoogleDrive } from "../lib/googleDriveSync";
+import { ObjectStorageService } from "../lib/supabaseStorage";
 
 const router: IRouter = Router();
 
@@ -77,6 +78,14 @@ router.delete("/files/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "File not found" });
     return;
   }
+
+  // Best-effort: drop the backing object from storage when it was an uploaded file
+  // (external link rows have no object to remove). Never blocks the response.
+  if (file.url.startsWith("/api/storage/objects/")) {
+    const objectPath = file.url.replace("/api/storage", "");
+    void new ObjectStorageService().deleteObject(objectPath);
+  }
+
   res.sendStatus(204);
 });
 

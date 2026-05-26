@@ -9,4 +9,7 @@ export const RequestUploadUrlBody = zod.object({
 export const RequestUploadUrlResponse = zod.object({
   uploadURL: zod.string(),
   objectPath: zod.string(),
+  bucket: zod.string(),
+  path: zod.string(),
+  token: zod.string(),
 });

@@ -1,5 +1,5 @@
 import { JWT } from "google-auth-library";
-import { ObjectStorageService } from "./objectStorage";
+import { ObjectStorageService } from "./supabaseStorage";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
@@ -126,8 +126,7 @@ export async function syncFileToGoogleDrive(opts: {
 
   const objectPath = opts.objectUrl.replace("/api/storage", "");
   const objectStorage = new ObjectStorageService();
-  const objectFile = await objectStorage.getObjectEntityFile(objectPath);
-  const [content] = await objectFile.download();
+  const { buffer: content } = await objectStorage.getObjectBytes(objectPath);
 
   const token = await getAccessToken();
   const parentFolderId = await ensureProjectFolder(token, rootFolderId, opts.projectId);

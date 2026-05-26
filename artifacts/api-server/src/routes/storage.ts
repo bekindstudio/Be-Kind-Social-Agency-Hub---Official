@@ -1,11 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
-import {
-  RequestUploadUrlBody,
-  RequestUploadUrlResponse,
-} from "@workspace/api-zod";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
-import { ObjectPermission } from "../lib/objectAcl";
+import { RequestUploadUrlBody } from "@workspace/api-zod";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/supabaseStorage";
 import { getUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
@@ -50,12 +45,8 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   }
 
   try {
-    const { name, size, contentType } = parsed.data;
-
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-    res.json({ uploadURL, objectPath });
+    const upload = await objectStorageService.createUpload();
+    res.json(upload);
   } catch (error) {
     req.log.error({ err: error }, "Error generating upload URL");
     res.status(500).json({ error: "Failed to generate upload URL" });
@@ -63,82 +54,39 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 });
 
 /**
- * GET /storage/public-objects/*
- *
- * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
- * These are unconditionally public — no authentication or ACL checks.
- * IMPORTANT: Always provide this endpoint when object storage is set up.
- */
-router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
-  try {
-    const raw = req.params.filePath;
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const file = await objectStorageService.searchPublicObject(filePath);
-    if (!file) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-
-    const response = await objectStorageService.downloadObject(file);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
-  } catch (error) {
-    req.log.error({ err: error }, "Error serving public object");
-    res.status(500).json({ error: "Failed to serve public object" });
-  }
-});
-
-/**
  * GET /storage/objects/*
  *
- * Serve object entities from PRIVATE_OBJECT_DIR.
- * These are served from a separate path from /public-objects and can optionally
- * be protected with authentication or ACL checks based on the use case.
+ * Serve a private object from Supabase Storage. The portal is an internal team
+ * workspace where files are shared, so any authenticated user may read; the
+ * service-role client (which bypasses RLS) fetches the bytes server-side and we
+ * stream them back same-origin. Pass `?download=<name>` to force a download
+ * with that filename.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   try {
-    const userId = getUserId(req as any) ?? undefined;
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    const objectPath = `/objects/${wildcardPath}`;
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    const canAccess = await objectStorageService.canAccessObjectEntity({
-      userId,
-      objectFile,
-      requestedPermission: ObjectPermission.READ,
-    });
-    if (!canAccess) {
-      req.log.warn(
-        { userId, objectPath, ip: req.ip },
-        "Storage access denied — unauthorized request",
-      );
-      res.status(403).json({
-        error: "STORAGE_ACCESS_DENIED",
-        message: "Non hai i permessi per accedere a questo file",
-      });
+    const userId = getUserId(req as any);
+    if (!userId) {
+      res.status(401).json({ error: "Non autenticato" });
       return;
     }
 
-    const response = await objectStorageService.downloadObject(objectFile);
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const objectPath = `/objects/${wildcardPath}`;
 
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
+    const { buffer, contentType } = await objectStorageService.getObjectBytes(objectPath);
 
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
+    const downloadName = typeof req.query.download === "string" ? req.query.download : null;
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    if (downloadName) {
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(downloadName).replace(/%20/g, " ")}"`,
+      );
     }
+    res.status(200).send(buffer);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");

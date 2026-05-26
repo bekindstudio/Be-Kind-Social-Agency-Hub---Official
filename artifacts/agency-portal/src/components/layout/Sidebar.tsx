@@ -15,8 +15,6 @@ import {
   FileSignature,
   BarChart2,
   Sparkles,
-  Moon,
-  Sun,
   LogOut,
   Trash2,
   FileText,
@@ -27,23 +25,9 @@ import {
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
-import { useTheme } from "@/hooks/useTheme";
 import { useUserRole } from "@/hooks/useUserRole";
 import { portalFetch } from "@workspace/api-client-react";
 import { useClientContext } from "@/context/ClientContext";
-
-function ThemeToggle() {
-  const { dark, toggle } = useTheme();
-  return (
-    <button
-      onClick={toggle}
-      title={dark ? "Tema chiaro" : "Tema scuro"}
-      className="p-1.5 rounded-lg text-sidebar-foreground/40 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent transition-colors shrink-0"
-    >
-      {dark ? <Sun size={14} /> : <Moon size={14} />}
-    </button>
-  );
-}
 
 const hrefPermissionMap: Record<string, string> = {
   "/team": "team",
@@ -261,7 +245,6 @@ export function Sidebar() {
                 {user?.emailAddresses?.[0]?.emailAddress ?? ""}
               </p>
             </div>
-            <ThemeToggle />
             {!authDisabled ? (
               <button
                 type="button"

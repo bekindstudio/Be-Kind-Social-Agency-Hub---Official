@@ -1,11 +1,13 @@
 /**
- * Default: portal senza login (tutte le pagine accessibili).
- * Per riattivare Supabase: su Vercel imposta `VITE_AUTH_ENABLED=true` e ridistribuisci.
+ * Login Supabase SEMPRE richiesto.
  *
- * Su Render, `API_AUTH_DISABLED=true` consente ancora richieste senza JWT per demo/strumenti,
- * ma se il client invia `Authorization: Bearer <access_token>` il middleware verifica il JWT
- * e usa il `sub` reale (necessario per notifiche e dati per-utente). Imposta `SUPABASE_JWT_SECRET`
- * uguale al JWT Secret del progetto Supabase. Per produzione stretta puoi usare `API_AUTH_DISABLED=false`.
+ * Il portale è privato: ogni pagina richiede una sessione Supabase valida
+ * (email + password). Non esiste più un interruttore di build `VITE_AUTH_ENABLED`
+ * — la configurazione Supabase (URL + chiave anon) arriva a runtime da
+ * `/api/public/supabase-config`, coerente col resto del progetto (nessuna
+ * `VITE_*` nel bundle del frontend).
+ *
+ * Lato API il gate resta `API_AUTH_DISABLED` (default false → JWT obbligatorio);
+ * in produzione l'avvio viene bloccato se messo a `true`.
  */
-export const AUTH_DISABLED =
-  import.meta.env.VITE_AUTH_ENABLED !== "true" && import.meta.env.VITE_AUTH_ENABLED !== "1";
+export const AUTH_DISABLED = false;

@@ -81,10 +81,9 @@ function formatItalianDate(): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-export function DailyFocusPopup({ open, onClose, onStartTimer }: {
+export function DailyFocusPopup({ open, onClose }: {
   open: boolean;
   onClose: () => void;
-  onStartTimer?: (task: FocusTask) => void;
 }) {
   const { user } = usePortalUser();
   const { toast } = useToast();
@@ -215,13 +214,10 @@ export function DailyFocusPopup({ open, onClose, onStartTimer }: {
 
   const handleStartNow = useCallback((task: FocusTask) => {
     logAction(task.id, "started");
-    if (onStartTimer) {
-      onStartTimer(task);
-    }
-    toast({ title: `Timer avviato per ${task.title}` });
+    toast({ title: `Hai iniziato: ${task.title}` });
     handleClose();
     navigate(`/projects`);
-  }, [logAction, onStartTimer, handleClose, navigate, toast]);
+  }, [logAction, handleClose, navigate, toast]);
 
   const handleSkip = useCallback(() => {
     const task = tasks[currentIndex];

@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useListContractTemplates, getListContractTemplatesQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
-import { ArrowLeft, Plus, Pencil, X } from "lucide-react";
+import { Plus, Pencil, X } from "lucide-react";
 import { ContractRichEditor } from "@/components/contracts/ContractRichEditor";
 import { extractVariableKeys, highlightVariablesInHtml, SERVICE_LABELS } from "@/lib/contracts-shared";
 
@@ -107,10 +106,6 @@ export default function ContractsTemplates() {
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <Link href="/contracts" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
-              <ArrowLeft className="h-4 w-4" />
-              Contratti
-            </Link>
             <h1 className="text-2xl font-semibold tracking-tight">Template contratti</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Modifica i testi predefiniti. Le variabili <code className="text-blue-600 dark:text-blue-400">{"{{NOME}}"}</code> sono evidenziate in anteprima.

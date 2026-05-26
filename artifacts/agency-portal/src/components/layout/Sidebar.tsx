@@ -33,7 +33,7 @@ const hrefPermissionMap: Record<string, string> = {
   "/team": "team",
   "/files": "files",
   "/quotes": "quotes",
-  "/contracts": "contracts",
+  "/contracts/templates": "contracts",
   "/settings": "settings",
 };
 
@@ -77,7 +77,7 @@ const navGroups = [
     label: "Documentazione",
     items: [
       { href: "/quotes", label: "Preventivi", icon: Receipt },
-      { href: "/contracts", label: "Contratti", icon: FileSignature },
+      { href: "/contracts/templates", label: "Contratti", icon: FileSignature },
     ],
   },
 ];

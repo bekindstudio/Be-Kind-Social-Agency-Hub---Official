@@ -28,10 +28,7 @@ const Team = lazy(() => import("@/pages/team"));
 const Chat = lazy(() => import("@/pages/chat"));
 const Files = lazy(() => import("@/pages/files"));
 const Quotes = lazy(() => import("@/pages/quotes"));
-const Contracts = lazy(() => import("@/pages/contracts"));
-const ContractsNew = lazy(() => import("@/pages/contracts-new"));
 const ContractsTemplates = lazy(() => import("@/pages/contracts-templates"));
-const ContractsClassic = lazy(() => import("@/pages/contracts-classic"));
 const Settings = lazy(() => import("@/pages/settings"));
 const AiAssistant = lazy(() => import("@/pages/ai-assistant"));
 const BriefPage = lazy(() => import("@/pages/tools/BriefPage"));
@@ -247,24 +244,14 @@ function Router() {
             <RequireAuth><Quotes /></RequireAuth>
           </RouteBoundary>
         </Route>
-        <Route path="/contracts/new">
-          <RouteBoundary routeKey="/contracts/new">
-            <RequireAuth><ContractsNew /></RequireAuth>
-          </RouteBoundary>
-        </Route>
         <Route path="/contracts/templates">
           <RouteBoundary routeKey="/contracts/templates">
             <RequireAuth><ContractsTemplates /></RequireAuth>
           </RouteBoundary>
         </Route>
-        <Route path="/contracts/classic">
-          <RouteBoundary routeKey="/contracts/classic">
-            <RequireAuth><ContractsClassic /></RequireAuth>
-          </RouteBoundary>
-        </Route>
         <Route path="/contracts">
           <RouteBoundary routeKey="/contracts">
-            <RequireAuth><Contracts /></RequireAuth>
+            <RequireAuth><Redirect to="/contracts/templates" /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/reports">

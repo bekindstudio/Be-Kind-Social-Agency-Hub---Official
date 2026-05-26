@@ -68,6 +68,7 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
 }
 
 async function seedAdvancedTasks() {
+  if (process.env.SEED_DEMO_DATA !== "true") return;
   const taskCount = await db
     .select({ count: sql<number>`count(*)` })
     .from(tasksTable)

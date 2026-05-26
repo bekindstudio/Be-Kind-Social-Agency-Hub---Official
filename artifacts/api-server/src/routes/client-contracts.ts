@@ -95,6 +95,7 @@ async function getNextNumero(): Promise<string> {
 }
 
 async function seedIfEmpty() {
+  if (process.env.SEED_DEMO_DATA !== "true") return;
   const existing = await db.select().from(contractsTable).where(isNull(contractsTable.deletedAt)).limit(1);
   if (existing.length > 0) return;
 

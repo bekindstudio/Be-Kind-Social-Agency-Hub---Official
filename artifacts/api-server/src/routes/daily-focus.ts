@@ -102,7 +102,7 @@ router.get("/daily-focus", async (req, res): Promise<void> => {
       .where(sql`${tasksTable.status} != 'done'`);
   }
 
-  if (tasks.length === 0) {
+  if (tasks.length === 0 && process.env.SEED_DEMO_DATA === "true") {
     const now = new Date();
     await db.insert(tasksTable).values([
       {

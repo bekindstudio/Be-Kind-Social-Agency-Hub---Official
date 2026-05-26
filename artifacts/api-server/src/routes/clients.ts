@@ -82,7 +82,7 @@ function computeHealthScore(input: {
 }
 
 async function seedMockClients() {
-  if (process.env.SEED_DEMO_DATA !== "true") return;
+  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
   const existing = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
   if (existing.length > 0) return;
 

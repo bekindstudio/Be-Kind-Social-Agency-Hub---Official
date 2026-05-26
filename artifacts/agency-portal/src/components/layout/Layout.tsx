@@ -4,7 +4,6 @@ import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
-import { ActiveTimerWidget, useTimerStart } from "@/components/ActiveTimerWidget";
 import { Bell, Menu } from "lucide-react";
 import { AutoSaveIndicator } from "./AutoSaveIndicator";
 import { OfflineBanner } from "./OfflineBanner";
@@ -19,7 +18,6 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
-  const startTimer = useTimerStart();
   const webNotifications = useWebDeadlineNotifications();
 
   useEffect(() => {
@@ -54,15 +52,6 @@ export function Layout({ children }: LayoutProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const handleStartTimer = useCallback((task: any) => {
-    startTimer({
-      clientId: task.clientId,
-      projectId: task.projectId,
-      taskId: task.id,
-      description: task.title,
-    });
-  }, [startTimer]);
 
   const isWebNotifyActive =
     webNotifications.enabled && webNotifications.permission === "granted";
@@ -114,7 +103,6 @@ export function Layout({ children }: LayoutProps) {
               </button>
             )}
             <AutoSaveIndicator />
-            <ActiveTimerWidget />
             <DailyFocusWidget onClick={() => setFocusOpen(true)} />
             <GlobalSearch />
           </div>
@@ -127,7 +115,6 @@ export function Layout({ children }: LayoutProps) {
       <DailyFocusPopup
         open={focusOpen}
         onClose={handleFocusClose}
-        onStartTimer={handleStartTimer}
       />
     </div>
   );

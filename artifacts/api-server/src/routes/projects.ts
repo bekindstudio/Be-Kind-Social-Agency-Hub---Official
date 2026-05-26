@@ -114,7 +114,7 @@ function calcHealth(input: {
 }
 
 async function seedProjectTemplates() {
-  if (process.env.SEED_DEMO_DATA !== "true") return;
+  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
   const existing = await db.select().from(projectTemplatesTable);
   if (existing.length > 0) return;
   await db.insert(projectTemplatesTable).values([
@@ -128,7 +128,7 @@ async function seedProjectTemplates() {
 }
 
 async function seedProjectsIfEmpty() {
-  if (process.env.SEED_DEMO_DATA !== "true") return;
+  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
   const count = await db.select().from(projectsTable).where(isNull(projectsTable.deletedAt));
   if (count.length > 0) return;
   await seedProjectTemplates();

@@ -9,6 +9,7 @@ import { ClientMetaSection } from "@/components/client/ClientMetaSection";
 import { ClientReportsSection } from "@/components/client/ClientReportsSection";
 import { ClientProjectsSection } from "@/components/client/ClientProjectsSection";
 import { useClientDetail } from "@/hooks/useClientDetail";
+import { useToast } from "@/hooks/use-toast";
 import {
   ChevronLeft,
   Pencil,
@@ -121,6 +122,7 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "Urgente" },
 ];
 
+const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 export default function ClientDetail({ id }: Props) {
   const [, navigate] = useLocation();
@@ -142,8 +144,11 @@ export default function ClientDetail({ id }: Props) {
 
   const { openDrawer: openAiDrawer } = useAiChat();
   const { clients: contextClients, setActiveClient } = useClientContext();
+  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [editContacts, setEditContacts] = useState<Array<Record<string, string>>>([]);
+  const [editServices, setEditServices] = useState<string[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -353,6 +358,8 @@ export default function ClientDetail({ id }: Props) {
       driveUrl: editableClient.driveUrl ?? "",
       reportRecipientEmail: editableClient.reportRecipientEmail ?? "",
     });
+    setEditContacts(Array.isArray(editableClient.contacts) ? editableClient.contacts : []);
+    setEditServices(Array.isArray(editableClient.services) ? editableClient.services : []);
     setLogoPreview(editableClient.logoUrl ?? null);
     setEditing(true);
   };
@@ -396,6 +403,8 @@ export default function ClientDetail({ id }: Props) {
           iban: form.iban || null,
           metodoPagamento: form.metodoPagamento || null,
           terminiPagamento: form.terminiPagamento || null,
+          contacts: editContacts,
+          services: editServices,
           indirizzo: form.indirizzo || null,
           cap: form.cap || null,
           citta: form.citta || null,
@@ -414,6 +423,10 @@ export default function ClientDetail({ id }: Props) {
           invalidateClient();
           setEditing(false);
           setLogoPreview(null);
+          toast({ title: "Cliente aggiornato" });
+        },
+        onError: () => {
+          toast({ variant: "destructive", title: "Errore nel salvataggio", description: "Modifiche non salvate. Riprova." });
         },
       }
     );
@@ -586,6 +599,34 @@ export default function ClientDetail({ id }: Props) {
               </div>
             </Section>
 
+            <Section title="Referenti & Servizi" icon={<Building2 size={15} className="text-primary" />}>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Referenti</p>
+                  <div className="space-y-2">
+                    {editContacts.map((c, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                        <input placeholder="Nome" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.nome ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], nome: e.target.value }; setEditContacts(next); }} />
+                        <input placeholder="Ruolo" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.ruolo ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], ruolo: e.target.value }; setEditContacts(next); }} />
+                        <input placeholder="Email" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.email ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], email: e.target.value }; setEditContacts(next); }} />
+                        <button type="button" onClick={() => setEditContacts(editContacts.filter((_, j) => j !== i))} className="p-1.5 text-muted-foreground hover:text-destructive" title="Rimuovi referente"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="text-xs text-primary hover:underline mt-2" onClick={() => setEditContacts([...editContacts, { nome: "", cognome: "", ruolo: "", email: "", telefono: "" }])}>+ aggiungi referente</button>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Servizi</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SERVICE_TYPES.map((s) => {
+                      const active = editServices.includes(s);
+                      return <button type="button" key={s} onClick={() => setEditServices(active ? editServices.filter((x) => x !== s) : [...editServices, s])} className={cn("px-3 py-1.5 text-sm rounded-lg border", active ? "bg-primary/10 border-primary text-primary" : "bg-background border-input")}>{s}</button>;
+                    })}
+                  </div>
+                </div>
+              </div>
+            </Section>
+
             <Section title="Social & Integrazioni" icon={<Share2 size={15} className="text-primary" />}>
               <div className="grid grid-cols-2 gap-4">
                 <Field
@@ -658,6 +699,36 @@ export default function ClientDetail({ id }: Props) {
                   {FIELD("IBAN", (viewClient as any).iban)}
                   {FIELD("Metodo di pagamento", (viewClient as any).metodoPagamento)}
                   {FIELD("Termini di pagamento", (viewClient as any).terminiPagamento)}
+                </div>
+              </Section>
+            )}
+
+            {((((viewClient as any).contacts?.length ?? 0) > 0) || (((viewClient as any).services?.length ?? 0) > 0)) && (
+              <Section title="Referenti & Servizi" icon={<Building2 size={15} className="text-primary" />}>
+                <div className="space-y-4">
+                  {(((viewClient as any).contacts?.length ?? 0) > 0) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Referenti</p>
+                      <div className="space-y-1.5">
+                        {((viewClient as any).contacts as any[]).map((c, i) => (
+                          <div key={i} className="text-sm flex flex-wrap gap-x-2 items-center">
+                            <span className="font-medium">{[c.nome, c.cognome].filter(Boolean).join(" ") || "—"}</span>
+                            {c.ruolo && <span className="text-xs text-muted-foreground">· {c.ruolo}</span>}
+                            {c.email && <span className="text-xs text-primary">· {c.email}</span>}
+                            {c.telefono && <span className="text-xs text-muted-foreground">· {c.telefono}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(((viewClient as any).services?.length ?? 0) > 0) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Servizi</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {((viewClient as any).services as string[]).map((s) => <span key={s} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">{s}</span>)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Section>
             )}

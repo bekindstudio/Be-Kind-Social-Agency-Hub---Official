@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db, socialAccountsTable } from "@workspace/db";
 import { decrypt, encrypt, isEncrypted } from "../lib/encrypt";
@@ -77,16 +76,7 @@ export async function renewExpiringTokens(): Promise<void> {
   );
 }
 
-const isMain = process.argv[1] === fileURLToPath(import.meta.url);
-
-if (isMain) {
-  renewExpiringTokens()
-    .then(() => {
-      logger.info("Token renewal job finished");
-      process.exit(0);
-    })
-    .catch((err) => {
-      logger.error({ err }, "Token renewal job crashed");
-      process.exit(1);
-    });
-}
+// Nessun auto-run al boot: il rinnovo gira via Vercel Cron sull'endpoint
+// /api/cron/meta-token-renew (vedi routes/cron.ts). In passato un check
+// `isMain` qui dentro, una volta bundlato, risultava vero per errore e faceva
+// eseguire il job (+ process.exit) all'avvio del server long-running.

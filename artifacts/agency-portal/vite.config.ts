@@ -35,6 +35,26 @@ export default defineConfig(() => {
     build: {
       outDir: path.resolve(import.meta.dirname, "dist/public"),
       emptyOutDir: true,
+      chunkSizeWarningLimit: 1100,
+      rollupOptions: {
+        output: {
+          // Estrae i vendor pesanti dal bundle principale (index.js) per un
+          // caricamento iniziale più leggero. Le librerie di export (html2pdf,
+          // jspdf, xlsx, html2canvas) restano chunk separati lazy via import().
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return;
+            if (
+              id.includes("/react-dom/") ||
+              id.includes("/scheduler/") ||
+              /node_modules\/react\//.test(id) ||
+              id.includes("react/jsx-runtime")
+            ) return "react-vendor";
+            if (id.includes("@tanstack")) return "tanstack";
+            if (id.includes("lucide-react")) return "icons";
+            if (id.includes("date-fns")) return "date-fns";
+          },
+        },
+      },
     },
     server: {
       port,

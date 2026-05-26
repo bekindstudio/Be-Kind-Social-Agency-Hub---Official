@@ -3,10 +3,35 @@ import { eq, desc, and, or, inArray, sql } from "drizzle-orm";
 import { db, clientReportsTable, reportApprovalsTable, clientsTable } from "@workspace/db";
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
-import { getUserId, getAccessibleClientIds } from "../lib/access-control";
+import { getUserId, getAccessibleClientIds, isEnvAdmin } from "../lib/access-control";
 import { isAiEnabled } from "../lib/ai-flag";
 
 const router: IRouter = Router();
+
+/** True se l'utente loggato può accedere al cliente; altrimenti invia 401/403 e ritorna false. */
+async function ensureClientAccess(req: any, res: any, clientId: number): Promise<boolean> {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return false; }
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  if (accessible !== "all" && !accessible.includes(clientId)) {
+    res.status(403).json({ error: "Accesso negato a questo cliente" });
+    return false;
+  }
+  return true;
+}
+
+/** Carica il report, verifica l'accesso al suo cliente. Ritorna il clientId o null (dopo aver inviato 401/403/404). */
+async function ensureReportAccess(req: any, res: any, reportId: number): Promise<number | null> {
+  if (Number.isNaN(reportId)) { res.status(400).json({ error: "ID non valido" }); return null; }
+  const [report] = await db
+    .select({ clientId: clientReportsTable.clientId })
+    .from(clientReportsTable)
+    .where(eq(clientReportsTable.id, reportId));
+  if (!report) { res.status(404).json({ error: "Report non trovato" }); return null; }
+  const ok = await ensureClientAccess(req, res, report.clientId);
+  return ok ? report.clientId : null;
+}
 
 function getOpenAIClient() {
   return new OpenAI({
@@ -285,6 +310,7 @@ router.get("/reports/detail/:id", async (req, res): Promise<void> => {
   try {
     res.set("Cache-Control", "no-cache, no-store");
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const rows = await db.select({
       report: clientReportsTable,
       clientName: clientsTable.name,
@@ -318,6 +344,7 @@ router.get("/reports/client/:clientId", async (req, res): Promise<void> => {
   try {
     res.set("Cache-Control", "no-cache, no-store");
     const clientId = parseInt(req.params.clientId);
+    if (!(await ensureClientAccess(req, res, clientId))) return;
     const reports = await db.select()
       .from(clientReportsTable)
       .where(eq(clientReportsTable.clientId, clientId))
@@ -334,6 +361,7 @@ router.post("/reports", async (req, res): Promise<void> => {
     const authUserId = getUserId(req as any);
     const body = req.body;
     const clientId = parseInt(body.clientId);
+    if (!(await ensureClientAccess(req, res, clientId))) return;
 
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
     if (!client) { res.status(404).json({ error: "Cliente non trovato" }); return; }
@@ -395,6 +423,7 @@ router.post("/reports", async (req, res): Promise<void> => {
 router.patch("/reports/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const body = req.body;
 
     const allowed: Record<string, any> = {};
@@ -421,6 +450,7 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
 router.post("/reports/:id/submit-review", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const [updated] = await db.update(clientReportsTable)
       .set({ status: "in_revisione" })
       .where(eq(clientReportsTable.id, id))
@@ -436,6 +466,7 @@ router.post("/reports/:id/submit-review", async (req, res): Promise<void> => {
 router.post("/reports/:id/approve", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
@@ -475,6 +506,7 @@ router.post("/reports/:id/approve", async (req, res): Promise<void> => {
 router.post("/reports/:id/reject", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const authUserId = getUserId(req as any);
     const nota = req.body.nota ?? "";
 
@@ -514,6 +546,7 @@ router.post("/reports/:id/reject", async (req, res): Promise<void> => {
 router.post("/reports/:id/send", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
 
     const [report] = await db.select().from(clientReportsTable).where(eq(clientReportsTable.id, id));
     if (!report) { res.status(404).json({ error: "Report non trovato" }); return; }
@@ -558,6 +591,7 @@ router.post("/reports/:id/send", async (req, res): Promise<void> => {
 router.post("/reports/:id/confirm-client", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     const [updated] = await db.update(clientReportsTable)
       .set({ status: "confermato_cliente" })
       .where(eq(clientReportsTable.id, id))
@@ -573,6 +607,7 @@ router.post("/reports/:id/confirm-client", async (req, res): Promise<void> => {
 router.delete("/reports/:id", async (req, res): Promise<void> => {
   try {
     const id = parseInt(req.params.id);
+    if ((await ensureReportAccess(req, res, id)) === null) return;
     await db.delete(clientReportsTable).where(eq(clientReportsTable.id, id));
     res.json({ ok: true });
   } catch (err: any) {
@@ -599,6 +634,7 @@ router.get("/reports/counts", async (_req, res): Promise<void> => {
 router.post("/reports/generate/:clientId", async (req, res): Promise<void> => {
   try {
     const clientId = parseInt(req.params.clientId);
+    if (!(await ensureClientAccess(req, res, clientId))) return;
     const { period, periodLabel, metrics, recipientEmail, isRealData } = req.body;
     const authUserId = getUserId(req as any);
 

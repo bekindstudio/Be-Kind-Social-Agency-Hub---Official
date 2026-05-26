@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, teamMembersTable } from "@workspace/db";
 import { isRequestAdmin } from "../lib/request-admin";
+import { getUserId } from "../lib/access-control";
 import { getSupabaseAdmin, portalPublicOrigin } from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
@@ -14,12 +15,14 @@ function serializeMember(m: typeof teamMembersTable.$inferSelect) {
   };
 }
 
-router.get("/team", async (_req, res): Promise<void> => {
+router.get("/team", async (req, res): Promise<void> => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
   const members = await db.select().from(teamMembersTable).orderBy(teamMembersTable.name);
   res.json(members.map(serializeMember));
 });
 
 router.get("/team/:id", async (req, res): Promise<void> => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
   const [member] = await db.select().from(teamMembersTable).where(eq(teamMembersTable.id, id));
@@ -28,6 +31,7 @@ router.get("/team/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/team", async (req, res): Promise<void> => {
+  if (!(await isRequestAdmin(req))) { res.status(403).json({ error: "Solo un amministratore può gestire il team" }); return; }
   const b = req.body as Record<string, unknown>;
   const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : "");
   const name = str("name");
@@ -56,6 +60,7 @@ router.post("/team", async (req, res): Promise<void> => {
 });
 
 router.patch("/team/:id", async (req, res): Promise<void> => {
+  if (!(await isRequestAdmin(req))) { res.status(403).json({ error: "Solo un amministratore può gestire il team" }); return; }
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
@@ -79,6 +84,7 @@ router.patch("/team/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/team/:id", async (req, res): Promise<void> => {
+  if (!(await isRequestAdmin(req))) { res.status(403).json({ error: "Solo un amministratore può gestire il team" }); return; }
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
   const [member] = await db.delete(teamMembersTable).where(eq(teamMembersTable.id, id)).returning();

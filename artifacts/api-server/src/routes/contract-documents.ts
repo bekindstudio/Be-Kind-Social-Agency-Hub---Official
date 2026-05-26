@@ -7,6 +7,12 @@ import { softDeleteRecord } from "../lib/trash-service";
 
 const router: IRouter = Router();
 
+// Login obbligatorio su tutti i documenti contratto (path scopato).
+router.use("/contract-documents", (req, res, next) => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
+  next();
+});
+
 const CreateBody = z.object({
   templateId: z.number().int().positive().nullable().optional(),
   clientName: z.string().min(1),

@@ -8,8 +8,15 @@ import {
 } from "@workspace/api-zod";
 import { syncFileToGoogleDrive } from "../lib/googleDriveSync";
 import { ObjectStorageService } from "../lib/supabaseStorage";
+import { getUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
+
+// Login obbligatorio su tutti gli endpoint file (path scopato).
+router.use("/files", (req, res, next) => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
+  next();
+});
 
 router.get("/files", async (req, res): Promise<void> => {
   const query = ListFilesQueryParams.safeParse(req.query);

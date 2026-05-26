@@ -155,6 +155,7 @@ async function seedMockClients() {
 router.get("/clients", async (req, res): Promise<void> => {
   if (process.env.SEED_DEMO_DATA === "true") await seedMockClients();
   const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const clients = await db
     .select()
     .from(clientsTable)
@@ -379,6 +380,16 @@ router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Pro
     return;
   }
 
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  if (!isEnvAdmin(userId)) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(existing.id)) {
+      res.status(403).json({ error: "Accesso negato a questo cliente" });
+      return;
+    }
+  }
+
   const [client] = await db.update(clientsTable).set(updates).where(eq(clientsTable.id, params.data.id)).returning();
   if (!client) {
     res.status(404).json({ error: "Client not found" });
@@ -396,6 +407,16 @@ router.get("/clients/:id/profile", async (req, res): Promise<void> => {
     .from(clientsTable)
     .where(and(eq(clientsTable.id, clientId), isNull(clientsTable.deletedAt)));
   if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+  const profileUserId = getUserId(req);
+  if (!profileUserId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  if (!isEnvAdmin(profileUserId)) {
+    const accessible = await getAccessibleClientIds(profileUserId);
+    if (accessible !== "all" && !accessible.includes(client.id)) {
+      res.status(403).json({ error: "Accesso negato a questo cliente" });
+      return;
+    }
+  }
 
   const [projects, tasks, contracts, reports] = await Promise.all([
     db

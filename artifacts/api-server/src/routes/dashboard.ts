@@ -6,8 +6,16 @@ import {
   GetRecentActivityResponse,
   GetProjectStatusBreakdownResponse,
 } from "@workspace/api-zod";
+import { getUserId } from "../lib/access-control";
 
 const router: IRouter = Router();
+
+// Tutti gli endpoint dashboard richiedono login. Path scopato a "/dashboard"
+// per NON bloccare il traffico pass-through degli altri router.
+router.use("/dashboard", (req, res, next) => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
+  next();
+});
 
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [clients, projects, tasks, members] = await Promise.all([

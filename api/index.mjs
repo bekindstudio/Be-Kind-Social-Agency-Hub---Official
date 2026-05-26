@@ -7,6 +7,8 @@
 //
 // vercel.json fa rewrite /api/(.*) -> /api preservando req.url, così l'app
 // Express (montata su "/api") instrada nativamente tutti i path.
+// Build marker — bump per forzare il rebuild della Function quando cambia il
+// bundle dell'API (@vercel/node altrimenti riusa la function cachata): build-2
 import app from "../artifacts/api-server/dist/vercel.mjs";
 
 export default app;

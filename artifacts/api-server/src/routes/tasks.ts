@@ -10,7 +10,7 @@ import {
   ListTasksQueryParams,
 } from "@workspace/api-zod";
 import { z } from "zod";
-import { getUserId } from "../lib/access-control";
+import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
 import { validate } from "../middlewares/validate";
 
@@ -67,157 +67,44 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
   return serializeTask(task, projectMap, memberMap);
 }
 
-async function seedAdvancedTasks() {
-  return; // Demo seed DISATTIVATO: il portale non popola mai dati finti.
-  const taskCount = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(tasksTable)
-    .where(isNull(tasksTable.deletedAt));
-
-  if (Number(taskCount[0]?.count) > 0) return;
-
-  const members = await db.select().from(teamMembersTable).limit(2);
-  const assigneeId = members[0]?.id ?? null;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const in7d = new Date(); in7d.setDate(in7d.getDate() + 7);
-  const in14d = new Date(); in14d.setDate(in14d.getDate() + 14);
-  const in30d = new Date(); in30d.setDate(in30d.getDate() + 30);
-  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-
-  const seeds = [
-    {
-      title: "Controllo commenti e DM Instagram",
-      description: "Monitorare inbox e rispondere ai messaggi urgenti dei clienti",
-      assigneeId,
-      status: "todo",
-      priority: "urgent",
-      dueDate: yesterday.toISOString().slice(0, 10),
-      tipo: "semplice",
-      categoria: null,
-      checklistJson: "[]",
-      pacchettoContenuti: null,
-      meseRiferimento: null,
-    },
-    {
-      title: "Aggiornamento KPI settimanali dashboard cliente",
-      description: "Aggiornare metriche principali nel report condiviso",
-      assigneeId: members[1]?.id ?? assigneeId,
-      status: "review",
-      priority: "medium",
-      dueDate: in7d.toISOString().slice(0, 10),
-      tipo: "semplice",
-      categoria: null,
-      checklistJson: "[]",
-      pacchettoContenuti: null,
-      meseRiferimento: null,
-    },
-    {
-      title: "Onboarding Cliente Nuovo",
-      description: "Processo completo di onboarding per nuovo cliente",
-      assigneeId,
-      status: "in-progress",
-      priority: "high",
-      dueDate: in14d.toISOString().slice(0, 10),
-      tipo: "avanzata",
-      categoria: "Onboarding Nuovo Cliente",
-      checklistJson: JSON.stringify([
-        { id: "ob1", testo: "Analisi gratuita", completato: true, gruppo: "" },
-        { id: "ob2", testo: "Meeting conoscitivo", completato: true, gruppo: "" },
-        { id: "ob3", testo: "Preventivo con portfolio", completato: true, gruppo: "" },
-        { id: "ob4", testo: "Contratto firmato", completato: true, gruppo: "" },
-        { id: "ob5", testo: "Drive condiviso creato (template)", completato: false, gruppo: "" },
-        { id: "ob6", testo: "Briefing con domande e obiettivi (Excel)", completato: false, gruppo: "" },
-        { id: "ob7", testo: "Facebook - credenziali ricevute", completato: true, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob8", testo: "Instagram - credenziali ricevute", completato: true, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob9", testo: "LinkedIn - credenziali ricevute", completato: false, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob10", testo: "TikTok - credenziali ricevute", completato: false, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob11", testo: "YouTube - credenziali ricevute", completato: false, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob12", testo: "Sito Web - credenziali ricevute", completato: false, gruppo: "Credenziali ricevute o pagine create" },
-        { id: "ob13", testo: "Brand Kit Canva creato", completato: false, gruppo: "" },
-        { id: "ob14", testo: "Ricerca competitors completata", completato: false, gruppo: "" },
-      ]),
-      pacchettoContenuti: null,
-      meseRiferimento: null,
-    },
-    {
-      title: "Piano Editoriale Aprile",
-      description: "Produzione contenuti mensili per il mese di Aprile",
-      assigneeId,
-      status: "review",
-      priority: "medium",
-      dueDate: in30d.toISOString().slice(0, 10),
-      tipo: "avanzata",
-      categoria: "Piano Editoriale Mensile",
-      checklistJson: JSON.stringify([
-        { id: "pe1", testo: "PED Aprile - Piano editoriale creato", completato: true, gruppo: "" },
-        { id: "pe2", testo: "Template Carosello", completato: true, gruppo: "Template grafici creati" },
-        { id: "pe3", testo: "Template Storia", completato: true, gruppo: "Template grafici creati" },
-        { id: "pe4", testo: "Template Post IG", completato: false, gruppo: "Template grafici creati" },
-        { id: "pe5", testo: "Contenuti Foto/Video creati (4 su 8)", completato: false, gruppo: "" },
-        { id: "pe6", testo: "Contenuti grafici creati (0 su 8)", completato: false, gruppo: "" },
-        { id: "pe7", testo: "Programmazione completata", completato: false, gruppo: "" },
-        { id: "pe8", testo: "Pubblicazioni verificate", completato: false, gruppo: "" },
-        { id: "pe9", testo: "Approvazione cliente ricevuta", completato: false, gruppo: "" },
-      ]),
-      pacchettoContenuti: "8",
-      meseRiferimento: "Aprile",
-    },
-    {
-      title: "Campagna ADV Meta – Brand Awareness Q2",
-      description: "Configurazione e lancio campagna Meta Ads per Q2",
-      assigneeId: members[1]?.id ?? assigneeId,
-      status: "in-progress",
-      priority: "high",
-      dueDate: today,
-      tipo: "avanzata",
-      categoria: "Campagna ADV Meta",
-      checklistJson: JSON.stringify([
-        { id: "ma1", testo: "Strategia campagna definita", completato: true, gruppo: "" },
-        { id: "ma2", testo: "Pubblici target creati (Tofu)", completato: true, gruppo: "" },
-        { id: "ma3", testo: "Pubblici retargeting creati (Bofu)", completato: true, gruppo: "" },
-        { id: "ma4", testo: "Creatività ads realizzate", completato: true, gruppo: "" },
-        { id: "ma5", testo: "Copy ads scritto e approvato", completato: false, gruppo: "" },
-        { id: "ma6", testo: "Campagna configurata su Meta Ads Manager", completato: false, gruppo: "" },
-        { id: "ma7", testo: "Pixel eventi verificati", completato: false, gruppo: "" },
-        { id: "ma8", testo: "Campagna attivata", completato: false, gruppo: "" },
-        { id: "ma9", testo: "Primo check performance (dopo 48h)", completato: false, gruppo: "" },
-        { id: "ma10", testo: "Ottimizzazione in corso", completato: false, gruppo: "" },
-        { id: "ma11", testo: "Report risultati", completato: false, gruppo: "" },
-      ]),
-      pacchettoContenuti: null,
-      meseRiferimento: null,
-    },
-    {
-      title: "Campagna ADV Google - Lead Generation",
-      description: "Preparazione campagna Search e brand protection",
-      assigneeId,
-      status: "done",
-      priority: "high",
-      dueDate: in14d.toISOString().slice(0, 10),
-      tipo: "avanzata",
-      categoria: "Campagna ADV Google",
-      checklistJson: JSON.stringify([
-        { id: "ga1", testo: "Ricerca e analisi parole chiave completata", completato: true, gruppo: "" },
-        { id: "ga2", testo: "Struttura campagna definita", completato: true, gruppo: "" },
-        { id: "ga3", testo: "Campagna principale creata", completato: true, gruppo: "" },
-        { id: "ga4", testo: "Campagna brand creata", completato: true, gruppo: "" },
-        { id: "ga5", testo: "Campagna competitors creata", completato: true, gruppo: "" },
-        { id: "ga6", testo: "Annunci scritti e approvati", completato: true, gruppo: "" },
-        { id: "ga7", testo: "Estensioni annunci configurate", completato: true, gruppo: "" },
-        { id: "ga8", testo: "Conversioni tracciate con GTM", completato: true, gruppo: "" },
-        { id: "ga9", testo: "Campagna attivata", completato: true, gruppo: "" },
-        { id: "ga10", testo: "Check performance iniziale", completato: true, gruppo: "" },
-        { id: "ga11", testo: "Report risultati", completato: true, gruppo: "" },
-      ]),
-      pacchettoContenuti: null,
-      meseRiferimento: null,
-    },
-  ];
-
-  for (const s of seeds) {
-    await db.insert(tasksTable).values(s);
+/**
+ * Cliente "effettivo" di un task: clientId diretto, altrimenti il clientId del
+ * progetto collegato. Serve all'autorizzazione per-cliente (evita IDOR).
+ */
+async function taskEffectiveClientId(task: typeof tasksTable.$inferSelect): Promise<number | null> {
+  if (task.clientId != null) return task.clientId;
+  if (task.projectId != null) {
+    const [p] = await db
+      .select({ clientId: projectsTable.clientId })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, task.projectId));
+    return p?.clientId ?? null;
   }
+  return null;
+}
+
+/** True se l'utente può operare sul task in base al cliente di appartenenza. */
+async function userCanAccessTask(task: typeof tasksTable.$inferSelect, userId: string): Promise<boolean> {
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  if (accessible === "all") return true;
+  const cid = await taskEffectiveClientId(task);
+  if (cid == null) return true; // task interni senza cliente → visibili al team
+  return accessible.includes(cid);
+}
+
+/** Carica un task e verifica l'accesso. Ritorna lo status HTTP da usare in caso di errore. */
+async function loadTaskIfAccessible(
+  taskId: number,
+  userId: string,
+): Promise<{ ok: true; task: typeof tasksTable.$inferSelect } | { ok: false; status: 403 | 404 }> {
+  const [task] = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, taskId), isNull(tasksTable.deletedAt)));
+  if (!task) return { ok: false, status: 404 };
+  if (!(await userCanAccessTask(task, userId))) return { ok: false, status: 403 };
+  return { ok: true, task };
 }
 
 router.get("/tasks", async (req, res): Promise<void> => {
@@ -229,8 +116,6 @@ router.get("/tasks", async (req, res): Promise<void> => {
     res.status(400).json({ error: query.error.message });
     return;
   }
-
-  if (process.env.SEED_DEMO_DATA === "true") await seedAdvancedTasks();
 
   const rawClientId = req.query.clientId;
   const clientId = rawClientId != null && rawClientId !== "" ? Number(rawClientId) : null;
@@ -260,8 +145,20 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   const projectIds = Array.from(new Set(tasks.map((task) => task.projectId).filter((id): id is number => id != null)));
   const assigneeIds = Array.from(new Set(tasks.map((task) => task.assigneeId).filter((id): id is number => id != null)));
-  const { projectMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
-  const result = tasks.map((task) => serializeTask(task, projectMap, memberMap));
+  const { projectMap, projectClientMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
+
+  // Autorizzazione per-cliente: un utente non-admin vede solo i task dei clienti
+  // a cui ha accesso (cliente diretto del task o del progetto collegato). I task
+  // senza cliente sono interni e restano visibili al team.
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId);
+  const visibleTasks = accessible === "all"
+    ? tasks
+    : tasks.filter((task) => {
+        const cid = task.clientId ?? (task.projectId != null ? projectClientMap.get(task.projectId) ?? null : null);
+        return cid == null || accessible.includes(cid);
+      });
+
+  const result = visibleTasks.map((task) => serializeTask(task, projectMap, memberMap));
   res.json(result);
 });
 
@@ -296,6 +193,8 @@ router.get("/tasks/:id/comments", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Task ID non valido" });
     return;
   }
+  const access = await loadTaskIfAccessible(taskId, userId);
+  if (!access.ok) { res.status(access.status).json({ error: access.status === 404 ? "Task not found" : "Accesso non autorizzato" }); return; }
 
   const commentsResult = await db
     .execute(sql<{
@@ -342,6 +241,9 @@ router.post("/tasks/:id/comments", validate(createTaskCommentSchema), async (req
     res.status(400).json({ error: "Task ID non valido" });
     return;
   }
+
+  const access = await loadTaskIfAccessible(taskId, userId);
+  if (!access.ok) { res.status(access.status).json({ error: access.status === 404 ? "Task not found" : "Accesso non autorizzato" }); return; }
 
   const { content, authorName } = req.body as z.infer<typeof createTaskCommentSchema>;
   const insertedResult = await db.execute(sql<{
@@ -392,6 +294,8 @@ router.get("/tasks/:id/activity", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Task ID non valido" });
     return;
   }
+  const access = await loadTaskIfAccessible(taskId, userId);
+  if (!access.ok) { res.status(access.status).json({ error: access.status === 404 ? "Task not found" : "Accesso non autorizzato" }); return; }
 
   const rows = await db
     .select()
@@ -421,6 +325,10 @@ router.get("/tasks/:id", async (req, res): Promise<void> => {
     .where(and(eq(tasksTable.id, params.data.id), isNull(tasksTable.deletedAt)));
   if (!task) {
     res.status(404).json({ error: "Task not found" });
+    return;
+  }
+  if (!(await userCanAccessTask(task, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
     return;
   }
   const enriched = await enrichTask(task);
@@ -466,6 +374,10 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  if (!(await userCanAccessTask(ex, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
+    return;
+  }
 
   const [task] = await db.update(tasksTable).set(updates).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) {
@@ -483,6 +395,18 @@ router.delete("/tasks/:id", async (req, res): Promise<void> => {
   const params = DeleteTaskParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [ex] = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, params.data.id), isNull(tasksTable.deletedAt)));
+  if (!ex) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
+  if (!(await userCanAccessTask(ex, userId))) {
+    res.status(403).json({ error: "Accesso non autorizzato" });
     return;
   }
   const r = await softDeleteRecord("tasks", String(params.data.id), { deletedBy: userId });

@@ -305,7 +305,6 @@ export default function Dashboard() {
     for (const p of projects.filter((x: AnyObj) => Number(x.budget ?? 0) > 0 && (Number(x.budgetSpeso ?? 0) / Number(x.budget ?? 1)) >= 0.85).slice(0, 2)) {
       list.push({ id: `budget-${p.id}`, level: "warning", text: `Budget ${p.name} all'85%`, href: `/projects/${p.id}` });
     }
-    list.push({ id: "msg-info", level: "info", text: "Nuovo messaggio da un membro del team", href: "/chat" });
     return list.filter((a) => !dismissed.includes(a.id));
   }, [projects, clients, tasksOverdue.length, dismissed]);
 
@@ -375,14 +374,11 @@ export default function Dashboard() {
     const pendingTotal = editorialWeek.reduce((acc, day) => acc + day.pending, 0);
     return { weekTotal, pendingTotal };
   }, [editorialWeek]);
-  const unreadMessages = [
-    { id: 1, channel: "Progetto TechNova", preview: "Ho aggiornato il piano media, puoi verificare?", time: "10:12", unread: 3 },
-    { id: 2, channel: "DM - Marco", preview: "Ci sentiamo alle 15 per il brief cliente?", time: "09:45", unread: 1 },
-  ];
-  const advCampaigns = [
-    { id: 1, client: "TechNova", name: "Launch X1", platform: "Meta", spesa: 420, kpi: "ROAS 2.8", status: "attiva" },
-    { id: 2, client: "Fiore Moda", name: "Spring Sale", platform: "Google", spesa: 280, kpi: "CPC €0,78", status: "attiva" },
-  ];
+  // Nessun dato finto: questi widget si popolano da fonti reali quando disponibili.
+  // - messaggi: nessun tracciamento "non letti" ancora → vuoto finché non implementato
+  // - campagne ADV: gli account Meta/Google non sono collegati → vuoto
+  const unreadMessages: { id: number; channel: string; preview: string; time: string; unread: number }[] = [];
+  const advCampaigns: { id: number; client: string; name: string; platform: string; spesa: number; kpi: string; status: string }[] = [];
 
   const visibleWidget = (k: WidgetKey) => !hiddenWidgets.includes(k);
   const moveWidget = (idx: number, delta: number) => {
@@ -639,8 +635,14 @@ export default function Dashboard() {
 
                 {wk === "adv" && (
                   <div className="space-y-2">
-                    {advCampaigns.slice(0, 3).map((c) => <div key={c.id} className="border border-border rounded-lg p-2.5 text-sm"><p className="font-medium">{c.client} · {c.name}</p><p className="text-xs text-muted-foreground">{c.platform} · Spesa oggi €{c.spesa} · {c.kpi} · {c.status}</p></div>)}
-                    <button onClick={() => navigate("/reports")} className="text-xs text-primary hover:underline">Vedi tutte le campagne</button>
+                    {advCampaigns.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-2">Nessuna campagna attiva. Collega un account Meta/Google ADV per vedere qui le campagne.</p>
+                    ) : (
+                      <>
+                        {advCampaigns.slice(0, 3).map((c) => <div key={c.id} className="border border-border rounded-lg p-2.5 text-sm"><p className="font-medium">{c.client} · {c.name}</p><p className="text-xs text-muted-foreground">{c.platform} · Spesa oggi €{c.spesa} · {c.kpi} · {c.status}</p></div>)}
+                        <button onClick={() => navigate("/reports")} className="text-xs text-primary hover:underline">Vedi tutte le campagne</button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -754,13 +756,17 @@ export default function Dashboard() {
             <div className="bg-card border border-card-border rounded-xl p-4">
               <p className="font-semibold text-sm mb-2">Messaggi non letti</p>
               <div className="space-y-2">
-                {unreadMessages.map((m) => (
-                  <button key={m.id} onClick={() => navigate("/chat")} className="w-full text-left border border-border rounded-lg p-2 hover:bg-muted/40">
-                    <div className="flex items-center justify-between"><p className="text-sm font-medium">{m.channel}</p><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">{m.unread}</span></div>
-                    <p className="text-xs text-muted-foreground truncate">{m.preview}</p>
-                    <p className="text-[10px] text-muted-foreground">{m.time}</p>
-                  </button>
-                ))}
+                {unreadMessages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">Nessun messaggio non letto.</p>
+                ) : (
+                  unreadMessages.map((m) => (
+                    <button key={m.id} onClick={() => navigate("/chat")} className="w-full text-left border border-border rounded-lg p-2 hover:bg-muted/40">
+                      <div className="flex items-center justify-between"><p className="text-sm font-medium">{m.channel}</p><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">{m.unread}</span></div>
+                      <p className="text-xs text-muted-foreground truncate">{m.preview}</p>
+                      <p className="text-[10px] text-muted-foreground">{m.time}</p>
+                    </button>
+                  ))
+                )}
               </div>
               <button onClick={() => navigate("/chat")} className="mt-2 text-xs text-primary hover:underline">Vai alla chat</button>
             </div>

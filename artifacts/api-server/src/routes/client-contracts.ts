@@ -195,6 +195,17 @@ async function seedIfEmpty() {
   }
 }
 
+/**
+ * True se l'utente può accedere al cliente indicato (env-admin o accesso esplicito).
+ * Un clientId null è considerato accessibile (contratti senza cliente, raro).
+ */
+async function canAccessClient(userId: string | null | undefined, clientId: number | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  if (clientId == null) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  return accessible === "all" || accessible.includes(clientId);
+}
+
 router.get("/client-contracts", async (req, res): Promise<void> => {
   if (process.env.SEED_DEMO_DATA === "true") await seedIfEmpty();
   await autoUpdateExpired();
@@ -232,7 +243,7 @@ router.get("/client-contracts", async (req, res): Promise<void> => {
   res.json(filtered.map(serializeContract));
 });
 
-router.get("/client-contracts/expiring", async (_req, res): Promise<void> => {
+router.get("/client-contracts/expiring", async (req, res): Promise<void> => {
   await autoUpdateExpired();
   const today = new Date().toISOString().slice(0, 10);
   const in30 = new Date();
@@ -257,7 +268,9 @@ router.get("/client-contracts/expiring", async (_req, res): Promise<void> => {
         sql`${contractsTable.stato} = 'firmato' AND ${contractsTable.dataFine} >= ${today} AND ${contractsTable.dataFine} <= ${in30str}`,
       ),
     );
-  res.json(rows);
+  const userId = getUserId(req);
+  const accessible = userId ? await getAccessibleClientIds(userId) : ("all" as const);
+  res.json(filterByClientAccess(rows, accessible));
 });
 
 router.post("/client-contracts", async (req, res): Promise<void> => {
@@ -267,6 +280,10 @@ router.post("/client-contracts", async (req, res): Promise<void> => {
     return;
   }
   const d = parsed.data;
+  if (!(await canAccessClient(getUserId(req), d.clientId))) {
+    res.status(403).json({ error: "Accesso negato al cliente" });
+    return;
+  }
   const numero = d.numero || (await getNextNumero());
 
   const [row] = await db
@@ -382,7 +399,18 @@ router.patch("/client-contracts/:id", async (req, res): Promise<void> => {
     .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
   if (!active) { res.status(404).json({ error: "Not found" }); return; }
 
+  const userId = getUserId(req);
+  if (!(await canAccessClient(userId, active.clientId))) {
+    res.status(403).json({ error: "Accesso negato" });
+    return;
+  }
+
   const d = parsed.data;
+  // Se si riassegna il contratto a un altro cliente, serve accesso anche al nuovo.
+  if (d.clientId != null && d.clientId !== active.clientId && !(await canAccessClient(userId, d.clientId))) {
+    res.status(403).json({ error: "Accesso negato al cliente di destinazione" });
+    return;
+  }
   const updates: Record<string, unknown> = {};
   if (d.numero != null) updates.numero = d.numero;
   if (d.clientId != null) updates.clientId = d.clientId;
@@ -444,6 +472,15 @@ router.delete("/client-contracts/:id", async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   const userId = getUserId(req);
+  const [existing] = await db
+    .select({ clientId: contractsTable.clientId })
+    .from(contractsTable)
+    .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await canAccessClient(userId, existing.clientId))) {
+    res.status(403).json({ error: "Accesso negato" });
+    return;
+  }
   const r = await softDeleteRecord("contracts", String(id), { deletedBy: userId });
   if (!r.ok) {
     res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
@@ -461,6 +498,10 @@ router.post("/client-contracts/:id/duplicate", async (req, res): Promise<void> =
     .from(contractsTable)
     .where(and(eq(contractsTable.id, id), isNull(contractsTable.deletedAt)));
   if (!orig) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await canAccessClient(getUserId(req), orig.clientId))) {
+    res.status(403).json({ error: "Accesso negato" });
+    return;
+  }
 
   const numero = await getNextNumero();
   const today = new Date().toISOString().slice(0, 10);

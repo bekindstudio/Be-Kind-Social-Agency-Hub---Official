@@ -8,7 +8,7 @@ import {
 } from "@workspace/api-zod";
 import { syncFileToGoogleDrive } from "../lib/googleDriveSync";
 import { ObjectStorageService } from "../lib/supabaseStorage";
-import { getUserId } from "../lib/access-control";
+import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -17,6 +17,18 @@ router.use("/files", (req, res, next) => {
   if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
   next();
 });
+
+/** True se l'utente può accedere al cliente del progetto indicato (file → progetto → cliente). */
+async function canAccessProjectClient(userId: string | null | undefined, projectId: number | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  if (accessible === "all") return true;
+  if (projectId == null) return true; // file interno senza progetto → team
+  const [p] = await db.select({ clientId: projectsTable.clientId }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const cid = p?.clientId ?? null;
+  return cid == null || accessible.includes(cid);
+}
 
 router.get("/files", async (req, res): Promise<void> => {
   const query = ListFilesQueryParams.safeParse(req.query);
@@ -28,8 +40,20 @@ router.get("/files", async (req, res): Promise<void> => {
   const files = await db.select().from(filesTable).orderBy(filesTable.createdAt);
   const projects = await db.select().from(projectsTable);
   const projectMap = new Map(projects.map((p) => [p.id, p.name]));
+  const projectClientMap = new Map(projects.map((p) => [p.id, p.clientId ?? null]));
 
-  let result = files.map((f) => ({
+  // Autorizzazione per-cliente: un file appartiene a un cliente tramite il progetto.
+  // I file senza progetto sono "interni" e restano visibili al team.
+  const userId = getUserId(req);
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId as string);
+  const accessibleFiles = accessible === "all"
+    ? files
+    : files.filter((f) => {
+        const cid = f.projectId != null ? projectClientMap.get(f.projectId) ?? null : null;
+        return cid == null || accessible.includes(cid);
+      });
+
+  let result = accessibleFiles.map((f) => ({
     ...f,
     createdAt: f.createdAt.toISOString(),
     projectName: f.projectId ? (projectMap.get(f.projectId) ?? null) : null,
@@ -46,6 +70,10 @@ router.post("/files", async (req, res): Promise<void> => {
   const parsed = CreateFileBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (!(await canAccessProjectClient(getUserId(req), parsed.data.projectId ?? null))) {
+    res.status(403).json({ error: "Accesso negato al progetto" });
     return;
   }
   const [file] = await db.insert(filesTable).values(parsed.data).returning();
@@ -78,6 +106,15 @@ router.delete("/files/:id", async (req, res): Promise<void> => {
   const params = DeleteFileParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [existing] = await db.select().from(filesTable).where(eq(filesTable.id, params.data.id));
+  if (!existing) {
+    res.status(404).json({ error: "File not found" });
+    return;
+  }
+  if (!(await canAccessProjectClient(getUserId(req), existing.projectId ?? null))) {
+    res.status(403).json({ error: "Accesso negato" });
     return;
   }
   const [file] = await db.delete(filesTable).where(eq(filesTable.id, params.data.id)).returning();

@@ -263,7 +263,7 @@ export default function Projects() {
         ) : view === "card" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((p: any) => (
-              <div key={p.id} className="bg-card border border-card-border rounded-xl p-4 shadow-sm group relative overflow-hidden">
+              <div key={p.id} className="card-hover bg-card border border-card-border rounded-xl p-4 shadow-sm group relative overflow-hidden">
                 <label className="absolute top-3 right-3 z-10 inline-flex items-center">
                   <input
                     type="checkbox"

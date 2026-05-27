@@ -109,11 +109,7 @@ export function Layout({ children }: LayoutProps) {
         </div>
         <ClientHeader />
         <OfflineBanner />
-        {/* Transizione d'ingresso: ogni pagina entra con un fade + lieve risalita.
-            Layout si rimonta a ogni cambio rotta → l'animazione parte ad ogni navigazione. */}
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out motion-reduce:animate-none">
-          {children}
-        </div>
+        {children}
       </main>
 
       <DailyFocusPopup

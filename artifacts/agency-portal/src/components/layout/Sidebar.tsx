@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { prefetchRoute } from "@/lib/routePrefetch";
 import { AI_ENABLED, AI_NAV_HREFS } from "@/lib/featureFlags";
 import {
   LayoutDashboard,
@@ -130,7 +131,7 @@ export function Sidebar() {
         <img
           src={logoImg}
           alt="Be Kind Social Agency HUB"
-          className="logo-animate w-full h-auto object-contain"
+          className="w-full h-auto object-contain"
           style={{ maxHeight: "170px", maxWidth: "220px" }}
         />
       </div>
@@ -165,6 +166,9 @@ export function Sidebar() {
                     <li key={href}>
                       <Link href={href}>
                         <div
+                          onMouseEnter={() => prefetchRoute(href)}
+                          onFocus={() => prefetchRoute(href)}
+                          onTouchStart={() => prefetchRoute(href)}
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-colors",
                             active

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
 import { validate } from "../middlewares/validate";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -101,19 +102,21 @@ router.get("/clients", async (req, res): Promise<void> => {
     .where(isNull(clientsTable.deletedAt))
     .orderBy(clientsTable.name);
 
-  if (isEnvAdmin(userId)) {
-    res.json(clients.map(serializeClient));
-    return;
-  }
-
-  const accessible = await getAccessibleClientIds(userId);
-  if (accessible === "all") {
-    res.json(clients.map(serializeClient));
-    return;
-  }
-
-  const filtered = clients.filter((c) => accessible.includes(c.id));
-  res.json(filtered.map(serializeClient));
+  const admin = isEnvAdmin(userId);
+  const accessible = admin ? ("all" as const) : await getAccessibleClientIds(userId);
+  const result = accessible === "all" ? clients : clients.filter((c) => accessible.includes(c.id));
+  // DIAGNOSTIC: capire perché il selettore clienti resta vuoto in prod.
+  logger.info(
+    {
+      userId,
+      isEnvAdmin: admin,
+      accessible: accessible === "all" ? "all" : accessible,
+      totalClients: clients.length,
+      returned: result.length,
+    },
+    "GET /clients diag",
+  );
+  res.json(result.map(serializeClient));
 });
 
 router.get("/clients/duplicate-check", async (req, res): Promise<void> => {

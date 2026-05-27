@@ -1,9 +1,22 @@
 import { Router, type Request, type Response } from "express";
 import { db, clientsTable, socialAccountsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../lib/access-control";
+import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 
 const router = Router();
+
+/** Verifica accesso al cliente per le route Google Ads scopate per :clientId. */
+async function ensureClientAccess(req: Request, res: Response, clientId: number): Promise<boolean> {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return false; }
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  if (accessible !== "all" && !accessible.includes(clientId)) {
+    res.status(403).json({ error: "Accesso non autorizzato a questo cliente" });
+    return false;
+  }
+  return true;
+}
 
 async function getGoogleAdsConfig() {
   const [agency] = await db.select().from(socialAccountsTable).where(eq(socialAccountsTable.clientId, 0));
@@ -33,10 +46,9 @@ router.get("/google-ads/status", async (req: Request, res: Response): Promise<vo
 });
 
 router.get("/google-ads/campaigns/:clientId", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const clientId = parseInt(req.params.clientId as string);
   if (isNaN(clientId)) { res.status(400).json({ error: "ID cliente non valido" }); return; }
+  if (!(await ensureClientAccess(req, res, clientId))) return;
   const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
   if (!client) { res.status(404).json({ error: "Cliente non trovato" }); return; }
   if (!client.googleAdsId) {
@@ -97,10 +109,9 @@ router.get("/google-ads/campaigns/:clientId", async (req: Request, res: Response
 });
 
 router.get("/google-ads/summary/:clientId", async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const clientId = parseInt(req.params.clientId as string);
   if (isNaN(clientId)) { res.status(400).json({ error: "ID cliente non valido" }); return; }
+  if (!(await ensureClientAccess(req, res, clientId))) return;
   const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
   if (!client) { res.status(404).json({ error: "Cliente non trovato" }); return; }
   if (!client.googleAdsId) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useClientContext } from "@/context/ClientContext";
+import { useClientContext, useClientCore } from "@/context/ClientContext";
 import type { Client } from "@/types/client";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +54,7 @@ function ClientBadge({ client, size }: { client: Client | null; size: "sm" | "md
 
 export function ClientSelector() {
   const { clients, activeClient, setActiveClient, importClients } = useClientContext();
+  const { clientsLoading, clientsError } = useClientCore();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -147,6 +148,15 @@ export function ClientSelector() {
       {open && (
         <div className="absolute z-50 mt-2 w-[320px] rounded-xl border border-border bg-card p-2 shadow-xl">
           <div className="max-h-72 overflow-y-auto pr-1">
+            {ordered.length === 0 && (
+              <p className="px-2 py-3 text-xs text-muted-foreground">
+                {clientsLoading
+                  ? "Caricamento clienti…"
+                  : clientsError
+                    ? "Impossibile caricare i clienti. Riapri o ricarica la pagina."
+                    : "Nessun cliente ancora. Creane uno qui sotto."}
+              </p>
+            )}
             {ordered.map((client) => {
               const selected = activeClient?.id === client.id;
               return (

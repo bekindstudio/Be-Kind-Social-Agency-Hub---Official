@@ -302,52 +302,58 @@ export function ClientCoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Attendi che l'auth sia pronta: se il login è attivo, NON chiamare /api/clients
-    // finché non c'è un access token (altrimenti il gate risponde 401 e la lista
-    // resterebbe vuota senza mai riprovare). Quando il token arriva/cambia, l'effetto
-    // si ri-esegue (accessToken è nelle deps) e ricarica i clienti.
-    if (!authIsDisabled) {
-      if (authLoading) return;
-      if (!accessToken) return;
-    }
+    // Aspetta solo che l'auth sia RISOLTA (se il login è attivo). Una volta risolta,
+    // proviamo a caricare: il token viene attaccato dal getter globale. NON blocchiamo
+    // sul valore esatto del token (evita edge-case che lasciano il selettore vuoto):
+    // se arriva un 401 transitorio mentre il token si assesta, riproviamo con backoff.
+    if (!authIsDisabled && authLoading) return;
 
     let alive = true;
+    const mapRows = (raw: unknown) =>
+      (Array.isArray(raw) ? raw : [])
+        .filter((c: Record<string, unknown>) => c?.id != null && String(c?.name ?? "").trim().length > 0)
+        .map((c: Record<string, unknown>) => ({
+          id: String(c.id),
+          name: String(c.name),
+          logo: c.logoUrl ? String(c.logoUrl) : undefined,
+          color: String(c.brandColor ?? c.color ?? "#4F46E5"),
+          industry: String(c.settore ?? c.company ?? c.industry ?? "Generico"),
+          status: "active" as const,
+          createdAt: String(c.createdAt ?? nowIso()),
+        }));
+
     const loadPortalClients = async () => {
       setClientsLoading(true);
-      setClientsError(null);
-      try {
-        const response = await portalFetch("/api/clients", { credentials: "include" });
-        if (!response.ok) {
-          // 401/403 = token non ancora valido o accesso negato: non azzerare la lista,
-          // segnala l'errore così la UI può reagire e l'effetto riproverà al prossimo token.
+      // Fino a 4 tentativi: il token Supabase può non essere ancora pronto al primo colpo.
+      for (let attempt = 0; attempt < 4 && alive; attempt++) {
+        try {
+          const response = await portalFetch("/api/clients", { credentials: "include" });
+          if (response.ok) {
+            const raw = await response.json();
+            if (!alive) return;
+            importClients(mapRows(raw));
+            setClientsError(null);
+            setClientsLoading(false);
+            return;
+          }
           if (alive) setClientsError(new Error(`clients_http_${response.status}`));
-          return;
+          // Solo 401/403 sono transitori (token non ancora valido): per altri errori, stop.
+          if (response.status !== 401 && response.status !== 403) break;
+        } catch (error) {
+          if (alive) setClientsError(error instanceof Error ? error : new Error("Errore caricamento clienti"));
         }
-        const raw = await response.json();
-        if (!Array.isArray(raw) || !alive) return;
-        const mapped = raw
-          .filter((c: Record<string, unknown>) => c?.id != null && String(c?.name ?? "").trim().length > 0)
-          .map((c: Record<string, unknown>) => ({
-            id: String(c.id),
-            name: String(c.name),
-            logo: c.logoUrl ? String(c.logoUrl) : undefined,
-            color: String(c.brandColor ?? c.color ?? "#4F46E5"),
-            industry: String(c.settore ?? c.company ?? c.industry ?? "Generico"),
-            status: "active" as const,
-            createdAt: String(c.createdAt ?? nowIso()),
-          }));
-        importClients(mapped);
-      } catch (error) {
-        if (alive) {
-          setClientsError(error instanceof Error ? error : new Error("Errore caricamento clienti"));
-        }
-      } finally {
-        if (alive) setClientsLoading(false);
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
       }
+      if (alive) setClientsLoading(false);
     };
+
     void loadPortalClients();
+    // Ricarica quando la tab torna in primo piano (es. dopo il login in un'altra scheda).
+    const onFocus = () => { void loadPortalClients(); };
+    window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
+      window.removeEventListener("focus", onFocus);
     };
   }, [importClients, authIsDisabled, authLoading, accessToken]);
 

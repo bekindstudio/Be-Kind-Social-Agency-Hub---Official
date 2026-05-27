@@ -364,20 +364,51 @@ export default function ClientDetail({ id }: Props) {
     setEditing(true);
   };
 
-  const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Riduce il logo a max 256px e lo comprime prima di salvarlo: evita di
+  // memorizzare data-URI enormi nel DB (es. un PNG 1254px ~1,3MB) che
+  // appesantiscono ogni caricamento della lista clienti.
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve(ev.target?.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  const downscaleLogo = (dataUrl: string, max = 256) =>
+    new Promise<string>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        if (scale >= 1) { resolve(dataUrl); return; } // già piccolo: lascialo com'è
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        // PNG preserva la trasparenza dei loghi.
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+
+  const handleLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Il file è troppo grande. Massimo 2 MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Il file è troppo grande. Massimo 5 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
+    try {
+      const original = await readFileAsDataUrl(file);
+      const dataUrl = await downscaleLogo(original, 256);
       setLogoPreview(dataUrl);
       setForm((prev) => ({ ...prev, logoUrl: dataUrl }));
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert("Impossibile leggere l'immagine. Riprova con un altro file.");
+    }
   };
 
   const saveEditing = () => {

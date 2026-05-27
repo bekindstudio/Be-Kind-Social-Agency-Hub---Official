@@ -17,7 +17,7 @@ const router: IRouter = Router();
 function serializePlan(p: any) {
   return {
     ...p,
-    platformsJson: typeof p.platformsJson === "string" ? JSON.parse(p.platformsJson) : p.platformsJson,
+    platformsJson: safeJson(p.platformsJson, []),
     createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
     updatedAt: p.updatedAt?.toISOString?.() ?? p.updatedAt,
     approvedAt: p.approvedAt?.toISOString?.() ?? null,
@@ -26,13 +26,43 @@ function serializePlan(p: any) {
   };
 }
 
+function safeJson<T>(v: unknown, fallback: T): T {
+  if (typeof v !== "string") return (v as T) ?? fallback;
+  try { return JSON.parse(v) as T; } catch { return fallback; }
+}
+
 function serializeSlot(s: any) {
   return {
     ...s,
-    hashtagsJson: typeof s.hashtagsJson === "string" ? JSON.parse(s.hashtagsJson) : s.hashtagsJson,
+    hashtagsJson: safeJson(s.hashtagsJson, []),
     createdAt: s.createdAt?.toISOString?.() ?? s.createdAt,
     updatedAt: s.updatedAt?.toISOString?.() ?? s.updatedAt,
   };
+}
+
+/** Accesso al cliente del piano (handler annidati: slot, commenti). env-admin bypassa. */
+async function canAccessPlan(userId: string | null | undefined, planId: number): Promise<boolean> {
+  if (!userId) return false;
+  if (isEnvAdmin(userId)) return true;
+  const [plan] = await db
+    .select({ clientId: editorialPlansTable.clientId })
+    .from(editorialPlansTable)
+    .where(eq(editorialPlansTable.id, planId));
+  if (!plan) return false;
+  const accessible = await getAccessibleClientIds(userId);
+  return accessible === "all" || accessible.includes(plan.clientId);
+}
+
+/** Accesso allo slot risolvendo slot → plan → cliente. */
+async function canAccessSlot(userId: string | null | undefined, slotId: number): Promise<boolean> {
+  if (!userId) return false;
+  if (isEnvAdmin(userId)) return true;
+  const [slot] = await db
+    .select({ planId: editorialSlotsTable.planId })
+    .from(editorialSlotsTable)
+    .where(eq(editorialSlotsTable.id, slotId));
+  if (!slot) return false;
+  return canAccessPlan(userId, slot.planId);
 }
 
 router.get("/editorial-plans", async (req, res): Promise<void> => {
@@ -380,6 +410,7 @@ router.post("/editorial-slots", async (req, res): Promise<void> => {
     .from(editorialPlansTable)
     .where(and(eq(editorialPlansTable.id, Number(planId)), isNull(editorialPlansTable.deletedAt)));
   if (!planOk) { res.status(400).json({ error: "Piano non trovato o nel cestino" }); return; }
+  if (!(await canAccessPlan(userId, Number(planId)))) { res.status(403).json({ error: "Accesso negato" }); return; }
 
   const [slot] = await db.insert(editorialSlotsTable).values({
     planId: Number(planId),
@@ -426,6 +457,7 @@ router.patch("/editorial-slots/:id", async (req, res): Promise<void> => {
     .from(editorialSlotsTable)
     .where(and(eq(editorialSlotsTable.id, id), isNull(editorialSlotsTable.deletedAt)));
   if (!slotEx) { res.status(404).json({ error: "Slot non trovato" }); return; }
+  if (!(await canAccessPlan(getUserId(req), slotEx.planId))) { res.status(403).json({ error: "Accesso negato" }); return; }
 
   const [updated] = await db.update(editorialSlotsTable).set(updates).where(eq(editorialSlotsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Slot non trovato" }); return; }
@@ -436,6 +468,7 @@ router.delete("/editorial-slots/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
   const userId = getUserId(req);
+  if (!(await canAccessSlot(userId, id))) { res.status(403).json({ error: "Accesso negato" }); return; }
   const r = await softDeleteRecord("editorial_slots", String(id), { deletedBy: userId });
   if (!r.ok) {
     res.status(r.error === "Non trovato" ? 404 : 400).json({ error: r.error });
@@ -525,6 +558,7 @@ router.post("/slot-comments", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const { slotId, content } = req.body;
   if (!slotId || !content) { res.status(400).json({ error: "slotId e content obbligatori" }); return; }
+  if (!(await canAccessSlot(userId, Number(slotId)))) { res.status(403).json({ error: "Accesso negato" }); return; }
   const [comment] = await db.insert(slotCommentsTable).values({
     slotId: Number(slotId), authorId: userId ?? "unknown", content,
   }).returning();

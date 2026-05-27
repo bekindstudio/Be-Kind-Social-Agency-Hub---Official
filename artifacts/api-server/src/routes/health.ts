@@ -19,7 +19,7 @@ router.get("/version", (_req, res) => {
     process.env.ADMIN_CLERK_USER_IDS ?? "",
   ].join(",");
   const adminCount = adminRaw.split(",").map((s) => s.trim()).filter(Boolean).length;
-  res.json({ marker: "BUILD-MARKER-20260527-I", seedsDisabled: true, adminIdsConfigured: adminCount });
+  res.json({ marker: "BUILD-MARKER-20260527-J", seedsDisabled: true, adminIdsConfigured: adminCount });
 });
 
 router.get("/me", (req, res) => {

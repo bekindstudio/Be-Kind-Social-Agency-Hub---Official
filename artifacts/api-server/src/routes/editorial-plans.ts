@@ -125,6 +125,15 @@ router.post("/editorial-plans", async (req, res): Promise<void> => {
     return;
   }
 
+  // Autorizzazione: non creare piani per clienti non accessibili (coerente con gli altri handler).
+  if (userId && !isEnvAdmin(userId)) {
+    const accessible = await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(Number(clientId))) {
+      res.status(403).json({ error: "Accesso negato al cliente" });
+      return;
+    }
+  }
+
   // TRANSACTION: operazioni atomiche su editorial_plans, editorial_slots
   // Se una fallisce, tutte le modifiche vengono annullate
   const created = await db.transaction(async (tx) => {

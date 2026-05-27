@@ -143,7 +143,10 @@ function HomeRoute() {
 function RouteLoadingFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[hsl(83,15%,96%)]">
-      <p className="text-sm text-muted-foreground">Caricamento…</p>
+      <div className="flex flex-col items-center gap-3 animate-in fade-in duration-200">
+        <div className="h-7 w-7 rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
+        <p className="text-xs text-muted-foreground">Caricamento…</p>
+      </div>
     </div>
   );
 }

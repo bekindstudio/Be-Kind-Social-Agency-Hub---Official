@@ -18,6 +18,7 @@ import {
   useLinkMetaAccount,
   useUnlinkMetaAccount,
 } from "@/hooks/useClientMetaAccount";
+import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 
 const ACTIVE_CLIENT_ID_KEY = "active_client_id";
 const LEGACY_BLOB_KEY = ["agency", "hub", "data"].join("_");
@@ -96,6 +97,10 @@ function seedStore(): ClientCoreStore {
 }
 
 export function ClientCoreProvider({ children }: { children: ReactNode }) {
+  // Stato auth: serve a non chiamare /api/clients PRIMA che il token Supabase
+  // sia pronto (altrimenti 401 → lista vuota silenziosa che non si ripristina).
+  const { session, loading: authLoading, authDisabled: authIsDisabled } = useSupabaseAuth();
+  const accessToken = session?.access_token ?? null;
   const [store, setStore] = useState<ClientCoreStore>(() => seedStore());
   const [activeClientId, setActiveClientId] = useState<string | null>(() =>
     localStorage.getItem(ACTIVE_CLIENT_ID_KEY),
@@ -297,13 +302,27 @@ export function ClientCoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Attendi che l'auth sia pronta: se il login è attivo, NON chiamare /api/clients
+    // finché non c'è un access token (altrimenti il gate risponde 401 e la lista
+    // resterebbe vuota senza mai riprovare). Quando il token arriva/cambia, l'effetto
+    // si ri-esegue (accessToken è nelle deps) e ricarica i clienti.
+    if (!authIsDisabled) {
+      if (authLoading) return;
+      if (!accessToken) return;
+    }
+
     let alive = true;
     const loadPortalClients = async () => {
       setClientsLoading(true);
       setClientsError(null);
       try {
         const response = await portalFetch("/api/clients", { credentials: "include" });
-        if (!response.ok) return;
+        if (!response.ok) {
+          // 401/403 = token non ancora valido o accesso negato: non azzerare la lista,
+          // segnala l'errore così la UI può reagire e l'effetto riproverà al prossimo token.
+          if (alive) setClientsError(new Error(`clients_http_${response.status}`));
+          return;
+        }
         const raw = await response.json();
         if (!Array.isArray(raw) || !alive) return;
         const mapped = raw
@@ -330,7 +349,7 @@ export function ClientCoreProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [importClients]);
+  }, [importClients, authIsDisabled, authLoading, accessToken]);
 
   const analytics = activeClientId ? store.analytics[activeClientId] ?? null : null;
 

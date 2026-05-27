@@ -116,6 +116,15 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(supabaseAuthMiddleware);
 
+// Le risposte /api dipendono dall'utente autenticato: vietare la cache del browser.
+// Senza questo, Express emette ETag + `Cache-Control: public, must-revalidate` anche
+// sulle risposte 401/dati → il browser poteva servire un corpo STALE (es. lista clienti
+// vuota o "Non autenticato") via 304 anche dopo che l'utente era loggato/abilitato.
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 // Gate di autenticazione globale: ogni rotta /api richiede un utente loggato,
 // tranne gli endpoint pubblici (path relativi al mount /api):
 //  - /healthz            health check

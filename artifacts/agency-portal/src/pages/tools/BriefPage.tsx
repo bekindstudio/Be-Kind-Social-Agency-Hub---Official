@@ -1,712 +1,524 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
-import { BriefSection } from "@/components/tools/brief/BriefSection";
-import { EditableField } from "@/components/tools/brief/EditableField";
-import { PlatformSelector } from "@/components/tools/brief/PlatformSelector";
-import { ColorPaletteEditor } from "@/components/tools/brief/ColorPaletteEditor";
-import { KpiList } from "@/components/tools/brief/KpiList";
-import { ClientBriefSection } from "@/components/client/ClientBriefSection";
-import { getBriefCompletion, getBriefSectionCompletion } from "@/components/tools/brief/briefCompletion";
+import { useClientContext } from "@/context/ClientContext";
+import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  OPERATIONAL_TEMPLATES,
-  getClientOperationalTemplateId,
-  getOperationalTemplateById,
-  inferTemplateFromIndustry,
-  setClientOperationalTemplateId,
-  type OperationalTemplateId,
-} from "@/lib/operationalTemplates";
-import { useClientContext } from "@/context/ClientContext";
-import type { BriefKpi, ClientBrief, ContentFormat, SocialPlatform } from "@/types/client";
-import {
-  Wand2,
-  Sparkles,
-  BadgeCheck,
-  Building2,
-  Target,
+  ChevronDown,
+  CheckCircle2,
+  Loader2,
+  CloudOff,
+  Cloud,
+  FileText,
   Users,
-  Palette,
-  Clapperboard,
-  BriefcaseBusiness,
+  Sparkles,
+  Activity,
+  Compass,
+  MessageSquareQuote,
+  Swords,
+  HeartHandshake,
+  ThumbsUp,
+  Megaphone,
+  Target,
 } from "lucide-react";
 
-type SaveState = "saved" | "dirty" | "saving";
+/* ────────────────────────────────────────────────────────────────────────
+   Brief cliente — form MANUALE, chiaro, con salvataggio automatico.
+   I dati vengono salvati in client_briefs.parsedJson (oggetto sezione→campo).
+   Nessuna dipendenza dall'AI.
+   ──────────────────────────────────────────────────────────────────────── */
 
-const CONTENT_FORMATS: ContentFormat[] = ["Post foto", "Carosello", "Reel/Video", "Stories", "Live", "Articoli"];
-
-function createEmptyBrief(clientId: string): ClientBrief {
-  return {
-    clientId,
-    objectives: "",
-    targetAudience: "",
-    toneOfVoice: "",
-    brandVoice: "",
-    colorPalette: [],
-    fonts: [],
-    competitors: [],
-    notes: "",
-    updatedAt: new Date().toISOString(),
-    industryOverride: "",
-    companyDescription: "",
-    website: "",
-    foundationYear: "",
-    primaryObjective: "",
-    secondaryObjectives: "",
-    kpis: [],
-    targetAge: "",
-    targetGender: "Misto",
-    lifestyle: "",
-    interests: [],
-    geolocation: "",
-    painPoints: "",
-    toneOfVoiceType: "Professionale",
-    toneOfVoiceNotes: "",
-    brandAdjectives: ["", "", ""],
-    brandDonts: "",
-    colorLabels: [],
-    fontTitles: "",
-    fontBody: "",
-    activePlatforms: [],
-    platformFrequencies: {},
-    formatPreferences: [],
-    topicsToCover: [],
-    topicsToAvoid: [],
-    brandHashtags: [],
-    contactName: "",
-    contactEmail: "",
-    contactPhone: "",
-    approvalWindow: "",
-    internalNotes: "",
-    usefulLinks: [],
-  };
-}
-
-function isMissing(value: unknown): boolean {
-  if (typeof value === "string") return value.trim().length === 0;
-  if (Array.isArray(value)) return value.length === 0;
-  if (!value) return true;
-  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length === 0;
-  return false;
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-function autoCompleteBriefDraft(
-  current: ClientBrief,
-  clientName: string,
-  industry: string,
-  selectedTemplateId: OperationalTemplateId | "",
-): { next: ClientBrief; filledCount: number } {
-  const template = getOperationalTemplateById(selectedTemplateId || null);
-  const baseColor = current.colorPalette?.[0] ?? "#A5A58F";
-  const nameTag = slugify(clientName).replace(/-/g, "");
-  let filledCount = 0;
-  const next: ClientBrief = { ...current };
-  const fill = <K extends keyof ClientBrief>(key: K, value: ClientBrief[K]) => {
-    if (isMissing(next[key])) {
-      next[key] = value;
-      filledCount += 1;
-    }
-  };
-
-  fill("industryOverride", industry);
-  fill("companyDescription", `Brand ${clientName} nel settore ${industry}, con focus su posizionamento distintivo e crescita misurabile.`);
-  fill("foundationYear", "Da confermare");
-  fill("primaryObjective", current.objectives || "Aumentare awareness qualificata e richieste commerciali.");
-  fill("secondaryObjectives", "Migliorare continuita editoriale, engagement e conversioni da contenuti.");
-  fill("objectives", [next.primaryObjective, next.secondaryObjectives].filter(Boolean).join(" | "));
-  fill("targetAge", "25-45");
-  fill("targetGender", "Misto");
-  fill("lifestyle", current.targetAudience || "Professionisti e famiglie interessati a qualita, affidabilita e risultati concreti.");
-  fill("geolocation", "Italia");
-  fill("painPoints", "Poca chiarezza nella proposta, fiducia iniziale da costruire, bisogno di prove sociali.");
-  fill("toneOfVoiceType", "Amichevole");
-  fill("toneOfVoiceNotes", "Professionale ma umano, orientato al valore pratico e alla chiarezza.");
-  fill("toneOfVoice", next.toneOfVoiceNotes || "Professionale ma umano.");
-  fill("brandVoice", "Affidabile, concreto, distintivo");
-  fill("brandAdjectives", ["Affidabile", "Concreto", "Riconoscibile"]);
-  fill("brandDonts", "Evitare claim assoluti, tecnicismi inutili e tono freddo/distaccato.");
-  fill("colorPalette", template?.briefPatch.colorPalette ?? [baseColor, "#111827", "#F8F8F4"]);
-  fill("fontTitles", "Inter SemiBold");
-  fill("fontBody", "Inter Regular");
-  fill("activePlatforms", template?.briefPatch.activePlatforms ?? ["instagram", "facebook"]);
-  fill("formatPreferences", template?.briefPatch.formatPreferences ?? ["Post foto", "Carosello", "Reel/Video"]);
-  fill("topicsToCover", template?.briefPatch.topicsToCover ?? ["Educazione cliente", "Case study", "FAQ", "Dietro le quinte"]);
-  fill("topicsToAvoid", template?.briefPatch.topicsToAvoid ?? ["Promesse irrealistiche", "Contenuti non coerenti con il brand"]);
-  fill("brandHashtags", [`#${nameTag}`, `#${slugify(industry).replace(/-/g, "")}`, "#bekindsocialagency"]);
-  fill("contactName", "Referente cliente");
-  fill("approvalWindow", "Martedi e Giovedi · 15:00-17:00");
-  fill("internalNotes", "Brief autocompilato automaticamente: verificare e rifinire con il cliente prima della consegna finale.");
-  fill("platformFrequencies", Object.fromEntries((next.activePlatforms ?? []).map((platform) => [platform, "3 contenuti/settimana"])));
-  fill("usefulLinks", current.website ? [current.website] : []);
-  fill("kpis", [
-    { label: "Engagement rate", target: "+20%", unit: "%" },
-    { label: "Lead qualificati", target: "+15%", unit: "%" },
-    { label: "Copertura media", target: "+25%", unit: "%" },
-  ]);
-
-  return { next, filledCount };
-}
-
-function TagEditor({
-  label,
-  values,
-  onChange,
-}: {
+type Field = { key: string; label: string; placeholder?: string; long?: boolean };
+type Section = {
+  key: string;
   label: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const add = () => {
-    const value = draft.trim();
-    if (!value) return;
-    if (values.includes(value)) return setDraft("");
-    onChange([...values, value]);
-    setDraft("");
-  };
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {values.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => onChange(values.filter((item) => item !== tag))}
-            className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
-            aria-label={`Rimuovi tag ${tag}`}
-          >
-            {tag} ×
-          </button>
-        ))}
-      </div>
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            add();
-          }
-        }}
-        placeholder="Scrivi e premi invio"
-        aria-label={`Aggiungi tag ${label}`}
-        className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
-      />
-    </div>
-  );
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  hint?: string;
+  fields: Field[];
+};
+
+const SECTIONS: Section[] = [
+  {
+    key: "materiale_iniziale",
+    label: "Materiale iniziale",
+    icon: FileText,
+    hint: "Accessi, link e materiali di partenza",
+    fields: [
+      { key: "nome_referenti", label: "Nome referenti" },
+      { key: "descrizione_prodotto", label: "Descrizione prodotto / servizio", long: true },
+      { key: "sito_web", label: "Sito web", placeholder: "https://" },
+      { key: "link_instagram", label: "Link Instagram", placeholder: "https://instagram.com/" },
+      { key: "link_facebook", label: "Link Facebook", placeholder: "https://facebook.com/" },
+      { key: "link_tiktok", label: "Link TikTok", placeholder: "https://tiktok.com/@" },
+      { key: "business_manager", label: "Business Manager Meta" },
+      { key: "canva_kit", label: "Kit aziendale Canva" },
+      { key: "canva_progetti", label: "Progetti Canva" },
+      { key: "logo", label: "Logo (note/link)" },
+    ],
+  },
+  {
+    key: "target_personas",
+    label: "Target & personas",
+    icon: Users,
+    hint: "A chi parliamo",
+    fields: [
+      { key: "clienti_attuali", label: "Clienti attuali", long: true },
+      { key: "tipo_persone", label: "Tipo di persone", long: true },
+      { key: "fasce_eta", label: "Fasce di età" },
+      { key: "professione_disponibilita", label: "Professione e disponibilità economica" },
+      { key: "locali_o_fuori_zona", label: "Locali o fuori zona" },
+      { key: "mercato", label: "Mercato di riferimento" },
+      { key: "servizio_piu_richiesto", label: "Servizio più richiesto" },
+      { key: "servizio_da_spingere", label: "Servizio da spingere" },
+    ],
+  },
+  {
+    key: "servizi_chiave",
+    label: "Servizi chiave & USP",
+    icon: Sparkles,
+    hint: "Cosa rende unico il brand",
+    fields: [
+      { key: "servizi_da_comunicare", label: "Servizi da comunicare", long: true },
+      { key: "plus_esclusivi", label: "Plus esclusivi", long: true },
+      { key: "usp_1", label: "USP 1" },
+      { key: "usp_2", label: "USP 2" },
+      { key: "usp_3", label: "USP 3" },
+      { key: "novita_progetti", label: "Novità e progetti futuri", long: true },
+    ],
+  },
+  {
+    key: "comportamento_cliente",
+    label: "Comportamento cliente",
+    icon: Activity,
+    hint: "Come si comportano e decidono",
+    fields: [
+      { key: "cosa_cercano", label: "Cosa cercano", long: true },
+      { key: "perche_scelgono", label: "Perché scelgono il brand", long: true },
+      { key: "feedback_comuni", label: "Feedback comuni", long: true },
+      { key: "come_scoprono", label: "Come scoprono il brand" },
+      { key: "canali_funzionanti", label: "Canali che funzionano" },
+      { key: "primo_contatto", label: "Primo contatto" },
+      { key: "riscontri_social", label: "Riscontri dai social" },
+      { key: "ostacoli", label: "Ostacoli", long: true },
+      { key: "richieste_confuse", label: "Richieste confuse / dubbi ricorrenti", long: true },
+    ],
+  },
+  {
+    key: "posizionamento",
+    label: "Posizionamento & visione",
+    icon: Compass,
+    fields: [
+      { key: "visione_2_anni", label: "Visione a 2 anni", long: true },
+      { key: "sogno_crescita", label: "Sogno di crescita", long: true },
+    ],
+  },
+  {
+    key: "tone_of_voice",
+    label: "Tone of voice",
+    icon: MessageSquareQuote,
+    hint: "Come comunichiamo",
+    fields: [
+      { key: "valori_fondamentali", label: "Valori fondamentali", long: true },
+      { key: "value_proposition", label: "Value proposition", long: true },
+      { key: "percezione_desiderata", label: "Percezione desiderata" },
+      { key: "brand_persona", label: "Personalità del brand" },
+      { key: "stile_comunicazione", label: "Stile di comunicazione" },
+      { key: "tono_umano_vs_tecnico", label: "Tono umano vs tecnico" },
+      { key: "sensazioni", label: "Sensazioni da trasmettere" },
+      { key: "esempi_comunicazione", label: "Esempi di comunicazione", long: true },
+    ],
+  },
+  {
+    key: "competitor",
+    label: "Competitor",
+    icon: Swords,
+    hint: "Riferimenti positivi e negativi",
+    fields: [
+      { key: "competitor_1", label: "Competitor 1 (ispirazione)" },
+      { key: "competitor_2", label: "Competitor 2 (ispirazione)" },
+      { key: "competitor_3", label: "Competitor 3 (ispirazione)" },
+      { key: "competitor_4_negativo", label: "Competitor 4 (da NON imitare)" },
+    ],
+  },
+  {
+    key: "pain_points_desideri",
+    label: "Pain points, desideri & offerte",
+    icon: HeartHandshake,
+    fields: [
+      { key: "pain_points", label: "Pain points e frustrazioni", long: true },
+      { key: "desideri_obiettivi", label: "Desideri e obiettivi", long: true },
+      { key: "benefici", label: "Benefici", long: true },
+      { key: "offerta_principale", label: "Offerta principale", long: true },
+      { key: "lista_offerte", label: "Lista offerte", long: true },
+      { key: "garanzie", label: "Garanzie" },
+      { key: "obiezioni", label: "Obiezioni e barriere", long: true },
+      { key: "risposte_obiezioni", label: "Risposte alle obiezioni", long: true },
+      { key: "faq", label: "FAQ / domande frequenti", long: true },
+      { key: "trigger_events", label: "Trigger events", long: true },
+    ],
+  },
+  {
+    key: "social_preference",
+    label: "Preferenze social",
+    icon: ThumbsUp,
+    fields: [
+      { key: "come_apparire", label: "Come apparire sui social", long: true },
+      { key: "come_non_apparire", label: "Come NON apparire", long: true },
+    ],
+  },
+  {
+    key: "budget_adv",
+    label: "Budget pubblicitario",
+    icon: Megaphone,
+    hint: "Investimenti per anno",
+    fields: [
+      { key: "meta_2024", label: "META 2024" },
+      { key: "meta_2025", label: "META 2025" },
+      { key: "meta_2026", label: "META 2026" },
+      { key: "google_2024", label: "Google 2024" },
+      { key: "google_2025", label: "Google 2025" },
+      { key: "google_2026", label: "Google 2026" },
+    ],
+  },
+  {
+    key: "obiettivi",
+    label: "Obiettivi 2026",
+    icon: Target,
+    fields: [
+      { key: "comunicazione_social_2026", label: "Obiettivo comunicazione social 2026", long: true },
+      { key: "adv_social_2026", label: "Obiettivo ADV social 2026", long: true },
+    ],
+  },
+];
+
+type BriefData = Record<string, Record<string, string>>;
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+function emptyData(): BriefData {
+  const d: BriefData = {};
+  for (const s of SECTIONS) {
+    d[s.key] = {};
+    for (const f of s.fields) d[s.key][f.key] = "";
+  }
+  return d;
 }
 
-function LinkListEditor({
-  values,
-  onChange,
-}: {
-  values: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const add = () => {
-    const value = draft.trim();
-    if (!value) return;
-    onChange([...values, value]);
-    setDraft("");
-  };
-  return (
-    <div className="space-y-2">
-      {values.map((url, index) => (
-        <div key={`${url}-${index}`} className="flex items-center gap-2">
-          <input
-            value={url}
-            onChange={(e) => onChange(values.map((item, idx) => (idx === index ? e.target.value : item)))}
-            aria-label={`File utile ${index + 1}`}
-            className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
-          />
-          <button
-            type="button"
-            onClick={() => onChange(values.filter((_, idx) => idx !== index))}
-            className="rounded border border-input px-2 py-1 text-xs text-muted-foreground"
-          >
-            X
-          </button>
-        </div>
-      ))}
-      <div className="flex items-center gap-2">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Aggiungi link cartella/file"
-          aria-label="Aggiungi file utile"
-          className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
-        />
-        <button type="button" onClick={add} className="rounded bg-primary px-2.5 py-1.5 text-xs text-primary-foreground">
-          +
-        </button>
-      </div>
-    </div>
-  );
+function normalize(parsed: unknown): BriefData {
+  const base = emptyData();
+  if (!parsed || typeof parsed !== "object") return base;
+  for (const s of SECTIONS) {
+    const sec = (parsed as Record<string, unknown>)[s.key];
+    if (sec && typeof sec === "object") {
+      for (const f of s.fields) {
+        const v = (sec as Record<string, unknown>)[f.key];
+        if (typeof v === "string") base[s.key][f.key] = v;
+      }
+    }
+  }
+  return base;
+}
+
+function sectionFilled(data: BriefData, s: Section): number {
+  return s.fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length;
+}
+
+function cnChevron(open: boolean): string {
+  return `shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`;
+}
+
+function SaveBadge({ state, loading }: { state: SaveState; loading: boolean }) {
+  if (loading) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 size={13} className="animate-spin" /> Caricamento…
+      </span>
+    );
+  }
+  if (state === "saving") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 size={13} className="animate-spin" /> Salvataggio…
+      </span>
+    );
+  }
+  if (state === "saved") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600">
+        <Cloud size={13} /> Salvato
+      </span>
+    );
+  }
+  if (state === "error") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-red-600">
+        <CloudOff size={13} /> Errore di salvataggio
+      </span>
+    );
+  }
+  return null;
 }
 
 export default function BriefPage() {
-  const { activeClient, brief, updateBrief } = useClientContext();
+  const { activeClient } = useClientContext();
   const { toast } = useToast();
-  const [draft, setDraft] = useState<ClientBrief | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("saved");
-  const [hydratedClientId, setHydratedClientId] = useState<string | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<OperationalTemplateId | "">("");
-  const skipNextSaveRef = useRef(true);
+  const clientId =
+    activeClient?.id && Number.isFinite(Number(activeClient.id)) ? Number(activeClient.id) : null;
 
+  const [data, setData] = useState<BriefData>(emptyData);
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [SECTIONS[0].key]: true });
+
+  const loadedRef = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef<{ data: BriefData; notes: string }>({ data, notes });
+  latest.current = { data, notes };
+
+  // Carica il brief del cliente attivo.
   useEffect(() => {
-    if (!activeClient) {
-      setDraft(null);
-      setHydratedClientId(null);
+    loadedRef.current = false;
+    if (!clientId) {
+      setData(emptyData());
+      setNotes("");
       return;
     }
-    const next = brief ?? createEmptyBrief(activeClient.id);
-    setDraft(next);
-    setHydratedClientId(activeClient.id);
-    const persisted = getClientOperationalTemplateId(activeClient.id);
-    if (persisted) {
-      setSelectedTemplateId(persisted);
-    } else {
-      const inferred = inferTemplateFromIndustry(activeClient.industry);
-      setSelectedTemplateId(inferred?.id ?? "");
-    }
-    skipNextSaveRef.current = true;
-  }, [activeClient?.id, brief]);
+    let alive = true;
+    setLoading(true);
+    setSaveState("idle");
+    void (async () => {
+      try {
+        const res = await portalFetch(`/api/clients/${clientId}/brief`, { credentials: "include" });
+        if (!alive) return;
+        if (res.ok) {
+          const row = await res.json();
+          let parsed: unknown = {};
+          try {
+            parsed = row?.parsedJson ? JSON.parse(row.parsedJson) : {};
+          } catch {
+            parsed = {};
+          }
+          setData(normalize(parsed));
+          setNotes(typeof row?.rawText === "string" ? row.rawText : "");
+        } else {
+          setData(emptyData());
+          setNotes("");
+        }
+      } catch {
+        if (alive) {
+          setData(emptyData());
+          setNotes("");
+        }
+      } finally {
+        if (alive) {
+          setLoading(false);
+          // Abilita l'autosave solo DOPO che il caricamento è terminato.
+          setTimeout(() => {
+            loadedRef.current = true;
+          }, 0);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [clientId]);
 
-  useEffect(() => {
-    if (!draft || !activeClient || hydratedClientId !== activeClient.id) return;
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false;
-      return;
-    }
-    setSaveState("dirty");
-    const t = setTimeout(() => {
-      setSaveState("saving");
-      updateBrief({ ...draft, updatedAt: new Date().toISOString() });
+  const persist = useCallback(async () => {
+    if (!clientId) return;
+    setSaveState("saving");
+    try {
+      const res = await portalFetch(`/api/clients/${clientId}/brief`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parsedJson: latest.current.data, rawText: latest.current.notes }),
+      });
+      if (!res.ok) throw new Error(`http_${res.status}`);
       setSaveState("saved");
+    } catch {
+      setSaveState("error");
+      toast({
+        variant: "destructive",
+        title: "Salvataggio non riuscito",
+        description: "Riprova tra poco: il testo digitato resta nei campi.",
+      });
+    }
+  }, [clientId, toast]);
+
+  // Autosave con debounce quando l'utente modifica qualcosa.
+  const scheduleSave = useCallback(() => {
+    if (!loadedRef.current) return;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist();
     }, 800);
-    return () => clearTimeout(t);
-  }, [draft, activeClient, hydratedClientId, updateBrief]);
+  }, [persist]);
 
-  const sections = useMemo(() => getBriefSectionCompletion(draft), [draft]);
-  const completion = useMemo(() => getBriefCompletion(draft), [draft]);
-  const missingSections = Object.values(sections).filter((value) => value < 100).length;
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
 
-  if (!activeClient || !draft) {
+  const setField = (sectionKey: string, fieldKey: string, value: string) => {
+    setData((prev) => ({ ...prev, [sectionKey]: { ...prev[sectionKey], [fieldKey]: value } }));
+    scheduleSave();
+  };
+
+  const totals = useMemo(() => {
+    const total = SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
+    const filled = SECTIONS.reduce((acc, s) => acc + sectionFilled(data, s), 0);
+    return { total, filled, pct: total ? Math.round((filled / total) * 100) : 0 };
+  }, [data]);
+
+  const allOpen = SECTIONS.every((s) => openSections[s.key]);
+  const toggleAll = () => {
+    const next: Record<string, boolean> = {};
+    for (const s of SECTIONS) next[s.key] = !allOpen;
+    setOpenSections(next);
+  };
+
+  if (!clientId) {
     return (
       <Layout>
-        <div className="p-8 text-sm text-muted-foreground">Seleziona un cliente per compilare il brief.</div>
+        <div className="p-8">
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-card-border py-20 text-center">
+            <FileText size={28} className="text-muted-foreground/60 mb-3" />
+            <p className="font-medium">Seleziona un cliente</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Scegli un cliente dalla barra in alto per compilare il suo brief.
+            </p>
+          </div>
+        </div>
       </Layout>
     );
   }
 
-  const setField = <K extends keyof ClientBrief>(key: K, value: ClientBrief[K]) => {
-    setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
-  };
-
-  const activePlatforms = draft.activePlatforms ?? [];
-  const platformFrequencies = draft.platformFrequencies ?? {};
-  const selectedTemplate = getOperationalTemplateById(selectedTemplateId || null);
-  const numericClientId = Number(activeClient.id);
-  const canUseAiBriefFlow = Number.isFinite(numericClientId) && numericClientId > 0;
-  const completeMissingSections = () => {
-    setDraft((prev) => {
-      if (!prev || !activeClient) return prev;
-      const { next, filledCount } = autoCompleteBriefDraft(
-        prev,
-        activeClient.name,
-        prev.industryOverride || activeClient.industry,
-        selectedTemplateId,
-      );
-      toast({
-        title: filledCount > 0 ? "Brief autocompilato" : "Brief gia completo",
-        description:
-          filledCount > 0
-            ? `Aggiornati ${filledCount} campi mancanti. Rivedi i contenuti e personalizza dove serve.`
-            : "Non ci sono campi vuoti da completare automaticamente.",
-      });
-      return next;
-    });
-  };
-
   return (
     <Layout>
-      <div className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-violet-100/60 px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="p-6 md:p-8 max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h1 className="inline-flex items-center gap-2 text-lg font-semibold">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Brief Cliente & Strategia
-              </h1>
-              <p className="text-xs text-muted-foreground">Hub strategico completo, collegato ai tool operativi e alla produzione contenuti.</p>
+              <h1 className="text-2xl font-bold">Brief cliente</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">{activeClient?.name}</p>
             </div>
-            <div className="text-right">
-              <span className="rounded-full bg-background/80 px-2 py-1 text-xs font-semibold text-muted-foreground">Brief {completion}% completo</span>
-              <p className="mt-1 text-[11px]">
-                {saveState === "saved" ? "Salvato" : saveState === "saving" ? "Salvataggio..." : "Modificato"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
-              <p className="text-muted-foreground">Sezioni complete</p>
-              <p className="font-semibold">{Object.keys(sections).length - missingSections}/6</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
-              <p className="text-muted-foreground">Sezioni da completare</p>
-              <p className="font-semibold">{missingSections}</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
-              <p className="text-muted-foreground">Template attivo</p>
-              <p className="font-semibold">{selectedTemplate?.label ?? "Nessuno"}</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs">
-              <p className="text-muted-foreground">AI Brief flow</p>
-              <p className="font-semibold">{canUseAiBriefFlow ? "Disponibile" : "Non disponibile"}</p>
+            <div className="flex items-center gap-3">
+              <SaveBadge state={saveState} loading={loading} />
+              <button
+                onClick={toggleAll}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-input hover:bg-muted transition-colors"
+              >
+                {allOpen ? "Comprimi tutto" : "Espandi tutto"}
+              </button>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={completeMissingSections}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-              Completa campi mancanti automaticamente
-            </button>
+          {/* Progress */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Completamento brief</span>
+              <span className="font-semibold text-foreground">
+                {totals.pct}% · {totals.filled}/{totals.total} campi
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-primary transition-all duration-500" style={{ width: `${totals.pct}%` }} />
+            </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <BriefSection
-            title="Importazione questionario + supporto AI"
-            description="Incolla il documento compilato dal cliente e lascia che l'AI organizzi il brief e generi una strategia migliorata."
-            completionPercent={canUseAiBriefFlow ? 100 : 0}
-            icon={<BadgeCheck className="h-4 w-4" />}
-          >
-            {canUseAiBriefFlow ? (
-              <ClientBriefSection clientId={numericClientId} clientName={activeClient.name} />
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Il flusso AI (parse + strategia) e disponibile dopo la sincronizzazione del cliente sul backend.
-              </p>
-            )}
-          </BriefSection>
-
-          <BriefSection
-            title="Template operativo per settore"
-            description="Preset rapido per standardizzare brief, calendario, caption style e checklist report."
-            completionPercent={selectedTemplate ? 100 : 0}
-            icon={<Sparkles className="h-4 w-4" />}
-          >
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-                <div>
-                  <p className="text-xs text-muted-foreground">Template</p>
-                  <select
-                    value={selectedTemplateId}
-                    onChange={(e) => setSelectedTemplateId(e.target.value as OperationalTemplateId | "")}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Nessun template</option>
-                    {OPERATIONAL_TEMPLATES.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="rounded-lg border border-border bg-background p-3 text-xs">
-                  {selectedTemplate ? (
-                    <>
-                      <p className="font-semibold text-foreground">{selectedTemplate.label}</p>
-                      <p className="mt-1 text-muted-foreground">{selectedTemplate.description}</p>
-                      <p className="mt-2 text-muted-foreground">
-                        Calendario consigliato: {selectedTemplate.calendarPreset.postsPerWeek} post/settimana · giorni{" "}
-                        {selectedTemplate.calendarPreset.preferredDays.join(", ")} · ora {selectedTemplate.calendarPreset.preferredTime}
-                      </p>
-                      <p className="mt-1 text-muted-foreground">
-                        Caption style: {selectedTemplate.captionStyle.toneHint}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground">Seleziona un template per applicare preset operativi al cliente.</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
+        {/* Sezioni */}
+        <div className="space-y-3">
+          {SECTIONS.map((s) => {
+            const open = !!openSections[s.key];
+            const filled = sectionFilled(data, s);
+            const Icon = s.icon;
+            return (
+              <section key={s.key} className="rounded-xl border border-card-border bg-card overflow-hidden">
                 <button
                   type="button"
-                  disabled={!selectedTemplate}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-                  onClick={() => {
-                    if (!selectedTemplate) return;
-                    setDraft((prev) => {
-                      if (!prev) return prev;
-                      const nextTopics = Array.from(new Set([...(prev.topicsToCover ?? []), ...(selectedTemplate.briefPatch.topicsToCover ?? [])]));
-                      const nextAvoid = Array.from(new Set([...(prev.topicsToAvoid ?? []), ...(selectedTemplate.briefPatch.topicsToAvoid ?? [])]));
-                      const nextHashtags = Array.from(new Set([...(prev.brandHashtags ?? []), ...(selectedTemplate.briefPatch.brandHashtags ?? [])]));
-                      return {
-                        ...prev,
-                        ...selectedTemplate.briefPatch,
-                        topicsToCover: nextTopics,
-                        topicsToAvoid: nextAvoid,
-                        brandHashtags: nextHashtags,
-                        internalNotes: [
-                          prev.internalNotes ?? "",
-                          `Template operativo: ${selectedTemplate.label}`,
-                          `Checklist report: ${selectedTemplate.reportChecklist.join(" | ")}`,
-                        ]
-                          .filter(Boolean)
-                          .join("\n"),
-                      };
-                    });
-                    setClientOperationalTemplateId(activeClient.id, selectedTemplate.id);
-                  }}
+                  onClick={() => setOpenSections((p) => ({ ...p, [s.key]: !p[s.key] }))}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
                 >
-                  Applica template al cliente
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Icon size={18} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{s.label}</span>
+                      {filled === s.fields.length && filled > 0 && (
+                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                      )}
+                    </span>
+                    {s.hint && <span className="block text-[11px] text-muted-foreground truncate">{s.hint}</span>}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                    {filled}/{s.fields.length}
+                  </span>
+                  <ChevronDown size={16} className={cnChevron(open)} />
                 </button>
-                {selectedTemplate && (
-                  <button
-                    type="button"
-                    className="rounded-lg border border-input px-3 py-1.5 text-xs"
-                    onClick={() => {
-                      setField("internalNotes", [
-                        draft.internalNotes ?? "",
-                        `Checklist report (${selectedTemplate.label}): ${selectedTemplate.reportChecklist.join(" | ")}`,
-                      ].filter(Boolean).join("\n"));
-                    }}
-                  >
-                    Inserisci checklist report nelle note
-                  </button>
-                )}
-              </div>
-            </div>
-          </BriefSection>
-
-          <BriefSection title="Sezione 1 — Panoramica cliente" description="Identità e informazioni base dell'azienda." completionPercent={sections.overview} icon={<Building2 className="h-4 w-4" />}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-muted-foreground">Nome azienda</p>
-                <p className="mt-1 text-sm font-medium">{activeClient.name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Settore</p>
-                <EditableField ariaLabel="Settore cliente" value={draft.industryOverride ?? activeClient.industry} onChange={(v) => setField("industryOverride", v)} />
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-xs text-muted-foreground">Descrizione azienda</p>
-                <EditableField ariaLabel="Descrizione azienda" value={draft.companyDescription ?? ""} onChange={(v) => setField("companyDescription", v)} multiline maxLength={500} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Sito web</p>
-                <EditableField ariaLabel="Sito web cliente" value={draft.website ?? ""} onChange={(v) => setField("website", v)} placeholder="https://..." />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Anno di fondazione</p>
-                <EditableField ariaLabel="Anno di fondazione" value={draft.foundationYear ?? ""} onChange={(v) => setField("foundationYear", v)} />
-              </div>
-            </div>
-          </BriefSection>
-
-          <BriefSection title="Sezione 2 — Obiettivi e KPI" description="Direzione strategica e metriche concordate." completionPercent={sections.goals} icon={<Target className="h-4 w-4" />}>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Obiettivo principale</p>
-                <EditableField ariaLabel="Obiettivo principale" value={draft.primaryObjective ?? ""} onChange={(v) => setField("primaryObjective", v)} multiline />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Obiettivi secondari</p>
-                <EditableField ariaLabel="Obiettivi secondari" value={draft.secondaryObjectives ?? ""} onChange={(v) => setField("secondaryObjectives", v)} multiline />
-              </div>
-              <KpiList value={draft.kpis ?? []} onChange={(next: BriefKpi[]) => setField("kpis", next)} />
-            </div>
-          </BriefSection>
-
-          <BriefSection title="Sezione 3 — Target audience" description="Persona target, interessi e pain points." completionPercent={sections.audience} icon={<Users className="h-4 w-4" />}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-muted-foreground">Età target</p>
-                <EditableField ariaLabel="Età target" value={draft.targetAge ?? ""} onChange={(v) => setField("targetAge", v)} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Genere prevalente</p>
-                <select
-                  aria-label="Genere prevalente"
-                  value={draft.targetGender ?? "Misto"}
-                  onChange={(e) => setField("targetGender", e.target.value as ClientBrief["targetGender"])}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm"
-                >
-                  <option>Misto</option>
-                  <option>Prevalentemente maschile</option>
-                  <option>Prevalentemente femminile</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-xs text-muted-foreground">Professione / stile di vita</p>
-                <EditableField ariaLabel="Professione e stile di vita" value={draft.lifestyle ?? ""} onChange={(v) => setField("lifestyle", v)} multiline />
-              </div>
-              <TagEditor label="Interessi principali" values={draft.interests ?? []} onChange={(next) => setField("interests", next)} />
-              <div>
-                <p className="text-xs text-muted-foreground">Geolocalizzazione</p>
-                <EditableField ariaLabel="Geolocalizzazione target" value={draft.geolocation ?? ""} onChange={(v) => setField("geolocation", v)} />
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-xs text-muted-foreground">Pain points del target</p>
-                <EditableField ariaLabel="Pain points target" value={draft.painPoints ?? ""} onChange={(v) => setField("painPoints", v)} multiline />
-              </div>
-            </div>
-          </BriefSection>
-
-          <BriefSection title="Sezione 4 — Brand identity" description="Voce, stile e linee guida del brand." completionPercent={sections.identity} icon={<Palette className="h-4 w-4" />}>
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Tone of voice</p>
-                  <select
-                    aria-label="Tone of voice"
-                    value={draft.toneOfVoiceType ?? "Professionale"}
-                    onChange={(e) => setField("toneOfVoiceType", e.target.value as ClientBrief["toneOfVoiceType"])}
-                    className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm"
-                  >
-                    {["Professionale", "Amichevole", "Ironico", "Ispirazionale", "Lusso", "Educativo"].map((item) => (
-                      <option key={item}>{item}</option>
+                {open && (
+                  <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                    {s.fields.map((f) => (
+                      <div key={f.key} className={f.long ? "md:col-span-2" : undefined}>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">{f.label}</label>
+                        <textarea
+                          value={data[s.key]?.[f.key] ?? ""}
+                          onChange={(e) => setField(s.key, f.key, e.target.value)}
+                          placeholder={f.placeholder ?? "—"}
+                          rows={f.long ? 3 : 2}
+                          className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+                        />
+                      </div>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Note tone of voice</p>
-                  <EditableField ariaLabel="Note tone of voice" value={draft.toneOfVoiceNotes ?? ""} onChange={(v) => setField("toneOfVoiceNotes", v)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                {(draft.brandAdjectives ?? ["", "", ""]).slice(0, 3).map((value, idx) => (
-                  <div key={idx}>
-                    <p className="text-xs text-muted-foreground">Aggettivo {idx + 1}</p>
-                    <EditableField
-                      ariaLabel={`Aggettivo brand ${idx + 1}`}
-                      value={value}
-                      onChange={(next) => {
-                        const base = (draft.brandAdjectives ?? ["", "", ""]).slice(0, 3);
-                        base[idx] = next;
-                        setField("brandAdjectives", base);
-                      }}
-                    />
                   </div>
-                ))}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Cosa NON deve mai essere/dire il brand</p>
-                <EditableField ariaLabel="Brand donts" value={draft.brandDonts ?? ""} onChange={(v) => setField("brandDonts", v)} multiline />
-              </div>
-              <ColorPaletteEditor
-                colors={draft.colorPalette ?? []}
-                labels={draft.colorLabels ?? []}
-                onChange={(colors, labels) => {
-                  setField("colorPalette", colors);
-                  setField("colorLabels", labels);
-                }}
-              />
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Font titoli</p>
-                  <EditableField ariaLabel="Font titoli" value={draft.fontTitles ?? ""} onChange={(v) => setField("fontTitles", v)} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Font corpo</p>
-                  <EditableField ariaLabel="Font corpo" value={draft.fontBody ?? ""} onChange={(v) => setField("fontBody", v)} />
-                </div>
-              </div>
-            </div>
-          </BriefSection>
+                )}
+              </section>
+            );
+          })}
 
-          <BriefSection title="Sezione 5 — Contenuti e piattaforme" description="Canali attivi, frequenza e temi editoriali." completionPercent={sections.content} icon={<Clapperboard className="h-4 w-4" />}>
-            <div className="space-y-3">
-              <PlatformSelector value={activePlatforms} onChange={(next: SocialPlatform[]) => setField("activePlatforms", next)} />
-              {activePlatforms.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {activePlatforms.map((platform) => (
-                    <div key={platform}>
-                      <p className="text-xs text-muted-foreground capitalize">{platform}</p>
-                      <EditableField
-                        ariaLabel={`Frequenza ${platform}`}
-                        value={platformFrequencies[platform] ?? ""}
-                        onChange={(v) => setField("platformFrequencies", { ...platformFrequencies, [platform]: v })}
-                        placeholder="es. 4 post/settimana"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                {CONTENT_FORMATS.map((format) => {
-                  const selected = (draft.formatPreferences ?? []).includes(format);
-                  return (
-                    <button
-                      key={format}
-                      type="button"
-                      onClick={() => {
-                        const current = draft.formatPreferences ?? [];
-                        const next = selected ? current.filter((item) => item !== format) : [...current, format];
-                        setField("formatPreferences", next);
-                      }}
-                      className={`rounded-lg border px-2 py-1.5 text-xs ${selected ? "border-primary bg-primary/10 text-primary" : "border-input"}`}
-                    >
-                      {format}
-                    </button>
-                  );
-                })}
+          {/* Note libere / brief grezzo */}
+          <section className="rounded-xl border border-card-border bg-card overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSections((p) => ({ ...p, __notes: !p.__notes }))}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold text-sm">Note libere</span>
+                <span className="block text-[11px] text-muted-foreground truncate">
+                  Appunti, testo grezzo del questionario, qualsiasi cosa
+                </span>
+              </span>
+              <ChevronDown size={16} className={cnChevron(!!openSections.__notes)} />
+            </button>
+            {openSections.__notes && (
+              <div className="px-4 pb-4 pt-1">
+                <textarea
+                  value={notes}
+                  onChange={(e) => {
+                    setNotes(e.target.value);
+                    scheduleSave();
+                  }}
+                  rows={8}
+                  placeholder="Incolla qui il questionario compilato o qualsiasi nota libera…"
+                  className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+                />
               </div>
-              <TagEditor label="Argomenti da trattare" values={draft.topicsToCover ?? []} onChange={(next) => setField("topicsToCover", next)} />
-              <TagEditor label="Argomenti da evitare" values={draft.topicsToAvoid ?? []} onChange={(next) => setField("topicsToAvoid", next)} />
-              <TagEditor label="Hashtag brand" values={draft.brandHashtags ?? []} onChange={(next) => setField("brandHashtags", next)} />
-            </div>
-          </BriefSection>
-
-          <BriefSection title="Sezione 6 — Note operative" description="Informazioni di coordinamento team-cliente." completionPercent={sections.operations} icon={<BriefcaseBusiness className="h-4 w-4" />}>
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Referente</p>
-                  <EditableField ariaLabel="Referente cliente" value={draft.contactName ?? ""} onChange={(v) => setField("contactName", v)} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Email</p>
-                  <EditableField ariaLabel="Email referente cliente" value={draft.contactEmail ?? ""} onChange={(v) => setField("contactEmail", v)} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Telefono</p>
-                  <EditableField ariaLabel="Telefono referente cliente" value={draft.contactPhone ?? ""} onChange={(v) => setField("contactPhone", v)} />
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Giorno/ora preferita per approvazioni</p>
-                <EditableField ariaLabel="Preferenze approvazioni cliente" value={draft.approvalWindow ?? ""} onChange={(v) => setField("approvalWindow", v)} />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <p className="text-xs text-muted-foreground">Note interne team</p>
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Interno</span>
-                </div>
-                <EditableField ariaLabel="Note interne team" value={draft.internalNotes ?? ""} onChange={(v) => setField("internalNotes", v)} multiline />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">File utili</p>
-                <LinkListEditor values={draft.usefulLinks ?? []} onChange={(next) => setField("usefulLinks", next)} />
-              </div>
-            </div>
-          </BriefSection>
+            )}
+          </section>
         </div>
+
+        <p className="mt-4 text-center text-[11px] text-muted-foreground">
+          Le modifiche vengono salvate automaticamente.
+        </p>
       </div>
     </Layout>
   );

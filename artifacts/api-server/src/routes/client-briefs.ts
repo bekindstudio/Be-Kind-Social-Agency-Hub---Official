@@ -63,25 +63,43 @@ router.put("/clients/:clientId/brief", async (req, res): Promise<void> => {
   const ctx = await checkClientAccess(req, res);
   if (!ctx) return;
 
-  const { rawText } = req.body;
-  if (typeof rawText !== "string") { res.status(400).json({ error: "rawText richiesto" }); return; }
+  // Salva il brief MANUALE (compilato a mano nella UI): accetta rawText e/o
+  // parsedJson (le sezioni strutturate). Prima si salvava SOLO rawText → le
+  // sezioni compilate non venivano mai persistite.
+  const body = (req.body ?? {}) as { rawText?: unknown; parsedJson?: unknown };
+  const updates: Record<string, unknown> = {};
+  if (typeof body.rawText === "string") updates.rawText = body.rawText;
+  if (body.parsedJson !== undefined) {
+    updates.parsedJson =
+      typeof body.parsedJson === "string"
+        ? body.parsedJson
+        : JSON.stringify(body.parsedJson ?? {});
+  }
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "Nessun dato da salvare (rawText o parsedJson)" });
+    return;
+  }
 
   try {
     const existing = await db.select().from(clientBriefs).where(eq(clientBriefs.clientId, ctx.clientId));
 
     if (existing.length > 0) {
       const updated = await db.update(clientBriefs)
-        .set({ rawText, strategyStatus: existing[0].strategyHtml ? "ready" : "empty" })
+        .set(updates)
         .where(eq(clientBriefs.clientId, ctx.clientId))
         .returning();
       res.json(updated[0]);
     } else {
       const created = await db.insert(clientBriefs)
-        .values({ clientId: ctx.clientId, rawText })
+        .values({
+          clientId: ctx.clientId,
+          rawText: typeof updates.rawText === "string" ? updates.rawText : "",
+          parsedJson: typeof updates.parsedJson === "string" ? updates.parsedJson : "{}",
+        })
         .returning();
       res.status(201).json(created[0]);
     }
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Errore nel salvataggio del brief" });
   }
 });

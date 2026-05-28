@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomBytes } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 import { db, clientsTable, projectsTable, tasksTable, contractsTable, clientReportsTable, teamMembersTable } from "@workspace/db";
 import {
@@ -294,6 +295,48 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
   }
 
   res.json(serializeClient(client));
+});
+
+// Genera (o rigenera) il link di condivisione col cliente.
+async function assertClientAccessForShare(req: any, res: any, clientId: number): Promise<boolean> {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return false; }
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  if (accessible !== "all" && !accessible.includes(clientId)) {
+    res.status(403).json({ error: "Accesso negato a questo cliente" });
+    return false;
+  }
+  return true;
+}
+
+router.post("/clients/:id/share-link", async (req, res): Promise<void> => {
+  const params = GetClientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
+
+  const token = randomBytes(24).toString("base64url");
+  const [updated] = await db
+    .update(clientsTable)
+    .set({ shareToken: token })
+    .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
+  res.json({ shareToken: token });
+});
+
+router.delete("/clients/:id/share-link", async (req, res): Promise<void> => {
+  const params = GetClientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
+
+  const [updated] = await db
+    .update(clientsTable)
+    .set({ shareToken: null })
+    .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
+  res.json({ ok: true });
 });
 
 router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Promise<void> => {

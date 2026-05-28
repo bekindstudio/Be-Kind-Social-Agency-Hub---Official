@@ -52,6 +52,8 @@ export const clientsTable = pgTable("clients", {
   healthScore: integer("health_score").default(50),
   tagsJson: text("tags_json").notNull().default("[]"),
   accountManagerId: integer("account_manager_id"),
+  // Token per il link di condivisione col cliente (accesso senza login a poche sezioni).
+  shareToken: text("share_token"),
   contractStatus: text("contract_status").default("nessuno"),
   monthlyValue: integer("monthly_value").default(0),
   lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),

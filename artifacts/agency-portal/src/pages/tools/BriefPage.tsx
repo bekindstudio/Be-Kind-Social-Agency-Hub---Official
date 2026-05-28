@@ -4,6 +4,7 @@ import { useClientContext } from "@/context/ClientContext";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { generateBriefPDF } from "@/lib/brief-pdf";
+import { ShareClientDialog } from "@/components/ShareClientDialog";
 import {
   ChevronDown,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   Cloud,
   FileText,
   FileDown,
+  Share2,
   Users,
   Sparkles,
   Activity,
@@ -271,6 +273,7 @@ export default function BriefPage() {
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [SECTIONS[0].key]: true });
 
   const loadedRef = useRef(false);
@@ -439,6 +442,13 @@ export default function BriefPage() {
                 {allOpen ? "Comprimi tutto" : "Espandi tutto"}
               </button>
               <button
+                onClick={() => setShareOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-input hover:bg-muted transition-colors"
+                title="Condividi il brief col cliente (link senza login)"
+              >
+                <Share2 size={14} /> Condividi col cliente
+              </button>
+              <button
                 onClick={() => void handleExportPdf()}
                 disabled={pdfBusy || totals.filled === 0}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:brightness-105 transition disabled:opacity-50"
@@ -552,6 +562,13 @@ export default function BriefPage() {
           Le modifiche vengono salvate automaticamente.
         </p>
       </div>
+
+      <ShareClientDialog
+        clientId={clientId}
+        clientName={activeClient?.name ?? "Cliente"}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </Layout>
   );
 }

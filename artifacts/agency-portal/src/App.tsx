@@ -44,6 +44,7 @@ const Trash = lazy(() => import("@/pages/trash"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
+const ClientPortalPage = lazy(() => import("@/pages/portal/ClientPortalPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -188,6 +189,14 @@ function Router() {
             </RouteBoundary>
           </Route>
         )}
+        {/* Area cliente pubblica (accesso via link, senza login) */}
+        <Route path="/portal/:token">
+          {(params) => (
+            <RouteBoundary routeKey="/portal">
+              <ClientPortalPage token={params.token} />
+            </RouteBoundary>
+          )}
+        </Route>
         <Route path="/dashboard">
           <RouteBoundary routeKey="/dashboard">
             <RequireAuth><Dashboard /></RequireAuth>

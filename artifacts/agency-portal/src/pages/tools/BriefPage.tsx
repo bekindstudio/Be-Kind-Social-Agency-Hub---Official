@@ -3,6 +3,7 @@ import { Layout } from "@/components/layout/Layout";
 import { useClientContext } from "@/context/ClientContext";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { generateBriefPDF } from "@/lib/brief-pdf";
 import {
   ChevronDown,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
   CloudOff,
   Cloud,
   FileText,
+  FileDown,
   Users,
   Sparkles,
   Activity,
@@ -268,6 +270,7 @@ export default function BriefPage() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [SECTIONS[0].key]: true });
 
   const loadedRef = useRef(false);
@@ -368,6 +371,26 @@ export default function BriefPage() {
     scheduleSave();
   };
 
+  const handleExportPdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      await generateBriefPDF({
+        clientName: activeClient?.name ?? "Cliente",
+        clientLogoUrl: activeClient?.logo ?? null,
+        brandColor: activeClient?.color ?? null,
+        sections: SECTIONS.map((s) => ({
+          label: s.label,
+          fields: s.fields.map((f) => ({ label: f.label, value: data[s.key]?.[f.key] ?? "" })),
+        })),
+      });
+    } catch {
+      toast({ variant: "destructive", title: "Esportazione PDF non riuscita", description: "Riprova tra poco." });
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const totals = useMemo(() => {
     const total = SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
     const filled = SECTIONS.reduce((acc, s) => acc + sectionFilled(data, s), 0);
@@ -414,6 +437,15 @@ export default function BriefPage() {
                 className="text-xs font-medium px-3 py-1.5 rounded-lg border border-input hover:bg-muted transition-colors"
               >
                 {allOpen ? "Comprimi tutto" : "Espandi tutto"}
+              </button>
+              <button
+                onClick={() => void handleExportPdf()}
+                disabled={pdfBusy || totals.filled === 0}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:brightness-105 transition disabled:opacity-50"
+                title={totals.filled === 0 ? "Compila almeno un campo per esportare" : "Genera il PDF del brief"}
+              >
+                {pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                {pdfBusy ? "Genero…" : "Genera PDF"}
               </button>
             </div>
           </div>

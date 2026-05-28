@@ -64,9 +64,13 @@ router.use(deadlinesRouter);
 router.use(activityLogRouter);
 router.use(clientBriefsRouter);
 router.use(editorialPlansRouter);
-router.use(clientPostsRouter);
-router.use(clientCompetitorsRouter);
-router.use(clientEventsRouter);
+// Questi router definiscono rotte come `/:clientId/...` → vanno montati sotto
+// `/clients` per ottenere `/api/clients/:clientId/{posts,competitors,events}`,
+// che è ciò che chiama il frontend. (Senza prefisso restavano `/api/:clientId/...`
+// → 404 → eventi/competitor/post non si salvavano.)
+router.use("/clients", clientPostsRouter);
+router.use("/clients", clientCompetitorsRouter);
+router.use("/clients", clientEventsRouter);
 router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);

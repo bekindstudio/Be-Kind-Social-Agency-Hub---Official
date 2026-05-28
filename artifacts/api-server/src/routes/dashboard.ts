@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
-import { db, clientsTable, projectsTable, tasksTable, teamMembersTable, messagesTable, filesTable, quoteTemplatesTable, contractTemplatesTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { db, clientsTable, projectsTable, tasksTable, teamMembersTable, messagesTable, filesTable, quoteTemplatesTable, contractTemplatesTable, clientEventsTable } from "@workspace/db";
+import { desc, eq, isNull } from "drizzle-orm";
 import {
   GetDashboardSummaryResponse,
   GetRecentActivityResponse,
   GetProjectStatusBreakdownResponse,
 } from "@workspace/api-zod";
-import { getUserId } from "../lib/access-control";
+import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -38,6 +38,38 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     pendingTasks,
     teamMembers: members.length,
   }));
+});
+
+// Calendario eventi UNIFICATO: tutti gli eventi dei clienti accessibili,
+// indipendentemente dal cliente attivo (riepilogo dei prossimi eventi).
+router.get("/dashboard/events", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId as string);
+
+  const clients = await db
+    .select({ id: clientsTable.id, name: clientsTable.name, brandColor: clientsTable.brandColor, color: clientsTable.color })
+    .from(clientsTable)
+    .where(isNull(clientsTable.deletedAt));
+  const clientMap = new Map(clients.map((c) => [c.id, { name: c.name, color: c.brandColor ?? c.color ?? "#7a8f5c" }]));
+
+  const rows = await db.select().from(clientEventsTable);
+  const result = rows
+    .filter((e) => clientMap.has(e.clientId) && (accessible === "all" || accessible.includes(e.clientId)))
+    .map((e) => ({
+      id: String(e.id),
+      clientId: e.clientId,
+      clientName: clientMap.get(e.clientId)?.name ?? null,
+      clientColor: clientMap.get(e.clientId)?.color ?? "#7a8f5c",
+      title: e.title,
+      date: e.date.toISOString(),
+      endDate: e.endDate ? e.endDate.toISOString() : null,
+      type: e.type,
+      priority: e.priority,
+      note: e.note ?? null,
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  res.json(result);
 });
 
 router.get("/dashboard/activity", async (_req, res): Promise<void> => {

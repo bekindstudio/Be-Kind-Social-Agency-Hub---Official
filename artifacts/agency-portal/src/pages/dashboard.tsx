@@ -150,7 +150,7 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { signOut, authDisabled } = useSupabaseAuth();
-  const { activeClient, clients: contextClients, allClientEvents, posts } = useClientContext();
+  const { activeClient, posts } = useClientContext();
   const smartReminders = useSmartReminders();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
@@ -161,6 +161,17 @@ export default function Dashboard() {
   const { data: projectsRaw } = useListProjects(apiClientId != null ? { clientId: apiClientId } : {});
   const { data: tasksRaw } = useListTasks(tasksQueryParams as any);
   const { data: clientsRaw } = useListClients();
+  // Calendario eventi UNIFICATO: tutti i clienti, indipendente dal cliente attivo.
+  const { data: allEventsRaw } = useQuery({
+    queryKey: ["dashboard", "events", "all"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/events", { credentials: "include" });
+      if (!r.ok) return [];
+      return (await r.json()) as AnyObj[];
+    },
+  });
+  const allClientEvents = useMemo(() => (Array.isArray(allEventsRaw) ? allEventsRaw : []), [allEventsRaw]);
 
   const [showQuick, setShowQuick] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -436,13 +447,6 @@ export default function Dashboard() {
     }
     return map;
   }, [allClientEvents]);
-  const clientNameById = useMemo(
-    () =>
-      new Map(
-        contextClients.map((client) => [client.id, client.name]),
-      ),
-    [contextClients],
-  );
 
   return (
     <Layout>
@@ -696,8 +700,13 @@ export default function Dashboard() {
                       <p className="text-[10px] font-medium">{date.getDate()}</p>
                       <div className="space-y-0.5">
                         {items.slice(0, 2).map((event) => (
-                          <div key={event.id} className="truncate rounded bg-violet-100 px-1 py-0.5 text-[10px] text-violet-800" title={event.title}>
-                            {event.title} - {clientNameById.get(event.clientId) ?? "Cliente"}
+                          <div
+                            key={event.id}
+                            className="flex items-center gap-1 truncate rounded bg-muted px-1 py-0.5 text-[10px] text-foreground"
+                            title={`${event.title} — ${event.clientName ?? "Cliente"}`}
+                          >
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: event.clientColor || "#7a8f5c" }} />
+                            <span className="truncate">{event.title}</span>
                           </div>
                         ))}
                         {items.length > 2 && <p className="text-[10px] text-muted-foreground">+{items.length - 2}</p>}

@@ -383,8 +383,9 @@ export default function BriefPage() {
         clientLogoUrl: activeClient?.logo ?? null,
         brandColor: activeClient?.color ?? null,
         sections: SECTIONS.map((s) => ({
+          key: s.key,
           label: s.label,
-          fields: s.fields.map((f) => ({ label: f.label, value: data[s.key]?.[f.key] ?? "" })),
+          fields: s.fields.map((f) => ({ key: f.key, label: f.label, value: data[s.key]?.[f.key] ?? "" })),
         })),
       });
     } catch {

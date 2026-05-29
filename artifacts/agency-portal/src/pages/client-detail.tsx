@@ -51,6 +51,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { BRIEF_SECTIONS } from "@/lib/briefSchema";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
 import { useClientContext } from "@/context/ClientContext";
@@ -168,7 +169,7 @@ function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKe
   );
 }
 
-/* ─── Tab Brief (riassunto + apertura) ─────────────────────────────────── */
+/* ─── Tab Brief (riassunto + preview sezioni + apertura) ───────────────── */
 function BriefTab({ clientId, onOpen }: { clientId: number; onOpen: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ["client-brief", clientId],
@@ -179,44 +180,92 @@ function BriefTab({ clientId, onOpen }: { clientId: number; onOpen: () => void }
     },
     staleTime: 30_000,
   });
-  let filled = 0, total = 0;
+
+  // Parse il parsedJson salvato
+  let parsed: Record<string, Record<string, unknown>> = {};
   if (data?.parsedJson) {
     try {
       const p = JSON.parse(data.parsedJson);
-      for (const sec of Object.values(p ?? {})) {
-        if (sec && typeof sec === "object") {
-          for (const v of Object.values(sec as Record<string, unknown>)) {
-            total += 1;
-            if (typeof v === "string" && v.trim()) filled += 1;
-          }
-        }
-      }
+      if (p && typeof p === "object") parsed = p;
     } catch { /* ignore */ }
   }
+
+  // Totale = solo i campi noti dello schema (non i campi orfani nel DB)
+  const total = BRIEF_SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
+  const sectionStats = BRIEF_SECTIONS.map((s) => {
+    const sec = parsed[s.key] ?? {};
+    const sectionFilled = s.fields.reduce((acc, f) => {
+      const v = sec[f.key];
+      return acc + (typeof v === "string" && v.trim() ? 1 : 0);
+    }, 0);
+    return { key: s.key, label: s.label, icon: s.icon, filled: sectionFilled, totalSection: s.fields.length };
+  });
+  const filled = sectionStats.reduce((acc, s) => acc + s.filled, 0);
   const pct = total ? Math.round((filled / total) * 100) : 0;
+  const isEmpty = filled === 0;
+
   return (
-    <div className="rounded-xl border border-card-border bg-card p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h2 className="font-semibold text-sm flex items-center gap-2"><BookOpen size={15} className="text-primary" /> Brief cliente</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Compilazione e PDF nella pagina Brief.</p>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-card-border bg-card p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-semibold text-sm flex items-center gap-2"><BookOpen size={15} className="text-primary" /> Brief cliente</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Compilazione e PDF nella pagina Brief.</p>
+          </div>
+          <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 shrink-0">
+            Apri Brief <ExternalLink size={12} />
+          </button>
         </div>
-        <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
-          Apri Brief <ExternalLink size={12} />
-        </button>
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Caricamento…</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Completamento</span>
+              <span className="font-semibold text-foreground">{pct}% · {filled}/{total} campi</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+          </>
+        )}
       </div>
-      {isLoading ? (
-        <p className="text-xs text-muted-foreground">Caricamento…</p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span>Completamento</span>
-            <span className="font-semibold text-foreground">{pct}% · {filled}/{total} campi</span>
+
+      {!isLoading && (
+        isEmpty ? (
+          <div className="rounded-xl border border-dashed border-card-border bg-card p-8 text-center">
+            <BookOpen size={28} className="mx-auto text-muted-foreground/40 mb-2" />
+            <p className="text-sm font-medium">Brief ancora vuoto</p>
+            <p className="text-xs text-muted-foreground mt-1 mb-4">Apri il Brief per iniziare a compilare le sezioni.</p>
+            <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
+              <BookOpen size={13} /> Compila il brief
+            </button>
           </div>
-          <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+        ) : (
+          <div className="rounded-xl border border-card-border bg-card p-5">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Stato sezioni</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {sectionStats.map((s) => {
+                const Icon = s.icon;
+                const done = s.filled === s.totalSection;
+                const some = s.filled > 0 && !done;
+                return (
+                  <div key={s.key} className="flex items-center gap-2.5 rounded-lg border border-card-border/60 p-2.5">
+                    <span className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+                      done ? "bg-emerald-100 text-emerald-700" : some ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
+                    )}>
+                      <Icon size={13} />
+                    </span>
+                    <span className="text-sm flex-1 truncate">{s.label}</span>
+                    <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">{s.filled}/{s.totalSection}</span>
+                    {done && <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </>
+        )
       )}
     </div>
   );

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout/Layout";
-import { Plus, Trash2, Search, ExternalLink, MessageSquare, List, LayoutGrid, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Search, ExternalLink, MessageSquare, List, LayoutGrid, AlertTriangle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getListClientsQueryKey, portalFetch, useListClients } from "@workspace/api-client-react";
 import { describeApiFailureForUser } from "@/lib/api-response-errors";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useClientContext } from "@/context/ClientContext";
+import { OnboardingWizard } from "@/components/client/OnboardingWizard";
 
 type ClientRow = any;
 
@@ -79,6 +80,7 @@ export default function Clients() {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [showForm, setShowForm] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [activeTab, setActiveTab] = useState<"generali" | "contatti" | "servizi" | "fatturazione" | "accessi">("generali");
   const [form, setForm] = useState<any>({
     name: "", nomeCommerciale: "", ragioneSociale: "", settore: "", dimensione: "", website: "", descrizione: "", comeAcquisito: "", clienteDal: "", noteInterne: "", color: "#7a8f5c", brandColor: "#7a8f5c", logoUrl: "", accountManagerId: "", tags: "", contacts: [{ nome: "", cognome: "", ruolo: "", email: "", telefono: "", isPrimary: true, metodoContattoPreferito: "Email", orarioPreferito: "Mattina" }], services: [], piva: "", codiceFiscale: "", sdi: "", pec: "", indirizzo: "", metodoPagamento: "Bonifico", terminiPagamento: "30gg", iban: "",
@@ -286,8 +288,29 @@ export default function Clients() {
             <h1 className="text-2xl font-bold tracking-tight">Client Management</h1>
             <p className="text-muted-foreground text-sm mt-1">{clients.length} clienti totali</p>
           </div>
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"><Plus size={16} /> Nuovo Cliente</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className="text-xs text-muted-foreground hover:underline"
+              title="Form completo con tutti i campi"
+            >
+              Modalità avanzata
+            </button>
+            <button
+              onClick={() => setShowWizard(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
+            >
+              <Sparkles size={16} /> Nuovo Cliente
+            </button>
+          </div>
         </div>
+
+        {showWizard && (
+          <OnboardingWizard
+            onClose={() => setShowWizard(false)}
+            onCreated={() => { void refetchClients(); }}
+          />
+        )}
 
         {showForm && (
           <div className="bg-card border border-card-border rounded-xl p-6 mb-6 shadow-sm">

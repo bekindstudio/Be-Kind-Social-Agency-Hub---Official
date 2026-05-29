@@ -20,7 +20,7 @@ router.get("/version", (_req, res) => {
   ].join(",");
   const adminCount = adminRaw.split(",").map((s) => s.trim()).filter(Boolean).length;
   res.json({
-    marker: "BUILD-MARKER-20260530-P",
+    marker: "BUILD-MARKER-20260530-Q",
     seedsDisabled: true,
     adminIdsConfigured: adminCount,
     metaConfigured: Boolean((process.env.META_APP_ID ?? "").trim() && (process.env.META_APP_SECRET ?? "").trim()),

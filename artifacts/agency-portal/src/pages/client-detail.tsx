@@ -45,7 +45,12 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   BookOpen,
+  CalendarDays,
+  BarChart3,
+  Layers,
+  FolderOpen,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
 import { useClientContext } from "@/context/ClientContext";
@@ -124,6 +129,230 @@ const PRIORITY_OPTIONS = [
 
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
+/* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
+type TabKey = "panoramica" | "progetti" | "brief" | "editoriale" | "eventi" | "report" | "file" | "meta";
+const TABS: { key: TabKey; label: string; icon: any }[] = [
+  { key: "panoramica", label: "Panoramica", icon: Layers },
+  { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
+  { key: "brief", label: "Brief", icon: BookOpen },
+  { key: "editoriale", label: "Editoriale", icon: CalendarDays },
+  { key: "eventi", label: "Eventi", icon: CalendarDays },
+  { key: "report", label: "Report", icon: BarChart3 },
+  { key: "file", label: "File", icon: FolderOpen },
+  { key: "meta", label: "Meta", icon: Share2 },
+];
+
+function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
+  return (
+    <div className="sticky top-0 z-30 -mx-8 px-8 pt-1 pb-0 bg-background/95 backdrop-blur border-b border-card-border mb-6">
+      <div className="flex gap-1 overflow-x-auto">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const on = active === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => onChange(t.key)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                on ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon size={15} />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Tab Brief (riassunto + apertura) ─────────────────────────────────── */
+function BriefTab({ clientId, onOpen }: { clientId: number; onOpen: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["client-brief", clientId],
+    queryFn: async () => {
+      const r = await portalFetch(`/api/clients/${clientId}/brief`, { credentials: "include" });
+      if (!r.ok) return null;
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+  let filled = 0, total = 0;
+  if (data?.parsedJson) {
+    try {
+      const p = JSON.parse(data.parsedJson);
+      for (const sec of Object.values(p ?? {})) {
+        if (sec && typeof sec === "object") {
+          for (const v of Object.values(sec as Record<string, unknown>)) {
+            total += 1;
+            if (typeof v === "string" && v.trim()) filled += 1;
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  const pct = total ? Math.round((filled / total) * 100) : 0;
+  return (
+    <div className="rounded-xl border border-card-border bg-card p-5">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="font-semibold text-sm flex items-center gap-2"><BookOpen size={15} className="text-primary" /> Brief cliente</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Compilazione e PDF nella pagina Brief.</p>
+        </div>
+        <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
+          Apri Brief <ExternalLink size={12} />
+        </button>
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Caricamento…</p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span>Completamento</span>
+            <span className="font-semibold text-foreground">{pct}% · {filled}/{total} campi</span>
+          </div>
+          <div className="h-2 rounded-full bg-muted overflow-hidden">
+            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─── Tab Eventi (lista compatta) ──────────────────────────────────────── */
+function EventsTab({ clientId, onOpen }: { clientId: number; onOpen: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["client-events", clientId],
+    queryFn: async () => {
+      const r = await portalFetch(`/api/clients/${clientId}/events`, { credentials: "include" });
+      if (!r.ok) return [] as any[];
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+  const events = Array.isArray(data) ? data : [];
+  const upcoming = events
+    .filter((e) => new Date(e.date).getTime() >= Date.now() - 24 * 3600 * 1000)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 8);
+  return (
+    <div className="rounded-xl border border-card-border bg-card p-5">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h2 className="font-semibold text-sm flex items-center gap-2"><CalendarDays size={15} className="text-primary" /> Eventi cliente</h2>
+        <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg border border-input px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+          Gestisci eventi <ExternalLink size={12} />
+        </button>
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Caricamento…</p>
+      ) : upcoming.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">Nessun evento in programma.</p>
+      ) : (
+        <div className="space-y-2">
+          {upcoming.map((e: any) => (
+            <div key={e.id} className="flex items-start gap-3 rounded-lg border border-card-border/60 p-2.5">
+              <CalendarDays size={14} className="text-primary mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{e.title}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(e.date)}{e.endDate ? ` → ${formatDate(e.endDate)}` : ""}</p>
+              </div>
+              <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Tab Editoriale (link al builder) ─────────────────────────────────── */
+function EditorialTab({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="rounded-xl border border-card-border bg-card p-5">
+      <h2 className="font-semibold text-sm flex items-center gap-2 mb-2"><CalendarDays size={15} className="text-primary" /> Piano editoriale</h2>
+      <p className="text-xs text-muted-foreground mb-3">Pianifica i contenuti del cliente nel calendario editoriale.</p>
+      <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
+        Apri calendario editoriale <ExternalLink size={12} />
+      </button>
+    </div>
+  );
+}
+
+/* ─── Tab File (drive + lista) ─────────────────────────────────────────── */
+function FilesTab({ clientId, driveUrl, onOpenSettings }: { clientId: number; driveUrl: string | null; onOpenSettings: () => void }) {
+  const { data: projData } = useQuery({
+    queryKey: ["client-projects-light", clientId],
+    queryFn: async () => {
+      const r = await portalFetch(`/api/projects?clientId=${clientId}`, { credentials: "include" });
+      if (!r.ok) return [] as any[];
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+  const projectIds = (Array.isArray(projData) ? projData : []).map((p: any) => p.id);
+  const { data: filesData, isLoading } = useQuery({
+    queryKey: ["client-files", clientId, projectIds.length],
+    enabled: projectIds.length > 0,
+    queryFn: async () => {
+      const all: any[] = [];
+      for (const pid of projectIds) {
+        const r = await portalFetch(`/api/files?projectId=${pid}`, { credentials: "include" });
+        if (r.ok) {
+          const arr = await r.json();
+          if (Array.isArray(arr)) all.push(...arr);
+        }
+      }
+      return all;
+    },
+    staleTime: 30_000,
+  });
+  const files = Array.isArray(filesData) ? filesData : [];
+  return (
+    <div className="space-y-4">
+      {driveUrl ? (
+        <a href={driveUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 hover:bg-primary/10 transition-colors">
+          <HardDrive size={18} className="text-primary" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm">Cartella Google Drive</p>
+            <p className="text-xs text-muted-foreground truncate">{driveUrl}</p>
+          </div>
+          <ExternalLink size={14} className="text-primary" />
+        </a>
+      ) : (
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-card-border p-4">
+          <HardDrive size={18} className="text-muted-foreground" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Nessuna cartella Drive collegata</p>
+            <p className="text-xs text-muted-foreground">Aggiungi l'URL della cartella in Panoramica → Modifica.</p>
+          </div>
+          <button onClick={onOpenSettings} className="text-xs text-primary hover:underline">Aggiungi</button>
+        </div>
+      )}
+      <div className="rounded-xl border border-card-border bg-card p-5">
+        <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><FileText size={15} className="text-primary" /> File caricati</h2>
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Caricamento…</p>
+        ) : files.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Nessun file caricato.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {files.slice(0, 30).map((f: any) => (
+              <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50 transition-colors">
+                <FileText size={14} className="text-primary shrink-0" />
+                <span className="text-sm truncate flex-1">{f.name}</span>
+                <ExternalLink size={12} className="text-muted-foreground shrink-0" />
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetail({ id }: Props) {
   const [, navigate] = useLocation();
   const clientId = parseInt(id, 10);
@@ -146,6 +375,7 @@ export default function ClientDetail({ id }: Props) {
   const { clients: contextClients, setActiveClient } = useClientContext();
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>("panoramica");
   const [form, setForm] = useState<Record<string, string>>({});
   const [editContacts, setEditContacts] = useState<Array<Record<string, string>>>([]);
   const [editServices, setEditServices] = useState<string[]>([]);
@@ -547,8 +777,10 @@ export default function ClientDetail({ id }: Props) {
           onStartEdit={startEditing}
         />
 
-        {/* Edit / View mode */}
-        {editing ? (
+        <CockpitTabs active={activeTab} onChange={setActiveTab} />
+
+        {/* ─── TAB: Panoramica (form/view dati cliente) ─── */}
+        {activeTab === "panoramica" && (editing ? (
           <div className="space-y-6 mb-10">
             <Section title="Informazioni Generali" icon={<Building2 size={15} className="text-primary" />}>
               <div className="grid grid-cols-2 gap-4">
@@ -787,102 +1019,88 @@ export default function ClientDetail({ id }: Props) {
               </Section>
             )}
 
-            <ClientMetaSection
-              Section={Section}
-              metaStatus={metaStatus}
-              handleMetaSync={handleMetaSync}
-              metaSyncing={metaSyncing}
-              handleMetaDisconnect={handleMetaDisconnect}
-              metaAssign={metaAssign}
-              setMetaAssign={setMetaAssign}
-              handleMetaAssignSave={handleMetaAssignSave}
-              metaSaving={metaSaving}
-            />
-
             {(viewClient as any).notes && (
               <Section title="Note" icon={<StickyNote size={15} className="text-primary" />}>
                 <p className="text-sm whitespace-pre-wrap">{(viewClient as any).notes}</p>
               </Section>
             )}
-
-            <Section title="Brief & Strategia" icon={<BookOpen size={15} className="text-primary" />}>
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Il brief operativo e centralizzato in <strong>Strumenti → Brief</strong>, cosi tutta la squadra lavora su un'unica versione sempre aggiornata.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Da li puoi incollare il questionario compilato dal cliente, farlo organizzare all'AI e ottenere suggerimenti/strategia migliorata.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
-                    if (match) setActiveClient(match);
-                    navigate("/tools/brief");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  <BookOpen size={13} />
-                  Apri Brief in Strumenti
-                </button>
-              </div>
-            </Section>
-
-            {/* ── Google Drive ── */}
-            <Section
-              title="Google Drive"
-              icon={<HardDrive size={15} className="text-primary" />}
-              action={
-                (viewClient as any).driveUrl ? (
-                  <a
-                    href={(viewClient as any).driveUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
-                  >
-                    <ExternalLink size={11} /> Apri cartella
-                  </a>
-                ) : null
-              }
-            >
-              {(viewClient as any).driveUrl ? (
-                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                    <HardDrive size={18} className="text-blue-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Cartella Drive collegata</p>
-                    <p className="text-xs text-muted-foreground truncate">{(viewClient as any).driveUrl}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <HardDrive size={28} className="mx-auto text-muted-foreground/30 mb-2" />
-                  <p className="text-sm text-muted-foreground mb-3">Nessuna cartella Drive collegata</p>
-                  <button
-                    onClick={startEditing}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Aggiungi URL cartella Drive
-                  </button>
-                </div>
-              )}
-            </Section>
-
-            <ClientReportsSection
-              Section={Section}
-              reports={reports}
-              clientId={clientId}
-              reportsLoading={reportsLoading}
-              REPORT_STATUS_COLORS={REPORT_STATUS_COLORS}
-              REPORT_STATUS_LABELS={REPORT_STATUS_LABELS}
-              handleApproveReport={handleApproveReport}
-              handleRejectReport={handleRejectReport}
-              handleSendReport={handleSendReport}
-              sendingReportId={sendingReportId}
-              handleDeleteReport={handleDeleteReport}
-            />
           </div>
+        ))}
+
+        {/* ─── TAB: Brief ─── */}
+        {activeTab === "brief" && (
+          <BriefTab
+            clientId={clientId}
+            onOpen={() => {
+              const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
+              if (match) setActiveClient(match);
+              navigate("/tools/brief");
+            }}
+          />
+        )}
+
+        {/* ─── TAB: Editoriale ─── */}
+        {activeTab === "editoriale" && (
+          <EditorialTab
+            onOpen={() => {
+              const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
+              if (match) setActiveClient(match);
+              navigate("/tools/calendar");
+            }}
+          />
+        )}
+
+        {/* ─── TAB: Eventi ─── */}
+        {activeTab === "eventi" && (
+          <EventsTab
+            clientId={clientId}
+            onOpen={() => {
+              const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
+              if (match) setActiveClient(match);
+              navigate("/tools/events");
+            }}
+          />
+        )}
+
+        {/* ─── TAB: Report ─── */}
+        {activeTab === "report" && (
+          <ClientReportsSection
+            Section={Section}
+            reports={reports}
+            clientId={clientId}
+            reportsLoading={reportsLoading}
+            REPORT_STATUS_COLORS={REPORT_STATUS_COLORS}
+            REPORT_STATUS_LABELS={REPORT_STATUS_LABELS}
+            handleApproveReport={handleApproveReport}
+            handleRejectReport={handleRejectReport}
+            handleSendReport={handleSendReport}
+            sendingReportId={sendingReportId}
+            handleDeleteReport={handleDeleteReport}
+          />
+        )}
+
+        {/* ─── TAB: File + Drive ─── */}
+        {activeTab === "file" && (
+          <FilesTab
+            clientId={clientId}
+            driveUrl={(viewClient as any).driveUrl ?? null}
+            onOpenSettings={startEditing}
+          />
+        )}
+
+        {/* ─── TAB: Meta ─── */}
+        {activeTab === "meta" && (
+          <ClientMetaSection
+            Section={Section}
+            metaStatus={metaStatus}
+            handleMetaSync={handleMetaSync}
+            metaSyncing={metaSyncing}
+            handleMetaDisconnect={handleMetaDisconnect}
+            metaAssign={metaAssign}
+            setMetaAssign={setMetaAssign}
+            handleMetaAssignSave={handleMetaAssignSave}
+            metaSaving={metaSaving}
+          />
         )}
 
         {/* Email preview modal */}
@@ -921,28 +1139,31 @@ export default function ClientDetail({ id }: Props) {
           </div>
         )}
 
-        <ClientProjectsSection
-          Section={Section}
-          Field={Field}
-          clientProjects={clientProjects}
-          showProjectForm={showProjectForm}
-          setShowProjectForm={setShowProjectForm}
-          projectForm={projectForm}
-          setProjectForm={setProjectForm}
-          PROJECT_STATUS_OPTIONS={PROJECT_STATUS_OPTIONS}
-          handleAddProject={handleAddProject}
-          createProject={createProject}
-          clientTasks={clientTasks}
-          showTaskForm={showTaskForm}
-          setShowTaskForm={setShowTaskForm}
-          taskForm={taskForm}
-          setTaskForm={setTaskForm}
-          TASK_STATUS_OPTIONS={TASK_STATUS_OPTIONS}
-          PRIORITY_OPTIONS={PRIORITY_OPTIONS}
-          teamMembers={teamMembers}
-          handleAddTask={handleAddTask}
-          createTask={createTask}
-        />
+        {/* ─── TAB: Progetti & Task ─── */}
+        {activeTab === "progetti" && (
+          <ClientProjectsSection
+            Section={Section}
+            Field={Field}
+            clientProjects={clientProjects}
+            showProjectForm={showProjectForm}
+            setShowProjectForm={setShowProjectForm}
+            projectForm={projectForm}
+            setProjectForm={setProjectForm}
+            PROJECT_STATUS_OPTIONS={PROJECT_STATUS_OPTIONS}
+            handleAddProject={handleAddProject}
+            createProject={createProject}
+            clientTasks={clientTasks}
+            showTaskForm={showTaskForm}
+            setShowTaskForm={setShowTaskForm}
+            taskForm={taskForm}
+            setTaskForm={setTaskForm}
+            TASK_STATUS_OPTIONS={TASK_STATUS_OPTIONS}
+            PRIORITY_OPTIONS={PRIORITY_OPTIONS}
+            teamMembers={teamMembers}
+            handleAddTask={handleAddTask}
+            createTask={createTask}
+          />
+        )}
       </div>
     </Layout>
   );

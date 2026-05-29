@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import crypto from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { db, socialAccountsTable, clientsTable, clientPostsTable } from "@workspace/db";
 import { readFile, unlink, writeFile } from "node:fs/promises";
@@ -528,6 +529,102 @@ router.post("/meta/token/disconnect", async (_req, res): Promise<void> => {
   } catch (error: any) {
     console.error("Meta /token/disconnect error:", error);
     res.status(500).json({ error: "DISCONNECT_ERROR", message: error?.message ?? "Errore disconnessione token" });
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────────
+   OAUTH "Login con Facebook" — collegamento one-click, niente token a mano.
+   start (gated) → ritorna l'URL del dialog FB; il browser ci va.
+   callback (pubblico, validato con state firmato) → code → token →
+   long-lived (60gg) → salvato. Poi il cron lo rinnova da solo.
+   Redirect URI da registrare nell'app Meta:
+   https://<dominio>/api/meta/oauth/callback
+   ────────────────────────────────────────────────────────────────────── */
+const META_OAUTH_SCOPES = [
+  "public_profile",
+  "pages_show_list",
+  "pages_read_engagement",
+  "instagram_basic",
+  "instagram_manage_insights",
+  "business_management",
+  "ads_read",
+  "read_insights",
+].join(",");
+
+function oauthRedirectUri(req: Request): string {
+  const base = (process.env.PORTAL_PUBLIC_URL ?? "").replace(/\/+$/, "") || `https://${req.get("host")}`;
+  return `${base}/api/meta/oauth/callback`;
+}
+function oauthStateSecret(): string {
+  return process.env.CRON_SECRET || process.env.TOKEN_ENCRYPTION_KEY || "bekind-meta-oauth";
+}
+function signOauthState(): string {
+  const ts = Date.now().toString(36);
+  const nonce = crypto.randomBytes(8).toString("hex");
+  const sig = crypto.createHmac("sha256", oauthStateSecret()).update(`${ts}.${nonce}`).digest("hex").slice(0, 32);
+  return `${ts}.${nonce}.${sig}`;
+}
+function verifyOauthState(state: string | undefined): boolean {
+  const parts = (state ?? "").split(".");
+  if (parts.length !== 3) return false;
+  const [ts, nonce, sig] = parts;
+  const expected = crypto.createHmac("sha256", oauthStateSecret()).update(`${ts}.${nonce}`).digest("hex").slice(0, 32);
+  if (sig !== expected) return false;
+  const t = parseInt(ts, 36);
+  return Number.isFinite(t) && Date.now() - t < 15 * 60 * 1000;
+}
+
+router.get("/meta/oauth/start", async (req, res): Promise<void> => {
+  if (!getUserId(req)) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const appId = process.env.META_APP_ID;
+  if (!appId) { res.status(500).json({ error: "META_APP_CONFIG_MISSING" }); return; }
+  const url = new URL("https://www.facebook.com/v19.0/dialog/oauth");
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("redirect_uri", oauthRedirectUri(req));
+  url.searchParams.set("state", signOauthState());
+  url.searchParams.set("scope", META_OAUTH_SCOPES);
+  url.searchParams.set("response_type", "code");
+  res.json({ url: url.toString() });
+});
+
+router.get("/meta/oauth/callback", async (req, res): Promise<void> => {
+  const q = req.query as Record<string, string | undefined>;
+  const appBase = (process.env.PORTAL_PUBLIC_URL ?? "").replace(/\/+$/, "") || `https://${req.get("host")}`;
+  const back = (status: string) => res.redirect(302, `${appBase}/settings?meta=${status}`);
+
+  if (q.error) { back("error"); return; }
+  if (!q.code || !verifyOauthState(q.state)) { back("error"); return; }
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appId || !appSecret) { back("error"); return; }
+
+  try {
+    // code → token breve
+    const tokenUrl = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
+    tokenUrl.searchParams.set("client_id", appId);
+    tokenUrl.searchParams.set("client_secret", appSecret);
+    tokenUrl.searchParams.set("redirect_uri", oauthRedirectUri(req));
+    tokenUrl.searchParams.set("code", q.code);
+    const r1 = await fetch(tokenUrl.toString());
+    const p1 = (await r1.json()) as Record<string, unknown>;
+    if (!r1.ok || !p1.access_token) { logger.error({ p1 }, "Meta OAuth: code exchange failed"); back("error"); return; }
+
+    // token breve → long-lived (60gg)
+    const longUrl = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
+    longUrl.searchParams.set("grant_type", "fb_exchange_token");
+    longUrl.searchParams.set("client_id", appId);
+    longUrl.searchParams.set("client_secret", appSecret);
+    longUrl.searchParams.set("fb_exchange_token", String(p1.access_token));
+    const r2 = await fetch(longUrl.toString());
+    const p2 = (await r2.json()) as Record<string, unknown>;
+    const longToken = String((r2.ok ? p2.access_token : p1.access_token) ?? "");
+    if (!longToken) { back("error"); return; }
+
+    await persistMetaAccessToken(longToken);
+    back("connected");
+  } catch (error) {
+    logger.error({ err: error }, "Meta OAuth callback failed");
+    back("error");
   }
 });
 

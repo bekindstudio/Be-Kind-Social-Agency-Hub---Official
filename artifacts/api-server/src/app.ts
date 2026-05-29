@@ -133,7 +133,9 @@ app.use("/api", (_req, res, next) => {
 //  - /me                 ritorna {userId:null} per il check auth lato client
 // Questo chiude in un solo punto tutti gli endpoint dati (difesa centralizzata,
 // coerente col login sempre obbligatorio lato frontend).
-const PUBLIC_API_PATHS = new Set(["/healthz", "/me", "/version"]);
+// /meta/oauth/callback è una redirect top-level da Facebook (niente Bearer):
+// va consentita senza login, è protetta dallo `state` firmato.
+const PUBLIC_API_PATHS = new Set(["/healthz", "/me", "/version", "/meta/oauth/callback"]);
 app.use("/api", (req, res, next) => {
   if (req.method === "OPTIONS") { next(); return; }
   const p = req.path;

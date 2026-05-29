@@ -163,6 +163,17 @@ export default function Settings() {
     const savedGoogle = localStorage.getItem("bekind_google_ads_id") ?? "";
     setGoogleAdsId(savedGoogle);
     setGoogleConnected(!!savedGoogle);
+    // Esito del collegamento OAuth (redirect da Facebook → /settings?meta=...)
+    const params = new URLSearchParams(window.location.search);
+    const metaResult = params.get("meta");
+    if (metaResult === "connected") {
+      void fetchAgencyMeta();
+      setMetaConnectError("");
+      window.history.replaceState({}, "", "/settings");
+    } else if (metaResult === "error") {
+      setMetaConnectError("Collegamento Facebook non riuscito. Riprova.");
+      window.history.replaceState({}, "", "/settings");
+    }
   }, [fetchAgencyMeta]);
 
   const handleMetaConnect = async () => {
@@ -186,6 +197,24 @@ export default function Settings() {
     } catch {
       setMetaConnectError("Errore di rete. Riprova.");
     } finally {
+      setMetaConnecting(false);
+    }
+  };
+
+  const handleMetaOAuth = async () => {
+    setMetaConnecting(true);
+    setMetaConnectError("");
+    try {
+      const res = await portalFetch("/api/meta/oauth/start");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.url) {
+        setMetaConnectError(data?.error === "META_APP_CONFIG_MISSING" ? "App Meta non configurata." : "Impossibile avviare il collegamento.");
+        setMetaConnecting(false);
+        return;
+      }
+      window.location.href = data.url; // redirect a Facebook
+    } catch {
+      setMetaConnectError("Errore di rete. Riprova.");
       setMetaConnecting(false);
     }
   };
@@ -464,6 +493,21 @@ export default function Settings() {
                       Collega il tuo account Meta per gestire centralmente le pagine Facebook, gli account Instagram Business e gli account pubblicitari di tutti i tuoi clienti.
                     </p>
                   </div>
+
+                  {/* Metodo consigliato: login one-click, niente token a mano */}
+                  <button
+                    onClick={handleMetaOAuth}
+                    disabled={metaConnecting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1877F2] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {metaConnecting ? <><RefreshCw size={14} className="animate-spin" /> Reindirizzamento…</> : <><Share2 size={14} /> Collega con Facebook (consigliato)</>}
+                  </button>
+                  {metaConnectError && (
+                    <div className="flex items-center gap-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2 mt-2">
+                      <XCircle size={13} /> {metaConnectError}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground text-center my-3">— oppure collega manualmente con un token —</p>
 
                   <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800 space-y-1.5">
                     <p className="font-semibold">Come ottenere il token:</p>

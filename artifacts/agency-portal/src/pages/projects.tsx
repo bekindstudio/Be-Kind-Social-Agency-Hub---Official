@@ -5,8 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { useToast } from "@/hooks/use-toast";
 import { useClientContext } from "@/context/ClientContext";
-import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, CalendarDays, Trash2 } from "lucide-react";
+import { Plus, Search, LayoutGrid, List, AlertTriangle, MessageCircle, Archive, Trash2, Sparkles } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { ProjectWizard } from "@/components/project/ProjectWizard";
 
 const TYPE_OPTIONS = ["Social Media", "ADV Meta", "ADV Google", "Web", "Branding", "SEO", "Email Marketing", "Altro"];
 const STATUS_OPTIONS = [
@@ -46,19 +47,12 @@ export default function Projects() {
   const [type, setType] = useState("");
   const [sortBy, setSortBy] = useState("dueDate");
   const [showCreate, setShowCreate] = useState(false);
-  const [step, setStep] = useState(1);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
-  const [form, setForm] = useState<any>({
-    name: "", clientId: "", projectTypes: [], description: "", color: "#7a8f5c",
-    startDate: "", endDate: "", oreStimate: "", budget: "", paymentStructure: "Una tantum", billingRate: "",
-    projectManagerId: "", members: [], autoCreateChannel: true, autoCreateOnboardingTask: true, notifyTeam: true,
-  });
 
   const projectList = Array.isArray(projects) ? projects : Array.isArray((projects as any)?.items) ? (projects as any).items : projects ? [projects as any] : [];
   const clientList = Array.isArray(clients) ? clients : Array.isArray((clients as any)?.items) ? (clients as any).items : clients ? [clients as any] : [];
   const clientMap = new Map(clientList.map((c: any) => [String(c.id), c]));
   const teamList = Array.isArray(teamMembers) ? teamMembers : Array.isArray((teamMembers as any)?.items) ? (teamMembers as any).items : [];
-  const teamMemberLabel = (m: any) => [m?.name, m?.surname].filter(Boolean).join(" ").trim() || m?.email || `#${m?.id}`;
   const activeBackendClientId =
     apiClientId != null
       ? String(apiClientId)
@@ -94,7 +88,6 @@ export default function Projects() {
   useEffect(() => {
     if (!activeBackendClientId) return;
     setClient(activeBackendClientId);
-    setForm((prev: any) => ({ ...prev, clientId: prev.clientId || activeBackendClientId }));
   }, [activeBackendClientId]);
 
   const stats = useMemo(() => {
@@ -109,56 +102,25 @@ export default function Projects() {
     };
   }, [projectList]);
 
-  const create = () => {
-    if (!form.name || !form.clientId) {
-      toast({
-        variant: "destructive",
-        title: "Dati mancanti",
-        description: "Inserisci almeno nome progetto e cliente.",
+  const handleCreateFromWizard = (payload: any): Promise<{ id?: number | string }> => {
+    return new Promise((resolve, reject) => {
+      createProject.mutate({ data: payload as any }, {
+        onSuccess: (data: any) => {
+          qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
+          toast({ title: "Progetto creato", description: payload.name });
+          resolve({ id: data?.id });
+        },
+        onError: (err: any) => {
+          const base = err?.data?.error || err?.data?.message || "Impossibile creare il progetto";
+          const hint = err?.data?.hint;
+          toast({
+            variant: "destructive",
+            title: "Creazione progetto non riuscita",
+            description: hint ? `${base}. ${hint}` : base,
+          });
+          reject(err);
+        },
       });
-      return;
-    }
-    createProject.mutate({
-      data: {
-        name: form.name,
-        description: form.description || null,
-        clientId: Number(form.clientId),
-        status: "planning",
-        progress: 0,
-        deadline: form.endDate || null,
-        budget: form.budget ? Number(form.budget) : null,
-        color: form.color,
-        projectTypes: form.projectTypes,
-        startDate: form.startDate || null,
-        endDate: form.endDate || null,
-        oreStimate: form.oreStimate ? Number(form.oreStimate) : null,
-        paymentStructure: form.paymentStructure,
-        billingRate: form.billingRate ? Number(form.billingRate) : null,
-        projectManagerId: form.projectManagerId ? Number(form.projectManagerId) : null,
-        members: form.members,
-        autoCreateChannel: form.autoCreateChannel,
-        autoCreateOnboardingTask: form.autoCreateOnboardingTask,
-        notifyTeam: form.notifyTeam,
-      } as any,
-    }, {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-        setShowCreate(false);
-        setStep(1);
-        toast({ title: "Progetto creato con successo" });
-      },
-      onError: (err: any) => {
-        const base =
-          err?.data?.error ||
-          err?.data?.message ||
-          "Impossibile creare il progetto";
-        const hint = err?.data?.hint;
-        toast({
-          variant: "destructive",
-          title: "Creazione progetto non riuscita",
-          description: hint ? `${base}. ${hint}` : base,
-        });
-      },
     });
   };
 
@@ -221,7 +183,7 @@ export default function Projects() {
 
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Project Management</h1>
-          <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2"><Plus size={15} /> Nuovo Progetto</button>
+          <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2 shadow-sm"><Sparkles size={15} /> Nuovo Progetto</button>
         </div>
 
         <div className="flex items-center gap-2 mb-4">
@@ -250,7 +212,7 @@ export default function Projects() {
               <>
                 <p className="font-medium">Nessun progetto ancora</p>
                 <p className="text-sm text-muted-foreground mt-1 mb-4">Crea il primo progetto per iniziare a organizzare il lavoro.</p>
-                <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2"><Plus size={15} /> Nuovo Progetto</button>
+                <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2 shadow-sm"><Sparkles size={15} /> Nuovo Progetto</button>
               </>
             ) : (
               <>
@@ -317,59 +279,16 @@ export default function Projects() {
           </div>
         )}
 
-        {showCreate && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-            <div className="bg-card border border-card-border rounded-xl w-full max-w-3xl p-5">
-              <div className="flex items-center justify-between mb-4"><h2 className="font-semibold">Nuovo Progetto</h2><button onClick={() => setShowCreate(false)} className="text-sm text-muted-foreground">Chiudi</button></div>
-              <div className="flex items-center gap-2 mb-4">{[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setStep(n)} className={cn("w-7 h-7 rounded-full text-xs", step === n ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{n}</button>)}</div>
-              {step === 1 && <div className="grid grid-cols-2 gap-3"><input className="px-3 py-2 border border-input rounded-lg bg-background" placeholder="Project name *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /><select className="px-3 py-2 border border-input rounded-lg bg-background" value={form.clientId} onChange={(e) => { const cl = clientMap.get(e.target.value) as any; setForm({ ...form, clientId: e.target.value, color: cl?.brandColor ?? cl?.color ?? form.color }); }}><option value="">Client *</option>{clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><div className="col-span-2"><textarea className="w-full px-3 py-2 border border-input rounded-lg bg-background" rows={3} placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div><div className="col-span-2 flex flex-wrap gap-1.5">{TYPE_OPTIONS.map((t) => { const on = form.projectTypes.includes(t); return <button key={t} onClick={() => setForm({ ...form, projectTypes: on ? form.projectTypes.filter((x: string) => x !== t) : [...form.projectTypes, t] })} className={cn("text-xs px-2 py-1 rounded border", on ? "bg-primary/10 border-primary text-primary" : "border-input")}>{t}</button>; })}</div><div><label className="text-xs text-muted-foreground">Color</label><input type="color" className="block mt-1 h-9 w-20 border border-input rounded" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} /></div></div>}
-              {step === 2 && <div className="grid grid-cols-2 gap-3"><div><label className="text-xs text-muted-foreground">Start</label><input type="date" className="w-full px-3 py-2 border border-input rounded-lg bg-background mt-1" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></div><div><label className="text-xs text-muted-foreground">End/deadline</label><input type="date" className="w-full px-3 py-2 border border-input rounded-lg bg-background mt-1" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></div><input className="px-3 py-2 border border-input rounded-lg bg-background" placeholder="Estimated hours" value={form.oreStimate} onChange={(e) => setForm({ ...form, oreStimate: e.target.value })} /><input className="px-3 py-2 border border-input rounded-lg bg-background" placeholder="Budget (€)" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /><select className="px-3 py-2 border border-input rounded-lg bg-background" value={form.paymentStructure} onChange={(e) => setForm({ ...form, paymentStructure: e.target.value })}><option>Una tantum</option><option>Mensile ricorrente</option><option>A milestone</option><option>A ore</option></select><input className="px-3 py-2 border border-input rounded-lg bg-background" placeholder="Billing rate €/h" value={form.billingRate} onChange={(e) => setForm({ ...form, billingRate: e.target.value })} /></div>}
-              {step === 3 && <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-muted-foreground">Project manager</label>
-                  <select className="mt-1 w-full px-3 py-2 border border-input rounded-lg bg-background" value={form.projectManagerId} onChange={(e) => setForm({ ...form, projectManagerId: e.target.value })}>
-                    <option value="">Nessuno</option>
-                    {teamList.map((m: any) => <option key={m.id} value={m.id}>{teamMemberLabel(m)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Team members</label>
-                  {teamList.length === 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Nessun membro del team disponibile. Aggiungili dalla sezione Team.</p>
-                  ) : (
-                    <div className="mt-1 grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto rounded-lg border border-input p-2">
-                      {teamList.map((m: any) => {
-                        const selected = form.members.some((x: any) => String(x.userId) === String(m.id));
-                        return (
-                          <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-primary"
-                              checked={selected}
-                              onChange={(e) => setForm({
-                                ...form,
-                                members: e.target.checked
-                                  ? [...form.members.filter((x: any) => String(x.userId) !== String(m.id)), { userId: m.id, role: m.role ?? "Altro" }]
-                                  : form.members.filter((x: any) => String(x.userId) !== String(m.id)),
-                              })}
-                            />
-                            <span className="truncate">{teamMemberLabel(m)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>}
-              {step === 4 && <div className="space-y-2">{[
-                ["autoCreateChannel", "Auto-create project channel"],
-                ["autoCreateOnboardingTask", "Auto-create onboarding task checklist"],
-                ["notifyTeam", "Notify team members"],
-              ].map(([k, l]) => <label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(form[k])} onChange={(e) => setForm({ ...form, [k]: e.target.checked })} /> {l}</label>)}</div>}
-              <div className="mt-4 flex justify-between"><button onClick={() => setStep(Math.max(1, step - 1))} className="px-3 py-2 text-sm border border-input rounded-lg">Indietro</button><div className="flex gap-2">{step < 4 ? <button onClick={() => setStep(step + 1)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg">Avanti</button> : <button onClick={create} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg">Crea progetto</button>}</div></div>
-            </div>
-          </div>
-        )}
+        <ProjectWizard
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreate={handleCreateFromWizard}
+          isSubmitting={createProject.isPending}
+          defaultClientId={activeBackendClientId || undefined}
+          clients={clientList as any}
+          teamMembers={teamList as any}
+        />
+
       </div>
     </Layout>
   );

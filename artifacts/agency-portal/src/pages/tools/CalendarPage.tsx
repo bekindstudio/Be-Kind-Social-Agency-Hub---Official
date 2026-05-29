@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Bell } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { useClientContext } from "@/context/ClientContext";
 import type { EditorialPost, SocialPlatform } from "@/types/client";
@@ -221,6 +221,38 @@ export default function CalendarPage() {
     setModalOpen(true);
   };
 
+  const pendingPosts = useMemo(
+    () => clientPosts.filter((p) => p.status === "pending_approval").sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()),
+    [clientPosts],
+  );
+
+  const jumpToNextPending = () => {
+    const next = pendingPosts[0];
+    if (!next) return;
+    setCursor(new Date(next.scheduledDate));
+    setSelectedPost(next);
+    setDrawerOpen(true);
+  };
+
+  const handleApprove = (post: EditorialPost) => {
+    updatePost(post.id, { status: "approved" });
+    toast({ title: "Post approvato", description: post.title });
+  };
+
+  const handleReject = (post: EditorialPost) => {
+    updatePost(post.id, { status: "rejected" });
+    toast({ title: "Post rifiutato", description: post.title });
+  };
+
+  const handleMovePost = (postId: string, date: Date) => {
+    const existing = clientPosts.find((p) => p.id === postId);
+    if (!existing) return;
+    const current = new Date(existing.scheduledDate);
+    const next = new Date(date);
+    next.setHours(current.getHours(), current.getMinutes(), 0, 0);
+    updatePost(postId, { scheduledDate: next.toISOString() });
+  };
+
   if (!activeClient) {
     return (
       <Layout>
@@ -281,6 +313,25 @@ export default function CalendarPage() {
           </div>
         )}
 
+        {pendingPosts.length > 0 && (
+          <div className="mb-3 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5">
+            <Bell size={16} className="text-amber-600" />
+            <div className="flex-1 text-sm">
+              <span className="font-semibold text-amber-900">{pendingPosts.length} post in approvazione</span>
+              <span className="text-amber-700/80 ml-2 text-xs">
+                Prossimo: {pendingPosts[0].title} · {new Date(pendingPosts[0].scheduledDate).toLocaleDateString("it-IT")}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={jumpToNextPending}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+            >
+              Vai al prossimo
+            </button>
+          </div>
+        )}
+
         <CalendarFilters
           selectedPlatforms={selectedPlatforms}
           selectedStatuses={selectedStatuses}
@@ -305,14 +356,9 @@ export default function CalendarPage() {
                 setSelectedPost(post);
                 setDrawerOpen(true);
               }}
-              onMovePost={(postId, date) => {
-                const existing = clientPosts.find((post) => post.id === postId);
-                if (!existing) return;
-                const current = new Date(existing.scheduledDate);
-                const next = new Date(date);
-                next.setHours(current.getHours(), current.getMinutes(), 0, 0);
-                updatePost(postId, { scheduledDate: next.toISOString() });
-              }}
+              onMovePost={handleMovePost}
+              onApprovePost={handleApprove}
+              onRejectPost={handleReject}
             />
           ) : view === "week" ? (
             <WeekView
@@ -322,6 +368,9 @@ export default function CalendarPage() {
                 setSelectedPost(post);
                 setDrawerOpen(true);
               }}
+              onMovePost={handleMovePost}
+              onApprovePost={handleApprove}
+              onRejectPost={handleReject}
             />
           ) : (
             <ListView

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Check, X, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EditorialPost, SocialPlatform } from "@/types/client";
 
@@ -15,17 +16,19 @@ interface MonthViewProps {
   onDayClick: (date: Date) => void;
   onPostClick: (post: EditorialPost) => void;
   onMovePost: (postId: string, date: Date) => void;
+  onApprovePost?: (post: EditorialPost) => void;
+  onRejectPost?: (post: EditorialPost) => void;
 }
 
 const WEEK_LABELS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 function platformClass(platform: SocialPlatform): string {
-  if (platform === "instagram") return "bg-violet-200/70 text-violet-900";
-  if (platform === "facebook") return "bg-blue-200/70 text-blue-900";
-  if (platform === "linkedin") return "bg-sky-200/70 text-sky-900";
-  if (platform === "tiktok") return "bg-zinc-300/80 text-zinc-900";
-  if (platform === "x") return "bg-zinc-200 text-zinc-900";
-  return "bg-red-200/70 text-red-900";
+  if (platform === "instagram") return "bg-violet-200/70 text-violet-900 border-violet-300/50";
+  if (platform === "facebook") return "bg-blue-200/70 text-blue-900 border-blue-300/50";
+  if (platform === "linkedin") return "bg-sky-200/70 text-sky-900 border-sky-300/50";
+  if (platform === "tiktok") return "bg-zinc-300/80 text-zinc-900 border-zinc-400/50";
+  if (platform === "x") return "bg-zinc-200 text-zinc-900 border-zinc-300/50";
+  return "bg-red-200/70 text-red-900 border-red-300/50";
 }
 
 function statusDotClass(status: EditorialPost["status"]): string {
@@ -36,7 +39,111 @@ function statusDotClass(status: EditorialPost["status"]): string {
   return "bg-zinc-500";
 }
 
-export function MonthView({ days, onDayClick, onPostClick, onMovePost }: MonthViewProps) {
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+function PostCard({
+  post,
+  onPostClick,
+  onApprovePost,
+  onRejectPost,
+}: {
+  post: EditorialPost;
+  onPostClick: (p: EditorialPost) => void;
+  onApprovePost?: (p: EditorialPost) => void;
+  onRejectPost?: (p: EditorialPost) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const isPending = post.status === "pending_approval";
+  const thumb = post.mediaUrls?.[0];
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/post-id", post.id);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPostClick(post);
+        }}
+        className={cn(
+          "group flex items-center gap-1 rounded border px-1.5 py-1 text-[11px] font-medium cursor-pointer",
+          platformClass(post.platform),
+        )}
+      >
+        <span className="text-[9px] opacity-70 font-mono tabular-nums">{formatTime(post.scheduledDate)}</span>
+        <span className="truncate flex-1">{post.title}</span>
+        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(post.status))} />
+      </div>
+
+      {hover && (
+        <div
+          className="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-border bg-card shadow-xl pointer-events-none"
+          onMouseEnter={(e) => e.stopPropagation()}
+        >
+          {thumb && (
+            <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+              <img src={thumb} alt="" className="w-full h-full object-cover" />
+            </div>
+          )}
+          {!thumb && (
+            <div className="aspect-video w-full flex items-center justify-center bg-muted rounded-t-lg text-muted-foreground">
+              <ImageIcon size={20} />
+            </div>
+          )}
+          <div className="p-2 space-y-1">
+            <p className="text-xs font-semibold line-clamp-1">{post.title}</p>
+            <p className="text-[11px] text-muted-foreground line-clamp-3">{post.caption || "Nessuna caption"}</p>
+            <div className="flex items-center justify-between pt-1 border-t border-border/50">
+              <span className="text-[10px] capitalize text-muted-foreground">{post.platform}</span>
+              <span className="text-[10px] font-mono tabular-nums">{formatTime(post.scheduledDate)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPending && (onApprovePost || onRejectPost) && hover && (
+        <div className="absolute right-0 top-0 flex items-center gap-0.5 -mt-1.5 -mr-1 z-30">
+          {onApprovePost && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprovePost(post);
+              }}
+              title="Approva"
+              className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm hover:bg-emerald-600"
+            >
+              <Check size={11} strokeWidth={3} />
+            </button>
+          )}
+          {onRejectPost && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRejectPost(post);
+              }}
+              title="Rifiuta"
+              className="h-5 w-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-sm hover:bg-rose-600"
+            >
+              <X size={11} strokeWidth={3} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MonthView({ days, onDayClick, onPostClick, onMovePost, onApprovePost, onRejectPost }: MonthViewProps) {
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
 
@@ -87,7 +194,7 @@ export function MonthView({ days, onDayClick, onPostClick, onMovePost }: MonthVi
                 setDragOverDay(null);
               }}
               className={cn(
-                "min-h-[128px] border-r border-b border-border p-1.5 text-left align-top transition-colors",
+                "relative min-h-[128px] border-r border-b border-border p-1.5 text-left align-top transition-colors overflow-visible",
                 !day.isCurrentMonth && "bg-muted/20 text-muted-foreground",
                 day.isCurrentMonth && "hover:bg-muted/20",
                 dragOverDay === day.key && "bg-primary/10 ring-1 ring-primary/40",
@@ -106,24 +213,13 @@ export function MonthView({ days, onDayClick, onPostClick, onMovePost }: MonthVi
 
               <div className="space-y-1">
                 {visiblePosts.map((post) => (
-                  <div
+                  <PostCard
                     key={post.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/post-id", post.id);
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPostClick(post);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium",
-                      platformClass(post.platform),
-                    )}
-                  >
-                    <span className="truncate">{post.title}</span>
-                    <span className={cn("ml-auto h-1.5 w-1.5 rounded-full", statusDotClass(post.status))} />
-                  </div>
+                    post={post}
+                    onPostClick={onPostClick}
+                    onApprovePost={onApprovePost}
+                    onRejectPost={onRejectPost}
+                  />
                 ))}
                 {hiddenCount > 0 && (
                   <button

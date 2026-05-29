@@ -27,6 +27,7 @@ import {
   ChevronUp,
   Send,
   Megaphone,
+  HardDrive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -91,6 +92,52 @@ export default function Settings() {
   const [googleAdsId, setGoogleAdsId] = useState("");
   const [googleSaved, setGoogleSaved] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
+
+  // Google Drive
+  type GoogleDriveStatus = {
+    connected: boolean;
+    configured: boolean;
+    email?: string | null;
+    rootFolderName?: string | null;
+    accessTokenExpired?: boolean;
+  };
+  const [drive, setDrive] = useState<GoogleDriveStatus | null>(null);
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveError, setDriveError] = useState("");
+
+  const fetchDriveStatus = useCallback(async () => {
+    try {
+      const res = await portalFetch("/api/google/status");
+      const data = await res.json().catch(() => ({}));
+      setDrive(res.ok ? data : { connected: false, configured: false });
+    } catch {
+      setDrive({ connected: false, configured: false });
+    }
+  }, []);
+
+  const handleDriveConnect = async () => {
+    setDriveConnecting(true);
+    setDriveError("");
+    try {
+      const res = await portalFetch("/api/google/oauth/start");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.url) {
+        setDriveError(data?.message ?? "Impossibile avviare il collegamento.");
+        setDriveConnecting(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setDriveError("Errore di rete. Riprova.");
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleDriveDisconnect = async () => {
+    if (!confirm("Disconnettere Google Drive? I link alle cartelle dei clienti restano salvati ma non potrai più listare i file.")) return;
+    await portalFetch("/api/google/disconnect", { method: "POST" });
+    setDrive({ connected: false, configured: drive?.configured ?? false });
+  };
 
   const fetchAgencyMeta = useCallback(async () => {
     try {
@@ -160,10 +207,10 @@ export default function Settings() {
 
   useEffect(() => {
     fetchAgencyMeta();
+    void fetchDriveStatus();
     const savedGoogle = localStorage.getItem("bekind_google_ads_id") ?? "";
     setGoogleAdsId(savedGoogle);
     setGoogleConnected(!!savedGoogle);
-    // Esito del collegamento OAuth (redirect da Facebook → /settings?meta=...)
     const params = new URLSearchParams(window.location.search);
     const metaResult = params.get("meta");
     if (metaResult === "connected") {
@@ -174,7 +221,16 @@ export default function Settings() {
       setMetaConnectError("Collegamento Facebook non riuscito. Riprova.");
       window.history.replaceState({}, "", "/settings");
     }
-  }, [fetchAgencyMeta]);
+    const googleResult = params.get("google");
+    if (googleResult === "connected") {
+      void fetchDriveStatus();
+      setDriveError("");
+      window.history.replaceState({}, "", "/settings");
+    } else if (googleResult === "error" || googleResult === "config") {
+      setDriveError(googleResult === "config" ? "Variabili Google OAuth mancanti su Vercel." : "Collegamento Google non riuscito. Riprova.");
+      window.history.replaceState({}, "", "/settings");
+    }
+  }, [fetchAgencyMeta, fetchDriveStatus]);
 
   const handleMetaConnect = async () => {
     if (!metaToken.trim()) return;
@@ -560,6 +616,61 @@ export default function Settings() {
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <Info size={11} /> Senza SMTP configurato, il portale mostrerà un'anteprima dell'email invece di inviarla.
                 </p>
+              </div>
+            </IntegrationCard>
+
+            {/* Google Drive (agency-level) */}
+            <IntegrationCard
+              title="Google Drive"
+              icon={HardDrive}
+              status={drive?.connected ? "connected" : "disconnected"}
+            >
+              <div className="space-y-3">
+                {!drive?.configured && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                    Imposta su Vercel <code className="bg-amber-100 px-1 rounded">GOOGLE_OAUTH_CLIENT_ID</code> e <code className="bg-amber-100 px-1 rounded">GOOGLE_OAUTH_CLIENT_SECRET</code> (Google Cloud Console → OAuth 2.0). Redirect URI da registrare:
+                    <code className="block mt-1 bg-white px-2 py-1 rounded font-mono text-[11px] break-all">
+                      https://be-kind-social-agency-hub-official.vercel.app/api/google/oauth/callback
+                    </code>
+                  </div>
+                )}
+                {drive?.connected ? (
+                  <div className="space-y-2">
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={14} /> Collegato come <strong>{drive.email ?? "—"}</strong>
+                      </div>
+                      {drive.rootFolderName && (
+                        <p className="mt-1 text-emerald-700/80">Cartella radice: <strong>{drive.rootFolderName}</strong></p>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Da ogni scheda cliente puoi creare in un click la cartella Drive dedicata e listare i file.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleDriveDisconnect}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-1.5 text-xs hover:bg-muted"
+                    >
+                      <X size={13} /> Disconnetti
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Collega UN account Google agenzia. Drive userà lo scope <code className="bg-muted px-1 rounded text-[11px]">drive.file</code>: tocchiamo solo le cartelle create dall'app, niente lettura del tuo Drive personale.
+                    </p>
+                    {driveError && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{driveError}</div>}
+                    <button
+                      type="button"
+                      onClick={handleDriveConnect}
+                      disabled={driveConnecting || !drive?.configured}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {driveConnecting ? <><RefreshCw size={13} className="animate-spin" /> Connessione…</> : <><HardDrive size={13} /> Collega Google Drive</>}
+                    </button>
+                  </div>
+                )}
               </div>
             </IntegrationCard>
 

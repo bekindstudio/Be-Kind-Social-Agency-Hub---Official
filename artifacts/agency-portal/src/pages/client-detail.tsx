@@ -50,7 +50,7 @@ import {
   Layers,
   FolderOpen,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BRIEF_SECTIONS } from "@/lib/briefSchema";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
@@ -330,8 +330,215 @@ function EditorialTab({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-/* ─── Tab File (drive + lista) ─────────────────────────────────────────── */
-function FilesTab({ clientId, driveUrl, onOpenSettings }: { clientId: number; driveUrl: string | null; onOpenSettings: () => void }) {
+/* ─── Drive panel: collegamento OAuth + create folder + list + email cliente ── */
+function DrivePanel({ clientId, clientName, driveUrl, clientEmail, onRefresh }: {
+  clientId: number;
+  clientName: string;
+  driveUrl: string | null;
+  clientEmail: string | null;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const { data: status } = useQuery<any>({
+    queryKey: ["google-drive-status"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/google/status");
+      return r.ok ? r.json() : { connected: false };
+    },
+    staleTime: 60_000,
+  });
+  const { data: listData, isLoading: listLoading, refetch: refetchList } = useQuery<any>({
+    queryKey: ["client-drive-list", clientId, driveUrl],
+    enabled: Boolean(driveUrl && status?.connected),
+    queryFn: async () => {
+      const r = await portalFetch(`/api/clients/${clientId}/drive/list`, { credentials: "include" });
+      return r.ok ? r.json() : { files: [] };
+    },
+    staleTime: 30_000,
+  });
+
+  const [creating, setCreating] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState(clientEmail ?? "");
+  const [emailNote, setEmailNote] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/drive/create-folder`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast({ variant: "destructive", title: "Errore creazione cartella", description: data?.message ?? "Riprova" });
+        return;
+      }
+      toast({ title: "Cartella Drive creata", description: data.folderName });
+      onRefresh();
+      void refetchList();
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    setEmailSending(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/drive/email-invite`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: emailTo.trim(), message: emailNote.trim() }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast({
+          variant: "destructive",
+          title: "Email non inviata",
+          description: data?.message ?? data?.error ?? "Verifica SMTP e indirizzo",
+        });
+        return;
+      }
+      toast({ title: "Email inviata", description: emailTo });
+      setEmailOpen(false);
+      setEmailNote("");
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const files = Array.isArray(listData?.files) ? listData.files : [];
+
+  return (
+    <div className="space-y-3">
+      {!status?.connected && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-center gap-2">
+          <HardDrive size={14} />
+          <span>Google Drive agenzia non collegato. Vai in <a href="/settings" className="font-semibold underline">Impostazioni</a> per attivarlo.</span>
+        </div>
+      )}
+
+      {driveUrl ? (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="flex items-center gap-3">
+            <HardDrive size={18} className="text-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm">Cartella Drive collegata</p>
+              <p className="text-xs text-muted-foreground truncate">{driveUrl}</p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <a href={driveUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
+                <ExternalLink size={12} /> Apri
+              </a>
+              <button
+                onClick={() => setEmailOpen(true)}
+                disabled={!driveUrl}
+                className="inline-flex items-center gap-1 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs hover:bg-muted"
+                title="Manda email al cliente con il link"
+              >
+                <FileText size={12} /> Manda al cliente
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-card-border p-4">
+          <div className="flex items-center gap-3">
+            <HardDrive size={18} className="text-muted-foreground shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">Nessuna cartella Drive per questo cliente</p>
+              <p className="text-xs text-muted-foreground">
+                {status?.connected
+                  ? `Creiamo "${clientName} — ${new Date().getFullYear()}" sotto la radice agenzia.`
+                  : "Collega Google Drive in Impostazioni per poter creare la cartella in un click."}
+              </p>
+            </div>
+            <button
+              onClick={handleCreate}
+              disabled={!status?.connected || creating}
+              className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 shrink-0"
+            >
+              {creating ? "Creo…" : "Crea cartella"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {emailOpen && (
+        <div className="rounded-xl border border-card-border bg-card p-4 space-y-2">
+          <p className="text-xs font-semibold">Manda link Drive al cliente</p>
+          <input
+            value={emailTo}
+            onChange={(e) => setEmailTo(e.target.value)}
+            placeholder="email destinatario"
+            className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background"
+          />
+          <textarea
+            value={emailNote}
+            onChange={(e) => setEmailNote(e.target.value)}
+            placeholder="Messaggio (opzionale)"
+            rows={2}
+            className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background resize-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendEmail}
+              disabled={emailSending || !emailTo.trim()}
+              className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {emailSending ? "Invio…" : "Manda email"}
+            </button>
+            <button onClick={() => setEmailOpen(false)} className="text-xs text-muted-foreground hover:underline">Annulla</button>
+          </div>
+        </div>
+      )}
+
+      {driveUrl && status?.connected && (
+        <div className="rounded-xl border border-card-border bg-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold flex items-center gap-1.5"><FolderOpen size={13} /> File nella cartella Drive</p>
+            <button onClick={() => void refetchList()} className="text-[11px] text-muted-foreground hover:text-primary">Aggiorna</button>
+          </div>
+          {listLoading ? (
+            <p className="text-xs text-muted-foreground py-2">Caricamento…</p>
+          ) : files.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-3 text-center">Nessun file ancora. Carica direttamente da Drive.</p>
+          ) : (
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {files.map((f: any) => (
+                <a key={f.id} href={f.webViewLink} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted/50 text-xs">
+                  {f.iconLink ? <img src={f.iconLink} alt="" className="w-4 h-4" /> : <FileText size={13} />}
+                  <span className="truncate flex-1">{f.name}</span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString("it-IT") : ""}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+          {listData?.warning && (
+            <p className="mt-2 text-[10px] text-amber-700">
+              Nota: lo scope <code>drive.file</code> mostra solo file creati dall'app o caricati con accesso esplicito. Se la cartella è stata creata altrove, dovrai ricrearla dal portale per vederne il contenuto.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Tab File (drive + lista upload portale) ──────────────────────────── */
+function FilesTab({ clientId, clientName, driveUrl, clientEmail, onRefresh }: {
+  clientId: number;
+  clientName: string;
+  driveUrl: string | null;
+  clientEmail: string | null;
+  onRefresh: () => void;
+}) {
   const { data: projData } = useQuery({
     queryKey: ["client-projects-light", clientId],
     queryFn: async () => {
@@ -361,25 +568,13 @@ function FilesTab({ clientId, driveUrl, onOpenSettings }: { clientId: number; dr
   const files = Array.isArray(filesData) ? filesData : [];
   return (
     <div className="space-y-4">
-      {driveUrl ? (
-        <a href={driveUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 hover:bg-primary/10 transition-colors">
-          <HardDrive size={18} className="text-primary" />
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">Cartella Google Drive</p>
-            <p className="text-xs text-muted-foreground truncate">{driveUrl}</p>
-          </div>
-          <ExternalLink size={14} className="text-primary" />
-        </a>
-      ) : (
-        <div className="flex items-center gap-3 rounded-xl border border-dashed border-card-border p-4">
-          <HardDrive size={18} className="text-muted-foreground" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">Nessuna cartella Drive collegata</p>
-            <p className="text-xs text-muted-foreground">Aggiungi l'URL della cartella in Panoramica → Modifica.</p>
-          </div>
-          <button onClick={onOpenSettings} className="text-xs text-primary hover:underline">Aggiungi</button>
-        </div>
-      )}
+      <DrivePanel
+        clientId={clientId}
+        clientName={clientName}
+        driveUrl={driveUrl}
+        clientEmail={clientEmail}
+        onRefresh={onRefresh}
+      />
       <div className="rounded-xl border border-card-border bg-card p-5">
         <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><FileText size={15} className="text-primary" /> File caricati</h2>
         {isLoading ? (
@@ -423,6 +618,7 @@ export default function ClientDetail({ id }: Props) {
   const { openDrawer: openAiDrawer } = useAiChat();
   const { clients: contextClients, setActiveClient } = useClientContext();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("panoramica");
   const [form, setForm] = useState<Record<string, string>>({});
@@ -1132,8 +1328,10 @@ export default function ClientDetail({ id }: Props) {
         {activeTab === "file" && (
           <FilesTab
             clientId={clientId}
+            clientName={(viewClient as any).name ?? ""}
+            clientEmail={(viewClient as any).email ?? null}
             driveUrl={(viewClient as any).driveUrl ?? null}
-            onOpenSettings={startEditing}
+            onRefresh={() => { void queryClient.invalidateQueries({ queryKey: ["client", clientId] }); }}
           />
         )}
 

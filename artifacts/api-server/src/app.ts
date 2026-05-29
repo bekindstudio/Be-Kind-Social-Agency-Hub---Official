@@ -135,7 +135,7 @@ app.use("/api", (_req, res, next) => {
 // coerente col login sempre obbligatorio lato frontend).
 // /meta/oauth/callback è una redirect top-level da Facebook (niente Bearer):
 // va consentita senza login, è protetta dallo `state` firmato.
-const PUBLIC_API_PATHS = new Set(["/healthz", "/me", "/version", "/meta/oauth/callback"]);
+const PUBLIC_API_PATHS = new Set(["/healthz", "/me", "/version", "/meta/oauth/callback", "/google/oauth/callback"]);
 app.use("/api", (req, res, next) => {
   if (req.method === "OPTIONS") { next(); return; }
   const p = req.path;

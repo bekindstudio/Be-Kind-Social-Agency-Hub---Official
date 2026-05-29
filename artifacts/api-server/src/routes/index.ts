@@ -34,6 +34,7 @@ import clientPostsRouter from "./client-posts";
 import clientCompetitorsRouter from "./client-competitors";
 import clientEventsRouter from "./client-events";
 import cronRouter from "./cron";
+import googleDriveRouter from "./google-drive";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use("/clients", clientEventsRouter);
 router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);
+router.use(googleDriveRouter);
 
 export default router;

@@ -5,6 +5,7 @@
  * combaciare con quelli di App.tsx affinché Vite riusi lo stesso chunk.
  */
 const prefetchers: Record<string, () => Promise<unknown>> = {
+  "/today": () => import("@/pages/today"),
   "/dashboard": () => import("@/pages/dashboard"),
   "/clients": () => import("@/pages/clients"),
   "/projects": () => import("@/pages/projects"),

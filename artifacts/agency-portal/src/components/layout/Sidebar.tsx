@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Calendar,
   Target,
+  Sun,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -42,6 +43,7 @@ const navGroups = [
   {
     label: "Principale",
     items: [
+      { href: "/today", label: "Oggi", icon: Sun },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clienti", icon: Users },
       { href: "/projects", label: "Progetti", icon: FolderKanban },

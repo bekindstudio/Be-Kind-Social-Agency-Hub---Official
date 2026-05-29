@@ -19,6 +19,7 @@ import { BriefProvider } from "@/context/BriefContext";
 import { Layout } from "@/components/layout/Layout";
 
 const Dashboard = lazy(() => import("@/pages/dashboard"));
+const TodayPage = lazy(() => import("@/pages/today"));
 const Clients = lazy(() => import("@/pages/clients"));
 const ClientDetail = lazy(() => import("@/pages/client-detail"));
 const Projects = lazy(() => import("@/pages/projects"));
@@ -200,6 +201,11 @@ function Router() {
         <Route path="/dashboard">
           <RouteBoundary routeKey="/dashboard">
             <RequireAuth><Dashboard /></RequireAuth>
+          </RouteBoundary>
+        </Route>
+        <Route path="/today">
+          <RouteBoundary routeKey="/today">
+            <RequireAuth><TodayPage /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/trash">

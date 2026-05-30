@@ -18,6 +18,8 @@ import {
   Loader2,
   AlertTriangle,
   Pencil,
+  CalendarRange,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -41,10 +43,12 @@ async function patchTask(taskId: number | string, body: Record<string, unknown>)
   });
 }
 
-type TabKey = "panoramica" | "task" | "team" | "file" | "log";
+type TabKey = "panoramica" | "task" | "editoriale" | "eventi" | "team" | "file" | "log";
 const TABS: { key: TabKey; label: string; icon: typeof LayoutDashboard }[] = [
   { key: "panoramica", label: "Panoramica", icon: LayoutDashboard },
   { key: "task", label: "Task", icon: KanbanSquare },
+  { key: "editoriale", label: "Editoriale", icon: CalendarRange },
+  { key: "eventi", label: "Eventi", icon: CalendarIcon },
   { key: "team", label: "Team", icon: Users },
   { key: "file", label: "File", icon: FolderOpen },
   { key: "log", label: "Log", icon: History },
@@ -63,6 +67,23 @@ type WorkspaceMember = { id: number | string; role: string; userId: number };
 type WorkspaceMilestone = { id: number | string; name: string; status: string; dueDate?: string | null };
 type ActivityRow = { id: number | string; action: string; createdAt: string };
 type TeamMember = { id: number; name?: string; surname?: string; email?: string; role?: string; avatarColor?: string; photoUrl?: string };
+type EditorialPostRow = {
+  id: string;
+  title: string;
+  caption?: string;
+  platform: string;
+  status: string;
+  scheduledDate?: string | null;
+};
+type ClientEventRow = {
+  id: string;
+  title: string;
+  date: string;
+  endDate?: string | null;
+  type?: string;
+  priority?: string;
+  note?: string | null;
+};
 
 function HealthBadge({ health }: { health: string }) {
   const map: Record<string, string> = {
@@ -196,6 +217,105 @@ function teamLabel(m: TeamMember | null | undefined): string {
   return [m.name, m.surname].filter(Boolean).join(" ").trim() || m.email || `#${m.id}`;
 }
 
+function postStatusClass(status: string): string {
+  if (status === "pending_approval") return "bg-amber-100 text-amber-700";
+  if (status === "approved") return "bg-lime-100 text-lime-700";
+  if (status === "published") return "bg-emerald-100 text-emerald-700";
+  if (status === "rejected") return "bg-rose-100 text-rose-700";
+  return "bg-zinc-100 text-zinc-700";
+}
+
+function postStatusLabel(status: string): string {
+  if (status === "pending_approval") return "In approvazione";
+  if (status === "approved") return "Approvato";
+  if (status === "published") return "Pubblicato";
+  if (status === "rejected") return "Rifiutato";
+  if (status === "draft") return "Bozza";
+  return status;
+}
+
+function platformDotClass(platform: string): string {
+  if (platform === "instagram") return "bg-violet-400";
+  if (platform === "facebook") return "bg-blue-500";
+  if (platform === "linkedin") return "bg-sky-600";
+  if (platform === "tiktok") return "bg-zinc-700";
+  if (platform === "youtube") return "bg-red-500";
+  return "bg-zinc-400";
+}
+
+function PostRow({ post }: { post: EditorialPostRow }) {
+  return (
+    <div className="flex items-center gap-3 border border-card-border rounded-lg px-3 py-2 hover:bg-muted/30 transition-colors">
+      <span className={cn("w-2 h-2 rounded-full shrink-0", platformDotClass(post.platform))} title={post.platform} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{post.title}</p>
+        {post.caption && <p className="text-[11px] text-muted-foreground line-clamp-1">{post.caption}</p>}
+      </div>
+      <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0", postStatusClass(post.status))}>
+        {postStatusLabel(post.status)}
+      </span>
+      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 min-w-[64px] text-right">
+        {post.scheduledDate ? new Date(post.scheduledDate).toLocaleDateString("it-IT", { day: "2-digit", month: "short" }) : "—"}
+      </span>
+    </div>
+  );
+}
+
+function PostStatusLegend({ posts }: { posts: EditorialPostRow[] }) {
+  if (posts.length === 0) return null;
+  const counts = posts.reduce<Record<string, number>>((acc, p) => {
+    acc[p.status] = (acc[p.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const order = ["draft", "pending_approval", "approved", "published", "rejected"];
+  return (
+    <div className="mt-4 pt-3 border-t border-border/40 flex flex-wrap gap-2 text-[11px]">
+      {order.filter((s) => counts[s]).map((s) => (
+        <span key={s} className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold", postStatusClass(s))}>
+          {postStatusLabel(s)}: {counts[s]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function eventPriorityClass(priority?: string): string {
+  if (priority === "high" || priority === "urgent") return "bg-red-100 text-red-700";
+  if (priority === "low") return "bg-zinc-100 text-zinc-600";
+  return "bg-amber-100 text-amber-700";
+}
+
+function EventRow({ event }: { event: ClientEventRow }) {
+  const start = new Date(event.date);
+  const end = event.endDate ? new Date(event.endDate) : null;
+  const isPast = end ? end < new Date() : start < new Date();
+  return (
+    <div className="flex items-center gap-3 border border-card-border rounded-lg px-3 py-2 hover:bg-muted/30 transition-colors">
+      <div className={cn(
+        "w-10 h-10 rounded-lg flex flex-col items-center justify-center shrink-0",
+        isPast ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+      )}>
+        <span className="text-[9px] font-semibold uppercase">{start.toLocaleDateString("it-IT", { month: "short" })}</span>
+        <span className="text-sm font-bold leading-none">{start.getDate()}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{event.title}</p>
+        {event.note && <p className="text-[11px] text-muted-foreground line-clamp-1">{event.note}</p>}
+      </div>
+      {event.type && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
+          {event.type}
+        </span>
+      )}
+      {event.priority && (
+        <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0", eventPriorityClass(event.priority))}>
+          {event.priority}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Avatar({ member, size = 24 }: { member: TeamMember; size?: number }) {
   const initial = (member.name?.charAt(0) ?? member.email?.charAt(0) ?? "?").toUpperCase();
   if (member.photoUrl) {
@@ -273,6 +393,8 @@ export default function ProjectDetail({ id }: Props) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [posts, setPosts] = useState<EditorialPostRow[]>([]);
+  const [events, setEvents] = useState<ClientEventRow[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", description: "", deadline: "", budget: "" });
   const [newTaskOpen, setNewTaskOpen] = useState(false);
@@ -303,6 +425,34 @@ export default function ProjectDetail({ id }: Props) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadTeam(); }, [loadTeam]);
 
+  const clientId = data?.project?.clientId ?? data?.client?.id ?? null;
+  useEffect(() => {
+    if (!clientId) {
+      setPosts([]);
+      setEvents([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pRes, eRes] = await Promise.all([
+          portalFetch(`/api/clients/${clientId}/posts`),
+          portalFetch(`/api/clients/${clientId}/events`),
+        ]);
+        if (cancelled) return;
+        if (pRes.ok) {
+          const arr = await pRes.json();
+          setPosts(Array.isArray(arr) ? arr : []);
+        }
+        if (eRes.ok) {
+          const arr = await eRes.json();
+          setEvents(Array.isArray(arr) ? arr : []);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
   const project = data?.project;
   const rawTasks: WorkspaceTask[] = useMemo(() => Array.isArray(data?.tasks) ? data.tasks : [], [data]);
   const tasks: WorkspaceTask[] = tasksOverride ?? rawTasks;
@@ -325,6 +475,32 @@ export default function ProjectDetail({ id }: Props) {
       return { ...m, profile };
     });
   }, [members, teamById]);
+
+  const projectStart = project?.startDate ? new Date(project.startDate) : null;
+  const projectEnd = project?.endDate
+    ? new Date(project.endDate)
+    : project?.deadline
+      ? new Date(project.deadline)
+      : null;
+
+  const inProjectRange = (iso?: string | null): boolean => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    if (projectStart && d < projectStart) return false;
+    if (projectEnd && d > projectEnd) return false;
+    return true;
+  };
+
+  const projectPosts = useMemo(() => {
+    if (!projectStart && !projectEnd) return posts;
+    return posts.filter((p) => inProjectRange(p.scheduledDate));
+  }, [posts, projectStart, projectEnd]);
+
+  const projectEvents = useMemo(() => {
+    if (!projectStart && !projectEnd) return events;
+    return events.filter((e) => inProjectRange(e.date) || inProjectRange(e.endDate ?? null));
+  }, [events, projectStart, projectEnd]);
 
   if (loading) return <Layout><div className="p-8 text-muted-foreground">Caricamento…</div></Layout>;
   if (!project) return <Layout><div className="p-8 text-muted-foreground">Progetto non trovato</div></Layout>;
@@ -497,6 +673,22 @@ export default function ProjectDetail({ id }: Props) {
                     {tasksDone}/{tasksTotal}
                   </span>
                 )}
+                {t.key === "editoriale" && projectPosts.length > 0 && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full",
+                    active ? "bg-white/20" : "bg-muted"
+                  )}>
+                    {projectPosts.length}
+                  </span>
+                )}
+                {t.key === "eventi" && projectEvents.length > 0 && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full",
+                    active ? "bg-white/20" : "bg-muted"
+                  )}>
+                    {projectEvents.length}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -648,6 +840,79 @@ export default function ProjectDetail({ id }: Props) {
               onOpen={(t) => navigate(`/tasks?id=${t.id}`)}
               onCreate={() => setNewTaskOpen(true)}
             />
+          </div>
+        )}
+
+        {/* ─── TAB: Editoriale (post del cliente nel periodo del progetto) ─── */}
+        {tab === "editoriale" && (
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-semibold text-sm">Piano editoriale del cliente</h3>
+                <p className="text-xs text-muted-foreground">
+                  Post {projectStart || projectEnd ? "nel periodo del progetto" : "del cliente"}
+                  {projectStart && projectEnd && ` (${formatDate(projectStart.toISOString())} → ${formatDate(projectEnd.toISOString())})`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/tools/calendar")}
+                className="text-xs text-primary hover:underline"
+              >
+                Apri calendario →
+              </button>
+            </div>
+            {projectPosts.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                Nessun post programmato {projectStart || projectEnd ? "nel periodo del progetto" : "per questo cliente"}.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+                {projectPosts
+                  .sort((a, b) => {
+                    const ta = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+                    const tb = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+                    return ta - tb;
+                  })
+                  .map((p) => (
+                    <PostRow key={p.id} post={p} />
+                  ))}
+              </div>
+            )}
+            <PostStatusLegend posts={projectPosts} />
+          </div>
+        )}
+
+        {/* ─── TAB: Eventi (eventi cliente nel periodo del progetto) ─── */}
+        {tab === "eventi" && (
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-semibold text-sm">Eventi del cliente</h3>
+                <p className="text-xs text-muted-foreground">
+                  Eventi {projectStart || projectEnd ? "nel periodo del progetto" : "del cliente"}
+                  {projectStart && projectEnd && ` (${formatDate(projectStart.toISOString())} → ${formatDate(projectEnd.toISOString())})`}
+                </p>
+              </div>
+              {data?.client?.id && (
+                <Link href={`/clients/${data.client.id}`} className="text-xs text-primary hover:underline">
+                  Apri cliente →
+                </Link>
+              )}
+            </div>
+            {projectEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                Nessun evento {projectStart || projectEnd ? "nel periodo del progetto" : "per questo cliente"}.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+                {projectEvents
+                  .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                  .map((e) => (
+                    <EventRow key={e.id} event={e} />
+                  ))}
+              </div>
+            )}
           </div>
         )}
 

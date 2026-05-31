@@ -105,6 +105,71 @@ export default function Team() {
   const [memberAccess, setMemberAccess] = useState<Record<number, number[]>>({});
   const [savingAccess, setSavingAccess] = useState<number | null>(null);
   const [invitingId, setInvitingId] = useState<number | null>(null);
+  type WorkloadRow = { id: number; tasksCompleted: number; tasksInProgress: number; tasksTodo: number; totalTasks: number; activeProjects: number };
+  const [workload, setWorkload] = useState<Record<number, WorkloadRow>>({});
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkClientPickerOpen, setBulkClientPickerOpen] = useState(false);
+  const [bulkSelectedClients, setBulkSelectedClients] = useState<number[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkMode, setBulkMode] = useState<"add" | "replace">("add");
+
+  const fetchWorkload = useCallback(async () => {
+    try {
+      const r = await portalFetch("/api/dashboard/team-stats");
+      if (!r.ok) return;
+      const arr = (await r.json()) as WorkloadRow[];
+      const map: Record<number, WorkloadRow> = {};
+      for (const row of arr) map[Number(row.id)] = row;
+      setWorkload(map);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void fetchWorkload(); }, [fetchWorkload]);
+
+  const fetchAllAccess = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const r = await portalFetch("/api/team-client-access");
+      if (!r.ok) return;
+      const rows = (await r.json()) as Array<{ teamMemberId: number; clientId: number }>;
+      const map: Record<number, number[]> = {};
+      for (const row of rows) {
+        if (!map[row.teamMemberId]) map[row.teamMemberId] = [];
+        map[row.teamMemberId].push(row.clientId);
+      }
+      setMemberAccess(map);
+    } catch { /* ignore */ }
+  }, [isAdmin]);
+
+  useEffect(() => { void fetchAllAccess(); }, [fetchAllAccess]);
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const handleBulkAssign = async () => {
+    if (selectedIds.length === 0 || bulkSelectedClients.length === 0) return;
+    setBulkSaving(true);
+    try {
+      for (const memberId of selectedIds) {
+        const existing = memberAccess[memberId] ?? [];
+        const finalIds = bulkMode === "replace"
+          ? bulkSelectedClients
+          : Array.from(new Set([...existing, ...bulkSelectedClients]));
+        await portalFetch(`/api/team-client-access/${memberId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientIds: finalIds }),
+        });
+        setMemberAccess((p) => ({ ...p, [memberId]: finalIds }));
+      }
+      setBulkClientPickerOpen(false);
+      setBulkSelectedClients([]);
+      setSelectedIds([]);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -237,7 +302,7 @@ export default function Team() {
   };
 
   const filtered = members.filter((m) => {
-    const matchSearch = `${m.name} ${m.surname} ${m.email} ${m.role}`.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = `${m.name} ${m.surname} ${m.email} ${m.role} ${m.department}`.toLowerCase().includes(search.toLowerCase());
     const matchDept = !filterDept || m.department === filterDept;
     return matchSearch && matchDept;
   });
@@ -393,8 +458,29 @@ export default function Team() {
             <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           </div>
           {activeDepts.length > 0 && (
+            <div className="hidden md:flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={() => setFilterDept("")}
+                className={cn("px-2.5 py-1 rounded-full text-xs border transition-colors",
+                  !filterDept ? "border-primary bg-primary/10 text-primary font-semibold" : "border-input hover:bg-muted")}
+              >
+                Tutti
+              </button>
+              {activeDepts.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setFilterDept(d === filterDept ? "" : d)}
+                  className={cn("px-2.5 py-1 rounded-full text-xs border transition-colors",
+                    filterDept === d ? "border-primary bg-primary/10 text-primary font-semibold" : "border-input hover:bg-muted")}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeDepts.length > 0 && (
             <select
-              className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              className="md:hidden px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
               value={filterDept}
               onChange={(e) => setFilterDept(e.target.value)}
             >
@@ -404,18 +490,60 @@ export default function Team() {
           )}
         </div>
 
+        {selectedIds.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-900 font-medium">
+              {selectedIds.length} {selectedIds.length === 1 ? "membro selezionato" : "membri selezionati"}
+            </p>
+            {isAdmin && (
+              <button
+                onClick={() => setBulkClientPickerOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+              >
+                <Building size={12} /> Assegna clienti
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-amber-900/70 hover:underline ml-auto"
+            >
+              Deseleziona tutto
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center text-muted-foreground py-12">Caricamento...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center text-muted-foreground py-12">
-            {members.length === 0 ? "Nessun membro del team. Aggiungi il primo!" : "Nessun risultato per la ricerca"}
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-card-border py-16 px-6 text-center">
+            <User size={28} className="text-muted-foreground/60 mb-3" />
+            {members.length === 0 ? (
+              <>
+                <p className="font-medium text-sm">Nessun membro del team</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-4 max-w-md">
+                  Aggiungi i tuoi collaboratori: ognuno avrà un profilo (ruolo, reparto, contatti) e potrai assegnare loro task, progetti e clienti.
+                </p>
+                <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2">
+                  <Plus size={15} /> Aggiungi primo membro
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-sm">Nessun risultato</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-4">Prova a modificare ricerca o reparto.</p>
+                <button onClick={() => { setSearch(""); setFilterDept(""); }} className="px-3 py-1.5 border border-input rounded-lg text-xs">Azzera filtri</button>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             {filtered.map((m) => {
               const isExpanded = expandedId === m.id;
               return (
-                <div key={m.id} className="bg-card border border-card-border rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                <div key={m.id} className={cn(
+                  "bg-card border rounded-xl shadow-sm hover:shadow-md transition-all overflow-hidden",
+                  selectedIds.includes(m.id) ? "border-primary ring-1 ring-primary/30" : "border-card-border"
+                )}>
                   <div
                     className="flex items-center gap-4 p-4 cursor-pointer"
                     onClick={() => {
@@ -424,6 +552,17 @@ export default function Team() {
                       if (newId && isAdmin && !memberAccess[newId]) fetchMemberAccess(newId);
                     }}
                   >
+                    {isAdmin && (
+                      <input
+                        type="checkbox"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelect(m.id)}
+                        checked={selectedIds.includes(m.id)}
+                        className="h-4 w-4 accent-primary shrink-0"
+                        aria-label={`Seleziona ${m.name}`}
+                      />
+                    )}
+
                     {m.photoUrl ? (
                       <img src={m.photoUrl} alt={m.name} className="w-12 h-12 rounded-full object-cover border-2 border-card-border shrink-0" />
                     ) : (
@@ -433,10 +572,25 @@ export default function Team() {
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm">{m.name} {m.surname}</p>
                         {m.department && (
                           <span className="text-[11px] px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">{m.department}</span>
+                        )}
+                        {workload[m.id]?.totalTasks > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-100 text-zinc-700 rounded-full font-semibold tabular-nums" title="Task in carico">
+                            {workload[m.id].tasksInProgress + workload[m.id].tasksTodo} task aperte
+                          </span>
+                        )}
+                        {workload[m.id]?.activeProjects > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-semibold tabular-nums">
+                            {workload[m.id].activeProjects} prog. attivi
+                          </span>
+                        )}
+                        {isAdmin && memberAccess[m.id]?.length > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded-full font-semibold tabular-nums">
+                            {memberAccess[m.id].length} clienti
+                          </span>
                         )}
                       </div>
                       <p className="text-xs text-primary font-medium">{m.role}</p>
@@ -598,6 +752,82 @@ export default function Team() {
           </div>
         )}
       </div>
+
+      {bulkClientPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-card border border-card-border rounded-xl w-full max-w-lg p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 className="font-semibold text-base">Assegna clienti a {selectedIds.length} {selectedIds.length === 1 ? "membro" : "membri"}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Scegli i clienti e se aggiungere a quelli esistenti o sostituirli.</p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBulkMode("add")}
+                className={cn("flex-1 px-3 py-2 text-sm rounded-lg border",
+                  bulkMode === "add" ? "bg-primary/10 border-primary text-primary font-semibold" : "border-input")}
+              >
+                Aggiungi
+              </button>
+              <button
+                onClick={() => setBulkMode("replace")}
+                className={cn("flex-1 px-3 py-2 text-sm rounded-lg border",
+                  bulkMode === "replace" ? "bg-primary/10 border-primary text-primary font-semibold" : "border-input")}
+              >
+                Sostituisci
+              </button>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-input p-2 space-y-1">
+              {allClients.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3">Nessun cliente disponibile</p>
+              ) : (
+                allClients.map((c) => {
+                  const checked = bulkSelectedClients.includes(c.id);
+                  return (
+                    <label key={c.id} className={cn("flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 cursor-pointer",
+                      checked ? "bg-primary/10 text-primary" : "hover:bg-muted/60")}>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={checked}
+                        onChange={(e) => {
+                          setBulkSelectedClients((prev) =>
+                            e.target.checked
+                              ? Array.from(new Set([...prev, c.id]))
+                              : prev.filter((id) => id !== c.id)
+                          );
+                        }}
+                      />
+                      <span className="truncate flex-1">{c.name}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {bulkSelectedClients.length} selezionati su {allClients.length}
+            </p>
+
+            <div className="flex gap-2 justify-end pt-2 border-t border-card-border">
+              <button
+                onClick={() => { setBulkClientPickerOpen(false); setBulkSelectedClients([]); }}
+                disabled={bulkSaving}
+                className="px-3 py-1.5 text-xs border border-input rounded-lg"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleBulkAssign}
+                disabled={bulkSaving || bulkSelectedClients.length === 0}
+                className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {bulkSaving ? "Salvataggio…" : `Applica a ${selectedIds.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

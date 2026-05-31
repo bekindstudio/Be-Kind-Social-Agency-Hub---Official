@@ -49,6 +49,16 @@ export default function Projects() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setShowCreate(true);
+      params.delete("new");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `/projects${newSearch ? `?${newSearch}` : ""}`);
+    }
+  }, []);
+
   const projectList = Array.isArray(projects) ? projects : Array.isArray((projects as any)?.items) ? (projects as any).items : projects ? [projects as any] : [];
   const clientList = Array.isArray(clients) ? clients : Array.isArray((clients as any)?.items) ? (clients as any).items : clients ? [clients as any] : [];
   const clientMap = new Map(clientList.map((c: any) => [String(c.id), c]));

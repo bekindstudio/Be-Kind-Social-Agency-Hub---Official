@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Columns3, List } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
@@ -29,6 +29,16 @@ export default function Tasks() {
   const vm = useTasksPageController();
   const { toast } = useToast();
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setWizardOpen(true);
+      params.delete("new");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `/tasks${newSearch ? `?${newSearch}` : ""}`);
+    }
+  }, []);
 
   const handleWizardCreate = async ({ form, checklist }: { form: any; checklist: any[] }): Promise<void> => {
     if (!form.title?.trim()) return;

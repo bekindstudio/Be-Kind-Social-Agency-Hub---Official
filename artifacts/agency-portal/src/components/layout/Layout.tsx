@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect, useCallback } from "react";
 import { portalFetch } from "@workspace/api-client-react";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { CommandPalette } from "@/components/CommandPalette";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
 import { Bell, Menu } from "lucide-react";
@@ -41,10 +42,12 @@ export function Layout({ children }: LayoutProps) {
     setFocusOpen(false);
   }, []);
 
+  // Cmd-K è ora dedicato alla Command Palette (vedi CommandPalette.tsx).
+  // Il Daily Focus si apre con Cmd-J o cliccando il widget in alto a destra.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (isCmdK) {
+      const isCmdJ = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j";
+      if (isCmdJ) {
         e.preventDefault();
         setFocusOpen(true);
       }
@@ -116,6 +119,8 @@ export function Layout({ children }: LayoutProps) {
         open={focusOpen}
         onClose={handleFocusClose}
       />
+
+      <CommandPalette />
     </div>
   );
 }

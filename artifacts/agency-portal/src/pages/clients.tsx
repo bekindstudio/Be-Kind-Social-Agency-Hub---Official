@@ -81,6 +81,16 @@ export default function Clients() {
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [showForm, setShowForm] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setShowWizard(true);
+      params.delete("new");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `/clients${newSearch ? `?${newSearch}` : ""}`);
+    }
+  }, []);
   const [activeTab, setActiveTab] = useState<"generali" | "contatti" | "servizi" | "fatturazione" | "accessi">("generali");
   const [form, setForm] = useState<any>({
     name: "", nomeCommerciale: "", ragioneSociale: "", settore: "", dimensione: "", website: "", descrizione: "", comeAcquisito: "", clienteDal: "", noteInterne: "", color: "#7a8f5c", brandColor: "#7a8f5c", logoUrl: "", accountManagerId: "", tags: "", contacts: [{ nome: "", cognome: "", ruolo: "", email: "", telefono: "", isPrimary: true, metodoContattoPreferito: "Email", orarioPreferito: "Mattina" }], services: [], piva: "", codiceFiscale: "", sdi: "", pec: "", indirizzo: "", metodoPagamento: "Bonifico", terminiPagamento: "30gg", iban: "",

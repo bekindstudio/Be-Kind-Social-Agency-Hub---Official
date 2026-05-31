@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, clientsTable, projectsTable, tasksTable, teamMembersTable, messagesTable, filesTable, quoteTemplatesTable, contractTemplatesTable, clientEventsTable } from "@workspace/db";
+import { db, clientsTable, projectsTable, tasksTable, teamMembersTable, messagesTable, filesTable, quoteTemplatesTable, contractTemplatesTable, clientEventsTable, clientReportsTable, clientPostsTable, contractsTable } from "@workspace/db";
 import { desc, eq, isNull } from "drizzle-orm";
 import {
   GetDashboardSummaryResponse,
@@ -155,6 +155,128 @@ router.get("/dashboard/revenue", async (_req, res): Promise<void> => {
     totalContracts: contracts.length,
     totalRevenue: Math.round(totalRevenue * 100) / 100,
     conversionRate: totalQuotes > 0 ? Math.round((approvedQuotes / totalQuotes) * 100) : 0,
+  });
+});
+
+/**
+ * Coda unificata "in attesa di azione": aggrega editorial posts in approvazione,
+ * report in revisione/approvati pronti per invio, e contratti in scadenza nei
+ * prossimi 30 giorni. Serve al widget di approval-queue sulla dashboard.
+ */
+router.get("/dashboard/pending-approvals", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId as string);
+  const isAccessible = (clientId: number) => accessible === "all" || accessible.includes(clientId);
+
+  const [clients, posts, reports, contracts] = await Promise.all([
+    db.select({ id: clientsTable.id, name: clientsTable.name, brandColor: clientsTable.brandColor, color: clientsTable.color }).from(clientsTable).where(isNull(clientsTable.deletedAt)),
+    db.select().from(clientPostsTable),
+    db.select().from(clientReportsTable),
+    db.select().from(contractsTable).where(isNull(contractsTable.deletedAt)),
+  ]);
+  const clientMap = new Map(clients.map((c) => [c.id, { name: c.name, color: c.brandColor ?? c.color ?? "#7a8f5c" }]));
+
+  const now = Date.now();
+  const in30d = now + 30 * 86_400_000;
+
+  type Item = {
+    id: string;
+    kind: "post_approval" | "report_review" | "report_send" | "contract_expiring";
+    title: string;
+    clientId: number;
+    clientName: string;
+    clientColor: string;
+    dueAt: string | null;
+    href: string;
+    badge: string;
+  };
+  const items: Item[] = [];
+
+  for (const p of posts) {
+    if (p.status !== "pending_approval") continue;
+    if (!isAccessible(p.clientId)) continue;
+    const c = clientMap.get(p.clientId);
+    if (!c) continue;
+    items.push({
+      id: `post-${p.id}`,
+      kind: "post_approval",
+      title: p.title,
+      clientId: p.clientId,
+      clientName: c.name,
+      clientColor: c.color,
+      dueAt: p.scheduledDate ? p.scheduledDate.toISOString() : null,
+      href: "/tools/calendar",
+      badge: "Post da approvare",
+    });
+  }
+
+  for (const r of reports) {
+    if (!isAccessible(r.clientId)) continue;
+    const c = clientMap.get(r.clientId);
+    if (!c) continue;
+    if (r.status === "in_revisione") {
+      items.push({
+        id: `report-rev-${r.id}`,
+        kind: "report_review",
+        title: r.titolo || `Report ${r.periodLabel}`,
+        clientId: r.clientId,
+        clientName: c.name,
+        clientColor: c.color,
+        dueAt: r.scheduledFor ? r.scheduledFor.toISOString() : null,
+        href: "/tools/reports",
+        badge: "Report in revisione",
+      });
+    } else if (r.status === "approvato" && !r.sentAt) {
+      items.push({
+        id: `report-send-${r.id}`,
+        kind: "report_send",
+        title: r.titolo || `Report ${r.periodLabel}`,
+        clientId: r.clientId,
+        clientName: c.name,
+        clientColor: c.color,
+        dueAt: r.scheduledFor ? r.scheduledFor.toISOString() : null,
+        href: "/tools/reports",
+        badge: "Report da inviare",
+      });
+    }
+  }
+
+  for (const ct of contracts) {
+    if (!isAccessible(ct.clientId)) continue;
+    const c = clientMap.get(ct.clientId);
+    if (!c) continue;
+    if (!ct.dataFine) continue;
+    const end = new Date(ct.dataFine).getTime();
+    if (Number.isNaN(end)) continue;
+    if (end < now || end > in30d) continue;
+    items.push({
+      id: `contract-${ct.id}`,
+      kind: "contract_expiring",
+      title: `${ct.oggetto} · ${ct.numero}`,
+      clientId: ct.clientId,
+      clientName: c.name,
+      clientColor: c.color,
+      dueAt: new Date(end).toISOString(),
+      href: "/contracts/templates",
+      badge: "Contratto in scadenza",
+    });
+  }
+
+  items.sort((a, b) => {
+    const ta = a.dueAt ? new Date(a.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+    const tb = b.dueAt ? new Date(b.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+
+  res.json({
+    items,
+    counts: {
+      total: items.length,
+      postApproval: items.filter((i) => i.kind === "post_approval").length,
+      reportReview: items.filter((i) => i.kind === "report_review").length,
+      reportSend: items.filter((i) => i.kind === "report_send").length,
+      contractExpiring: items.filter((i) => i.kind === "contract_expiring").length,
+    },
   });
 });
 

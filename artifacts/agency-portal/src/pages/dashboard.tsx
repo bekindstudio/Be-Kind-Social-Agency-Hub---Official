@@ -34,6 +34,8 @@ import {
   Settings,
   LogOut,
   GripVertical,
+  Inbox,
+  ArrowRight,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -156,6 +158,20 @@ export default function Dashboard() {
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
   const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
   const { data: summary } = useGetDashboardSummary();
+  type PendingApprovalsRes = {
+    items: Array<{ id: string; kind: string; title: string; clientId: number; clientName: string; clientColor: string; dueAt: string | null; href: string; badge: string }>;
+    counts: { total: number; postApproval: number; reportReview: number; reportSend: number; contractExpiring: number };
+  };
+  const { data: pendingApprovals } = useQuery<PendingApprovalsRes>({
+    queryKey: ["dashboard-pending-approvals"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/pending-approvals");
+      if (!r.ok) return { items: [], counts: { total: 0, postApproval: 0, reportReview: 0, reportSend: 0, contractExpiring: 0 } };
+      return r.json();
+    },
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
   const { data: activityRaw } = useGetRecentActivity();
   const { data: statusRaw } = useGetProjectStatusBreakdown();
   const { data: projectsRaw } = useListProjects(apiClientId != null ? { clientId: apiClientId } : {});
@@ -515,6 +531,62 @@ export default function Dashboard() {
           />
         </div>
 
+        {/* Coda unificata: cose in attesa di azione cross-cliente */}
+        {pendingApprovals && pendingApprovals.items.length > 0 && (
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <Inbox size={17} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">In attesa di te</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    {pendingApprovals.counts.total} elementi richiedono un'azione
+                    {pendingApprovals.counts.postApproval > 0 && ` · ${pendingApprovals.counts.postApproval} post`}
+                    {pendingApprovals.counts.reportReview > 0 && ` · ${pendingApprovals.counts.reportReview} report da revisionare`}
+                    {pendingApprovals.counts.reportSend > 0 && ` · ${pendingApprovals.counts.reportSend} da inviare`}
+                    {pendingApprovals.counts.contractExpiring > 0 && ` · ${pendingApprovals.counts.contractExpiring} contratti in scadenza`}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {pendingApprovals.items.slice(0, 12).map((item) => {
+                const dueDate = item.dueAt ? new Date(item.dueAt) : null;
+                const overdue = dueDate && dueDate < new Date();
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate(item.href)}
+                    className="w-full flex items-center gap-3 rounded-lg border border-card-border px-3 py-2 hover:bg-muted/40 transition-colors text-left"
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.clientColor }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {item.clientName} · {item.badge}
+                      </p>
+                    </div>
+                    {dueDate && (
+                      <span className={cn("text-[10px] tabular-nums shrink-0", overdue ? "text-red-600 font-semibold" : "text-muted-foreground")}>
+                        {dueDate.toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}
+                      </span>
+                    )}
+                    <ArrowRight size={13} className="text-muted-foreground shrink-0" />
+                  </button>
+                );
+              })}
+              {pendingApprovals.items.length > 12 && (
+                <p className="text-[11px] text-muted-foreground text-center pt-1">
+                  +{pendingApprovals.items.length - 12} altri
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Alerts */}
         {smartReminders.reminders.length > 0 && (
           <div className="bg-card border border-card-border rounded-xl p-3">
@@ -640,7 +712,15 @@ export default function Dashboard() {
                 {wk === "adv" && (
                   <div className="space-y-2">
                     {advCampaigns.length === 0 ? (
-                      <p className="text-sm text-muted-foreground py-2">Nessuna campagna attiva. Collega un account Meta/Google ADV per vedere qui le campagne.</p>
+                      <div className="py-3 px-3 rounded-lg border border-dashed border-card-border bg-muted/30">
+                        <p className="text-sm text-muted-foreground mb-1.5">Nessuna campagna attiva.</p>
+                        <button
+                          onClick={() => navigate("/settings")}
+                          className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
+                        >
+                          Collega Meta / Google ADV → <ArrowRight size={11} />
+                        </button>
+                      </div>
                     ) : (
                       <>
                         {advCampaigns.slice(0, 3).map((c) => <div key={c.id} className="border border-border rounded-lg p-2.5 text-sm"><p className="font-medium">{c.client} · {c.name}</p><p className="text-xs text-muted-foreground">{c.platform} · Spesa oggi €{c.spesa} · {c.kpi} · {c.status}</p></div>)}

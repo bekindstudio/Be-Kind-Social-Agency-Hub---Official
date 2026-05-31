@@ -1,13 +1,16 @@
-import { Plus, Columns3, List } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Columns3, List } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
 import { EMPTY_TASK_FORM } from "@/hooks/useTasks";
 import { useTasksPageController } from "@/hooks/useTasksPageController";
+import { useToast } from "@/hooks/use-toast";
 import { TaskFilters } from "@/components/tasks/TaskFilters";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskKanban } from "@/components/tasks/TaskKanban";
 import { TaskDetail } from "@/components/tasks/TaskDetail";
 import { TaskForm } from "@/components/tasks/TaskForm";
+import { TaskWizard } from "@/components/tasks/TaskWizard";
 import { TaskBulkActions } from "@/components/tasks/TaskBulkActions";
 import {
   CATEGORIA_COLORS,
@@ -24,6 +27,41 @@ import {
 } from "@/components/tasks/TaskChecklist";
 export default function Tasks() {
   const vm = useTasksPageController();
+  const { toast } = useToast();
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const handleWizardCreate = async ({ form, checklist }: { form: any; checklist: any[] }): Promise<void> => {
+    if (!form.title?.trim()) return;
+    const isAvanzata = form.taskType === "avanzata";
+    const payload = {
+      title: form.title,
+      description: form.description || null,
+      projectId: form.projectId ? Number(form.projectId) : null,
+      assigneeId: form.assigneeId ? Number(form.assigneeId) : null,
+      status: form.status,
+      priority: form.priority,
+      dueDate: form.dueDate || null,
+      tipo: isAvanzata ? "avanzata" : "semplice",
+      categoria: isAvanzata ? form.categoria : null,
+      checklistJson: isAvanzata ? JSON.stringify(checklist) : "[]",
+      pacchettoContenuti: isAvanzata && form.categoria === "Piano Editoriale Mensile" ? form.pacchettoContenuti : null,
+      meseRiferimento: isAvanzata && form.categoria === "Piano Editoriale Mensile" ? form.meseRiferimento : null,
+    };
+    await new Promise<void>((resolve, reject) => {
+      vm.createTask.mutate({ data: payload as any }, {
+        onSuccess: (created: any) => {
+          vm.queryClient.invalidateQueries({ queryKey: vm.listTasksKey });
+          toast({ title: "Task creata", description: form.title });
+          if (created?.id) void vm.addActivity(created.id, "Task creata", created?.title ?? form.title);
+          resolve();
+        },
+        onError: (err: any) => {
+          toast({ variant: "destructive", title: "Creazione task non riuscita", description: err?.message ?? "Riprova" });
+          reject(err);
+        },
+      });
+    });
+  };
 
   return (
     <Layout>
@@ -38,9 +76,18 @@ export default function Tasks() {
               <button onClick={() => { vm.setViewMode("list"); localStorage.setItem("tasks-view", "list"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "list" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista lista"><List size={15} /></button>
               <button onClick={() => { vm.setViewMode("kanban"); localStorage.setItem("tasks-view", "kanban"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "kanban" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista kanban"><Columns3 size={15} /></button>
             </div>
-            <button onClick={() => { vm.setEditId(null); vm.setShowForm(!vm.showForm); vm.setForm(EMPTY_TASK_FORM); vm.setChecklist([]); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity w-full sm:w-auto"><Plus size={16} />Nuovo Task</button>
+            <button onClick={() => setWizardOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity w-full sm:w-auto shadow-sm"><Sparkles size={16} />Nuovo Task</button>
           </div>
         </div>
+
+        <TaskWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          onCreate={handleWizardCreate}
+          isSubmitting={vm.createTask.isPending}
+          projectOptions={vm.scopedProjectList as Array<{ id: number | string; name: string }>}
+          memberOptions={vm.memberList as Array<{ id: number | string; name?: string | null; surname?: string | null; email?: string | null }>}
+        />
 
         <TaskForm
           state={{ open: vm.showForm, editId: vm.editId, form: vm.form, isSubmitting: vm.createTask.isPending || vm.updateTask.isPending }}

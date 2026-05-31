@@ -183,11 +183,14 @@ export function TaskForm({
             onChange={(e) => onFormChange({ assigneeId: e.target.value })}
           >
             <option value="">Nessuno</option>
-            {memberOptions.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name ?? "Utente"}
-              </option>
-            ))}
+            {memberOptions.map((member) => {
+              const fullName = [member.name, member.surname].filter(Boolean).join(" ").trim();
+              return (
+                <option key={member.id} value={member.id}>
+                  {fullName || (member as any)?.email || `#${member.id}`}
+                </option>
+              );
+            })}
           </select>
         </div>
         <div>

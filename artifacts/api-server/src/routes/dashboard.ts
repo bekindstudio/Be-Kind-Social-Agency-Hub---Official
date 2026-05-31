@@ -159,6 +159,106 @@ router.get("/dashboard/revenue", async (_req, res): Promise<void> => {
 });
 
 /**
+ * KPI agenzia mensili + funnel Quote → Contract → Project.
+ * Restituisce: numeri del mese corrente vs mese precedente, conteggi funnel,
+ * top 5 clienti per fatturato accettato negli ultimi 90gg.
+ */
+router.get("/dashboard/agency-kpi", async (_req, res): Promise<void> => {
+  const [quotes, contracts, contractsReal, projects, clients] = await Promise.all([
+    db.select().from(quoteTemplatesTable),
+    db.select().from(contractTemplatesTable),
+    db.select().from(contractsTable).where(isNull(contractsTable.deletedAt)),
+    db.select().from(projectsTable).where(isNull(projectsTable.deletedAt)),
+    db.select({ id: clientsTable.id, name: clientsTable.name }).from(clientsTable).where(isNull(clientsTable.deletedAt)),
+  ]);
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthEnd = monthStart;
+
+  const isThisMonth = (d: Date | string | null | undefined) => {
+    if (!d) return false;
+    const dt = typeof d === "string" ? new Date(d) : d;
+    return dt >= monthStart && dt <= now;
+  };
+  const isPrevMonth = (d: Date | string | null | undefined) => {
+    if (!d) return false;
+    const dt = typeof d === "string" ? new Date(d) : d;
+    return dt >= prevMonthStart && dt < prevMonthEnd;
+  };
+
+  const quoteSubtotal = (q: any): number => {
+    const items = (Array.isArray(q.items) ? q.items : []) as Array<{ quantity: number; unitPrice: number }>;
+    const sub = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+    return sub * (1 + (q.taxRate ?? 0) / 100);
+  };
+
+  const quotesThisMonth = quotes.filter((q) => isThisMonth(q.createdAt));
+  const quotesPrevMonth = quotes.filter((q) => isPrevMonth(q.createdAt));
+  const acceptedThisMonth = quotesThisMonth.filter((q) => q.status === "accettato");
+  const acceptedPrevMonth = quotesPrevMonth.filter((q) => q.status === "accettato");
+  const revenueThisMonth = acceptedThisMonth.reduce((s, q) => s + quoteSubtotal(q), 0);
+  const revenuePrevMonth = acceptedPrevMonth.reduce((s, q) => s + quoteSubtotal(q), 0);
+
+  const projectsStartedThisMonth = projects.filter((p) => isThisMonth(p.createdAt));
+  const projectsCompletedThisMonth = projects.filter((p) => p.status === "completed" && isThisMonth(p.updatedAt));
+
+  // Funnel: quote totali → accettate → contratti firmati → progetti attivi/completed
+  const totalQuotes = quotes.length;
+  const acceptedQuotes = quotes.filter((q) => q.status === "accettato").length;
+  const signedContractsTemplate = contracts.filter((c) => c.status === "firmato").length;
+  const signedContractsReal = contractsReal.filter((c) => c.stato === "attivo" || c.stato === "firmato").length;
+  const totalSignedContracts = signedContractsTemplate + signedContractsReal;
+  const totalProjects = projects.length;
+  const completedProjects = projects.filter((p) => p.status === "completed").length;
+
+  // Top 5 clienti per fatturato accettato (preventivi accettati totali, mai limit by date)
+  const clientMap = new Map(clients.map((c) => [c.id, c.name]));
+  const revenueByClient = new Map<number, number>();
+  for (const q of quotes.filter((q) => q.status === "accettato")) {
+    const cid = (q as any).clientId;
+    if (cid == null || !clientMap.has(cid)) continue;
+    const v = revenueByClient.get(cid) ?? 0;
+    revenueByClient.set(cid, v + quoteSubtotal(q));
+  }
+  const topClients = Array.from(revenueByClient.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id, value]) => ({ id, name: clientMap.get(id) ?? `#${id}`, revenue: Math.round(value * 100) / 100 }));
+
+  // Contracts in renewal (next 90gg)
+  const in90d = now.getTime() + 90 * 86_400_000;
+  const renewals = contractsReal.filter((c) => {
+    if (!c.dataFine) return false;
+    const t = new Date(c.dataFine).getTime();
+    return t >= now.getTime() && t <= in90d;
+  });
+
+  res.json({
+    month: {
+      label: now.toLocaleDateString("it-IT", { month: "long", year: "numeric" }),
+      revenue: Math.round(revenueThisMonth * 100) / 100,
+      revenuePrev: Math.round(revenuePrevMonth * 100) / 100,
+      quotesCreated: quotesThisMonth.length,
+      quotesAccepted: acceptedThisMonth.length,
+      acceptanceRate: quotesThisMonth.length > 0 ? Math.round((acceptedThisMonth.length / quotesThisMonth.length) * 100) : 0,
+      projectsStarted: projectsStartedThisMonth.length,
+      projectsCompleted: projectsCompletedThisMonth.length,
+    },
+    funnel: {
+      totalQuotes,
+      acceptedQuotes,
+      signedContracts: totalSignedContracts,
+      activeProjects: totalProjects,
+      completedProjects,
+    },
+    topClients,
+    renewalsCount: renewals.length,
+  });
+});
+
+/**
  * Coda unificata "in attesa di azione": aggrega editorial posts in approvazione,
  * report in revisione/approvati pronti per invio, e contratti in scadenza nei
  * prossimi 30 giorni. Serve al widget di approval-queue sulla dashboard.

@@ -120,6 +120,40 @@ function KpiCard({ title, value, sub, trend, color, onClick, progress }: { title
   );
 }
 
+function AgencyKpiTile({ label, value, trend }: { label: string; value: string; trend?: string }) {
+  return (
+    <div className="rounded-lg border border-card-border p-3 bg-muted/20">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">{label}</p>
+      <p className="text-xl font-bold mt-1 tabular-nums">{value}</p>
+      {trend && <p className="text-[10px] text-muted-foreground mt-0.5">{trend}</p>}
+    </div>
+  );
+}
+
+function FunnelStage({ label, value, referenceMax, color, rate }: { label: string; value: number; referenceMax: number; color: string; rate?: number }) {
+  const widthPct = referenceMax > 0 ? Math.max(4, Math.round((value / referenceMax) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-32 text-xs font-medium shrink-0">{label}</div>
+      <div className="flex-1 h-7 bg-muted rounded relative overflow-hidden">
+        <div className="h-full transition-all flex items-center justify-end px-2" style={{ width: `${widthPct}%`, backgroundColor: color }}>
+          <span className="text-[11px] font-bold text-white tabular-nums">{value}</span>
+        </div>
+      </div>
+      {rate != null && (
+        <span className="text-[10px] text-muted-foreground tabular-nums w-12 text-right">{rate}%</span>
+      )}
+    </div>
+  );
+}
+
+function trendDelta(current: number, previous: number): string {
+  if (previous === 0) return current > 0 ? "Nuovo questo mese" : "Nessun dato precedente";
+  const delta = ((current - previous) / previous) * 100;
+  const sign = delta >= 0 ? "+" : "";
+  return `${sign}${Math.round(delta)}% vs mese scorso`;
+}
+
 const DEFAULT_WIDGETS = [
   "progetti_corso",
   "task_oggi",
@@ -171,6 +205,22 @@ export default function Dashboard() {
     },
     staleTime: 60_000,
     refetchInterval: 120_000,
+  });
+
+  type AgencyKpi = {
+    month: { label: string; revenue: number; revenuePrev: number; quotesCreated: number; quotesAccepted: number; acceptanceRate: number; projectsStarted: number; projectsCompleted: number };
+    funnel: { totalQuotes: number; acceptedQuotes: number; signedContracts: number; activeProjects: number; completedProjects: number };
+    topClients: Array<{ id: number; name: string; revenue: number }>;
+    renewalsCount: number;
+  };
+  const { data: agencyKpi } = useQuery<AgencyKpi>({
+    queryKey: ["dashboard-agency-kpi"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/agency-kpi");
+      if (!r.ok) throw new Error("kpi fetch failed");
+      return r.json();
+    },
+    staleTime: 5 * 60_000,
   });
   const { data: activityRaw } = useGetRecentActivity();
   const { data: statusRaw } = useGetProjectStatusBreakdown();
@@ -530,6 +580,89 @@ export default function Dashboard() {
             onClick={() => navigate("/tasks")}
           />
         </div>
+
+        {/* KPI Agenzia (mese corrente + funnel Quote→Project) */}
+        {agencyKpi && (
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">KPI Agenzia · {agencyKpi.month.label}</p>
+                <h3 className="font-semibold text-sm">Numeri del mese e funnel commerciale</h3>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <AgencyKpiTile
+                label="Fatturato mese"
+                value={`€ ${Math.round(agencyKpi.month.revenue).toLocaleString("it-IT")}`}
+                trend={trendDelta(agencyKpi.month.revenue, agencyKpi.month.revenuePrev)}
+              />
+              <AgencyKpiTile
+                label="Quote create"
+                value={String(agencyKpi.month.quotesCreated)}
+                trend={`${agencyKpi.month.quotesAccepted} accettate · ${agencyKpi.month.acceptanceRate}%`}
+              />
+              <AgencyKpiTile
+                label="Progetti avviati"
+                value={String(agencyKpi.month.projectsStarted)}
+                trend={`${agencyKpi.month.projectsCompleted} completati`}
+              />
+              <AgencyKpiTile
+                label="Rinnovi 90gg"
+                value={String(agencyKpi.renewalsCount)}
+                trend={agencyKpi.renewalsCount > 0 ? "contratti in scadenza" : "nessun rinnovo imminente"}
+              />
+            </div>
+
+            {/* Funnel orizzontale Quote → Contract → Project */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Funnel commerciale (totali)</p>
+              <FunnelStage
+                label="Quote totali"
+                value={agencyKpi.funnel.totalQuotes}
+                referenceMax={agencyKpi.funnel.totalQuotes}
+                color="#94a3b8"
+              />
+              <FunnelStage
+                label="Quote accettate"
+                value={agencyKpi.funnel.acceptedQuotes}
+                referenceMax={agencyKpi.funnel.totalQuotes}
+                color="#7a8f5c"
+                rate={agencyKpi.funnel.totalQuotes > 0 ? Math.round((agencyKpi.funnel.acceptedQuotes / agencyKpi.funnel.totalQuotes) * 100) : 0}
+              />
+              <FunnelStage
+                label="Contratti firmati"
+                value={agencyKpi.funnel.signedContracts}
+                referenceMax={agencyKpi.funnel.totalQuotes}
+                color="#4a6629"
+                rate={agencyKpi.funnel.acceptedQuotes > 0 ? Math.round((agencyKpi.funnel.signedContracts / agencyKpi.funnel.acceptedQuotes) * 100) : 0}
+              />
+              <FunnelStage
+                label="Progetti avviati"
+                value={agencyKpi.funnel.activeProjects}
+                referenceMax={agencyKpi.funnel.totalQuotes}
+                color="#2d3f1c"
+                rate={agencyKpi.funnel.signedContracts > 0 ? Math.round((agencyKpi.funnel.activeProjects / agencyKpi.funnel.signedContracts) * 100) : 0}
+              />
+            </div>
+
+            {agencyKpi.topClients.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-card-border">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Top 5 clienti per fatturato accettato</p>
+                <div className="space-y-1">
+                  {agencyKpi.topClients.map((tc, i) => (
+                    <div key={tc.id} className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground tabular-nums w-4">{i + 1}.</span>
+                      <button onClick={() => navigate(`/clients/${tc.id}`)} className="font-medium truncate hover:text-primary text-left flex-1">
+                        {tc.name}
+                      </button>
+                      <span className="font-semibold tabular-nums">€ {Math.round(tc.revenue).toLocaleString("it-IT")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Coda unificata: cose in attesa di azione cross-cliente */}
         {pendingApprovals && pendingApprovals.items.length > 0 && (

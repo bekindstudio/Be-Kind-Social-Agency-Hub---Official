@@ -213,6 +213,27 @@ export default function Dashboard() {
     topClients: Array<{ id: number; name: string; revenue: number }>;
     renewalsCount: number;
   };
+  type EditorialWeekAll = {
+    weekStart: string;
+    weekEnd: string;
+    clients: Array<{
+      id: number; name: string; color: string;
+      days: Array<{ draft: number; pending: number; approved: number; published: number; rejected: number; total: number }>;
+      totals: { draft: number; pending: number; approved: number; published: number; rejected: number; total: number };
+    }>;
+    overall: { total: number; pending: number; approved: number; published: number };
+  };
+  const { data: editorialAll } = useQuery<EditorialWeekAll>({
+    queryKey: ["dashboard-editorial-week-all"],
+    queryFn: async () => {
+      const r = await portalFetch("/api/dashboard/editorial-week-all");
+      if (!r.ok) throw new Error("editorial-week fetch failed");
+      return r.json();
+    },
+    staleTime: 60_000,
+    refetchInterval: 180_000,
+  });
+
   const { data: agencyKpi } = useQuery<AgencyKpi>({
     queryKey: ["dashboard-agency-kpi"],
     queryFn: async () => {
@@ -715,6 +736,83 @@ export default function Dashboard() {
                 <p className="text-[11px] text-muted-foreground text-center pt-1">
                   +{pendingApprovals.items.length - 12} altri
                 </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Calendario editoriale settimana (tutti i clienti aggregati) */}
+        {editorialAll && editorialAll.clients.length > 0 && (
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Settimana corrente · tutti i clienti</p>
+                <h3 className="font-semibold text-sm">Calendario editoriale aggregato</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {editorialAll.overall.total} contenuti · {editorialAll.overall.pending} da approvare · {editorialAll.overall.published} pubblicati
+                </p>
+              </div>
+              <button onClick={() => navigate("/tools/calendar")} className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                Apri calendario completo <ArrowRight size={11} />
+              </button>
+            </div>
+
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full text-xs min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-2 font-semibold text-muted-foreground w-44">Cliente</th>
+                    {["Lun","Mar","Mer","Gio","Ven","Sab","Dom"].map((d) => (
+                      <th key={d} className="text-center py-2 px-1 font-semibold text-muted-foreground">{d}</th>
+                    ))}
+                    <th className="text-right py-2 pl-2 font-semibold text-muted-foreground w-12">Tot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editorialAll.clients.slice(0, 10).map((cl) => (
+                    <tr key={cl.id} className="border-b border-border/40 last:border-b-0 hover:bg-muted/20 transition-colors">
+                      <td className="py-2 pr-2">
+                        <button
+                          onClick={() => navigate(`/clients/${cl.id}`)}
+                          className="flex items-center gap-2 hover:text-primary text-left w-full"
+                        >
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cl.color }} />
+                          <span className="truncate font-medium">{cl.name}</span>
+                        </button>
+                      </td>
+                      {cl.days.map((day, i) => (
+                        <td key={i} className="text-center py-2 px-1">
+                          {day.total > 0 ? (
+                            <div className="inline-flex flex-col items-center gap-0.5" title={`Tot ${day.total} · pendenti ${day.pending} · approvati ${day.approved} · pubblicati ${day.published}`}>
+                              <span className="text-[11px] font-semibold tabular-nums">{day.total}</span>
+                              <div className="flex items-center gap-0.5">
+                                {day.pending > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+                                {day.approved > 0 && <span className="w-1.5 h-1.5 rounded-full bg-lime-500" />}
+                                {day.published > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />}
+                                {day.draft > 0 && day.pending === 0 && day.approved === 0 && day.published === 0 && <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/40">—</span>
+                          )}
+                        </td>
+                      ))}
+                      <td className="text-right py-2 pl-2 font-semibold tabular-nums">{cl.totals.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> In approvazione</span>
+                <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-lime-500" /> Approvato</span>
+                <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-600" /> Pubblicato</span>
+                <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-zinc-400" /> Bozza</span>
+              </div>
+              {editorialAll.clients.length > 10 && (
+                <span>+{editorialAll.clients.length - 10} clienti</span>
               )}
             </div>
           </div>

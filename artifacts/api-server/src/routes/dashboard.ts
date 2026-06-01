@@ -159,6 +159,80 @@ router.get("/dashboard/revenue", async (_req, res): Promise<void> => {
 });
 
 /**
+ * Calendario editoriale aggregato: una riga per cliente, una colonna per giorno
+ * della settimana corrente, con conteggi per stato. Usato dal widget
+ * "Calendario editoriale (tutti i clienti)" sulla dashboard.
+ */
+router.get("/dashboard/editorial-week-all", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId as string);
+  const isAccessible = (id: number) => accessible === "all" || accessible.includes(id);
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  const offset = (weekStart.getDay() + 6) % 7;
+  weekStart.setDate(weekStart.getDate() - offset);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const [clients, posts] = await Promise.all([
+    db.select({ id: clientsTable.id, name: clientsTable.name, brandColor: clientsTable.brandColor, color: clientsTable.color }).from(clientsTable).where(isNull(clientsTable.deletedAt)),
+    db.select().from(clientPostsTable),
+  ]);
+
+  type Bucket = { draft: number; pending: number; approved: number; published: number; rejected: number; total: number };
+  type ClientRow = { id: number; name: string; color: string; days: Bucket[]; totals: Bucket };
+  const emptyBucket = (): Bucket => ({ draft: 0, pending: 0, approved: 0, published: 0, rejected: 0, total: 0 });
+
+  const rows = new Map<number, ClientRow>();
+  for (const c of clients) {
+    if (!isAccessible(c.id)) continue;
+    rows.set(c.id, {
+      id: c.id,
+      name: c.name,
+      color: c.brandColor ?? c.color ?? "#7a8f5c",
+      days: Array.from({ length: 7 }, emptyBucket),
+      totals: emptyBucket(),
+    });
+  }
+
+  for (const p of posts) {
+    if (!p.scheduledDate) continue;
+    const d = new Date(p.scheduledDate);
+    if (d < weekStart || d > weekEnd) continue;
+    const row = rows.get(p.clientId);
+    if (!row) continue;
+    const dayIdx = (d.getDay() + 6) % 7;
+    const bucket = row.days[dayIdx];
+    bucket.total += 1;
+    row.totals.total += 1;
+    if (p.status === "draft") { bucket.draft += 1; row.totals.draft += 1; }
+    else if (p.status === "pending_approval") { bucket.pending += 1; row.totals.pending += 1; }
+    else if (p.status === "approved") { bucket.approved += 1; row.totals.approved += 1; }
+    else if (p.status === "published") { bucket.published += 1; row.totals.published += 1; }
+    else if (p.status === "rejected") { bucket.rejected += 1; row.totals.rejected += 1; }
+  }
+
+  const result = Array.from(rows.values())
+    .filter((r) => r.totals.total > 0)
+    .sort((a, b) => b.totals.total - a.totals.total);
+
+  res.json({
+    weekStart: weekStart.toISOString(),
+    weekEnd: weekEnd.toISOString(),
+    clients: result,
+    overall: {
+      total: result.reduce((s, r) => s + r.totals.total, 0),
+      pending: result.reduce((s, r) => s + r.totals.pending, 0),
+      approved: result.reduce((s, r) => s + r.totals.approved, 0),
+      published: result.reduce((s, r) => s + r.totals.published, 0),
+    },
+  });
+});
+
+/**
  * KPI agenzia mensili + funnel Quote → Contract → Project.
  * Restituisce: numeri del mese corrente vs mese precedente, conteggi funnel,
  * top 5 clienti per fatturato accettato negli ultimi 90gg.

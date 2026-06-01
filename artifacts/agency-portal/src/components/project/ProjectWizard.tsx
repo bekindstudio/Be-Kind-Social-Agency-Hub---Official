@@ -101,6 +101,7 @@ export function ProjectWizard({
   defaultClientId,
   clients,
   teamMembers,
+  prefill,
 }: {
   open: boolean;
   onClose: () => void;
@@ -109,6 +110,7 @@ export function ProjectWizard({
   defaultClientId?: string;
   clients: ClientOption[];
   teamMembers: TeamOption[];
+  prefill?: { name?: string; clientId?: string; budget?: string };
 }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -134,11 +136,13 @@ export function ProjectWizard({
     }
     setForm((prev) => ({
       ...prev,
-      clientId: prev.clientId || defaultClientId || "",
-      color: prev.color || pickClientColor(defaultClientId, clients) || "#7a8f5c",
+      name: prefill?.name || prev.name,
+      clientId: prefill?.clientId || prev.clientId || defaultClientId || "",
+      budget: prefill?.budget || prev.budget,
+      color: prev.color || pickClientColor(prefill?.clientId || defaultClientId, clients) || "#7a8f5c",
     }));
     setStep(0);
-  }, [open, defaultClientId, clients]);
+  }, [open, defaultClientId, clients, prefill]);
 
   // Persisti draft
   useEffect(() => {

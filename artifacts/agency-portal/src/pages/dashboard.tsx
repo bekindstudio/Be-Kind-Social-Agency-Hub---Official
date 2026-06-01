@@ -1074,21 +1074,16 @@ export default function Dashboard() {
             </div>
 
             <div className="bg-card border border-card-border rounded-xl p-4">
-              <p className="font-semibold text-sm mb-2">Messaggi non letti</p>
-              <div className="space-y-2">
-                {unreadMessages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">Nessun messaggio non letto.</p>
-                ) : (
-                  unreadMessages.map((m) => (
-                    <button key={m.id} onClick={() => navigate("/chat")} className="w-full text-left border border-border rounded-lg p-2 hover:bg-muted/40">
-                      <div className="flex items-center justify-between"><p className="text-sm font-medium">{m.channel}</p><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">{m.unread}</span></div>
-                      <p className="text-xs text-muted-foreground truncate">{m.preview}</p>
-                      <p className="text-[10px] text-muted-foreground">{m.time}</p>
-                    </button>
-                  ))
-                )}
+              <p className="font-semibold text-sm mb-2">Chat team</p>
+              <div className="py-3 px-3 rounded-lg border border-dashed border-card-border bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-1.5">Conversazioni e annunci interni del team.</p>
+                <button
+                  onClick={() => navigate("/chat")}
+                  className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  Apri chat → <ArrowRight size={11} />
+                </button>
               </div>
-              <button onClick={() => navigate("/chat")} className="mt-2 text-xs text-primary hover:underline">Vai alla chat</button>
             </div>
           </div>
         </div>

@@ -49,11 +49,21 @@ export default function Projects() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
 
+  const [prefill, setPrefill] = useState<{ name?: string; clientId?: string; budget?: string } | null>(null);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("new") === "1") {
       setShowCreate(true);
-      params.delete("new");
+      const pf: { name?: string; clientId?: string; budget?: string } = {};
+      const pname = params.get("name");
+      const pclient = params.get("client");
+      const pbudget = params.get("budget");
+      if (pname) pf.name = pname;
+      if (pclient) pf.clientId = pclient;
+      if (pbudget) pf.budget = pbudget;
+      if (Object.keys(pf).length > 0) setPrefill(pf);
+      ["new", "name", "client", "budget"].forEach((k) => params.delete(k));
       const newSearch = params.toString();
       window.history.replaceState({}, "", `/projects${newSearch ? `?${newSearch}` : ""}`);
     }
@@ -291,12 +301,13 @@ export default function Projects() {
 
         <ProjectWizard
           open={showCreate}
-          onClose={() => setShowCreate(false)}
+          onClose={() => { setShowCreate(false); setPrefill(null); }}
           onCreate={handleCreateFromWizard}
           isSubmitting={createProject.isPending}
-          defaultClientId={activeBackendClientId || undefined}
+          defaultClientId={prefill?.clientId || activeBackendClientId || undefined}
           clients={clientList as any}
           teamMembers={teamList as any}
+          prefill={prefill ?? undefined}
         />
 
       </div>

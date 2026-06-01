@@ -10,7 +10,8 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
-import { Plus, Trash2, Pencil, X, Check, ChevronDown, ChevronUp, Printer, Copy, Download } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Plus, Trash2, Pencil, X, Check, ChevronDown, ChevronUp, Printer, Copy, Download, FolderKanban } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { useClientContext } from "@/context/ClientContext";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +78,16 @@ export default function Quotes() {
   const createQuote = useCreateQuoteTemplate();
   const updateQuote = useUpdateQuoteTemplate();
   const deleteQuote = useDeleteQuoteTemplate();
+  const [, navigate] = useLocation();
+
+  const convertQuoteToProject = (q: any) => {
+    const params = new URLSearchParams();
+    params.set("new", "1");
+    if (q.clientId) params.set("client", String(q.clientId));
+    if (q.name) params.set("name", q.name);
+    if (q.subtotal) params.set("budget", String(Math.round(Number(q.subtotal))));
+    navigate(`/projects?${params.toString()}`);
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -759,6 +770,15 @@ export default function Quotes() {
                     >
                       <Copy size={14} />
                     </button>
+                    {q.status === "accettato" && (
+                      <button
+                        onClick={() => convertQuoteToProject(q)}
+                        className="p-1.5 text-emerald-600 hover:text-emerald-700 transition-colors"
+                        title="Converti in progetto"
+                      >
+                        <FolderKanban size={14} />
+                      </button>
+                    )}
                     <button onClick={() => openEdit(q)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" title="Modifica">
                       <Pencil size={14} />
                     </button>

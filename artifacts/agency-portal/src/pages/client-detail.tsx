@@ -750,13 +750,21 @@ export default function ClientDetail({ id }: Props) {
 
   const handleApproveReport = async (id: number) => {
     const res = await portalFetch(`/api/reports/${id}/approve`, { method: "POST" });
-    if (!res.ok) { alert("Errore nell'approvazione"); return; }
+    if (!res.ok) {
+      toast({ variant: "destructive", title: "Approvazione non riuscita", description: "Riprova tra qualche secondo." });
+      return;
+    }
+    toast({ title: "Report approvato" });
     fetchReports();
   };
 
   const handleRejectReport = async (id: number) => {
     const res = await portalFetch(`/api/reports/${id}/reject`, { method: "POST" });
-    if (!res.ok) { alert("Errore nel rifiuto"); return; }
+    if (!res.ok) {
+      toast({ variant: "destructive", title: "Rifiuto non riuscito", description: "Riprova tra qualche secondo." });
+      return;
+    }
+    toast({ title: "Report rifiutato" });
     fetchReports();
   };
 
@@ -772,9 +780,10 @@ export default function ClientDetail({ id }: Props) {
       if (data.previewHtml) {
         setSendModal({ report, previewHtml: data.previewHtml });
       } else if (data.sent) {
+        toast({ title: "Report inviato", description: report.recipientEmail });
         fetchReports();
       } else {
-        alert(data.error ?? "Errore durante l'invio");
+        toast({ variant: "destructive", title: "Invio non riuscito", description: data.error ?? "Verifica SMTP e destinatario." });
       }
     } finally {
       setSendingReportId(null);
@@ -784,7 +793,11 @@ export default function ClientDetail({ id }: Props) {
   const handleDeleteReport = async (id: number) => {
     if (!confirm("Eliminare questo report?")) return;
     const res = await portalFetch(`/api/reports/${id}`, { method: "DELETE" });
-    if (!res.ok) { alert("Errore nell'eliminazione"); return; }
+    if (!res.ok) {
+      toast({ variant: "destructive", title: "Eliminazione non riuscita", description: "Riprova tra qualche secondo." });
+      return;
+    }
+    toast({ title: "Report eliminato" });
     fetchReports();
   };
 
@@ -873,7 +886,7 @@ export default function ClientDetail({ id }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      alert("Il file è troppo grande. Massimo 5 MB.");
+      toast({ variant: "destructive", title: "File troppo grande", description: "Massimo 5 MB." });
       return;
     }
     try {
@@ -882,7 +895,7 @@ export default function ClientDetail({ id }: Props) {
       setLogoPreview(dataUrl);
       setForm((prev) => ({ ...prev, logoUrl: dataUrl }));
     } catch {
-      alert("Impossibile leggere l'immagine. Riprova con un altro file.");
+      toast({ variant: "destructive", title: "Immagine non leggibile", description: "Riprova con un altro file." });
     }
   };
 

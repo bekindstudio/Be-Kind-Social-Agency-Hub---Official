@@ -118,16 +118,23 @@ export default function Settings() {
   const handleDriveConnect = async () => {
     setDriveConnecting(true);
     setDriveError("");
+    // Safety net: se la navigazione OAuth non parte entro 60s, sblocca la UI.
+    const timeoutId = window.setTimeout(() => {
+      setDriveConnecting(false);
+      setDriveError("Avvio collegamento scaduto. Riprova.");
+    }, 60_000);
     try {
       const res = await portalFetch("/api/google/oauth/start");
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.url) {
+        clearTimeout(timeoutId);
         setDriveError(data?.message ?? "Impossibile avviare il collegamento.");
         setDriveConnecting(false);
         return;
       }
       window.location.href = data.url;
     } catch {
+      clearTimeout(timeoutId);
       setDriveError("Errore di rete. Riprova.");
       setDriveConnecting(false);
     }
@@ -260,16 +267,23 @@ export default function Settings() {
   const handleMetaOAuth = async () => {
     setMetaConnecting(true);
     setMetaConnectError("");
+    // Safety net: se la navigazione OAuth non parte entro 60s, sblocca la UI.
+    const timeoutId = window.setTimeout(() => {
+      setMetaConnecting(false);
+      setMetaConnectError("Avvio collegamento scaduto. Riprova.");
+    }, 60_000);
     try {
       const res = await portalFetch("/api/meta/oauth/start");
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.url) {
+        clearTimeout(timeoutId);
         setMetaConnectError(data?.error === "META_APP_CONFIG_MISSING" ? "App Meta non configurata." : "Impossibile avviare il collegamento.");
         setMetaConnecting(false);
         return;
       }
       window.location.href = data.url; // redirect a Facebook
     } catch {
+      clearTimeout(timeoutId);
       setMetaConnectError("Errore di rete. Riprova.");
       setMetaConnecting(false);
     }

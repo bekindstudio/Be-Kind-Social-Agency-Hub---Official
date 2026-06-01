@@ -14,6 +14,7 @@ import {
 } from "chart.js";
 import { Line, Bar, Doughnut } from "react-chartjs-2";
 import { Layout } from "@/components/layout/Layout";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { portalFetch } from "@workspace/api-client-react";
 import {
@@ -239,6 +240,7 @@ function getPeriodLabel(tipo: string, period: string): string {
 
 export default function Reports() {
   const { clientList, activeBackendClientId } = useReports();
+  const { toast } = useToast();
 
   // View state
   const [view, setView] = useState<"list" | "create" | "detail" | "edit">("list");
@@ -572,7 +574,11 @@ export default function Reports() {
       pdf.save(filename);
     } catch (err: any) {
       console.error("PDF export error:", err?.message ?? err?.name ?? String(err), err);
-      alert("Errore durante l'esportazione PDF. Riprova.");
+      toast({
+        variant: "destructive",
+        title: "Esportazione PDF non riuscita",
+        description: err?.message ?? "Riprova tra qualche secondo.",
+      });
     }
   };
 

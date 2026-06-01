@@ -444,6 +444,11 @@ export default function Quotes() {
       toast({ title: "Voci mancanti", description: "Aggiungi almeno una voce valida al preventivo.", variant: "destructive" });
       return;
     }
+    const hasNonZeroQuantity = normalizedItems.some((i) => i.quantity > 0 && i.unitPrice >= 0);
+    if (!hasNonZeroQuantity) {
+      toast({ title: "Quantità invalida", description: "Almeno una voce deve avere quantità maggiore di zero.", variant: "destructive" });
+      return;
+    }
     const validityDays = Number(form.validityDays);
     const taxRate = Number(form.taxRate);
     const payload = {

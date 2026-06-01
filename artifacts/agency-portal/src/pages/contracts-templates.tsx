@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useListContractTemplates, getListContractTemplatesQueryKey, portalFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
+import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, X } from "lucide-react";
 import { ContractRichEditor } from "@/components/contracts/ContractRichEditor";
 import { extractVariableKeys, highlightVariablesInHtml, SERVICE_LABELS } from "@/lib/contracts-shared";
@@ -21,6 +22,7 @@ const BASE = "/api";
 
 export default function ContractsTemplates() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: raw, isLoading } = useListContractTemplates();
 
   const templates: TemplateRow[] = Array.isArray(raw)
@@ -50,12 +52,20 @@ export default function ContractsTemplates() {
 
   const saveEdit = async () => {
     if (!editing) return;
+    if (!draftName.trim()) {
+      toast({ variant: "destructive", title: "Nome obbligatorio", description: "Inserisci un nome per il template." });
+      return;
+    }
+    if (!draftContent.trim() || draftContent.trim() === "<p></p>") {
+      toast({ variant: "destructive", title: "Contenuto vuoto", description: "Aggiungi del testo al template prima di salvare." });
+      return;
+    }
     const vars = extractVariableKeys(draftContent);
     const res = await portalFetch(`${BASE}/contracts/${editing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: draftName,
+        name: draftName.trim(),
         type: draftType,
         content: draftContent,
         status: editing.status,
@@ -63,10 +73,13 @@ export default function ContractsTemplates() {
       }),
     });
     if (!res.ok) {
-      alert("Errore salvataggio template");
+      const text = await res.text().catch(() => "");
+      console.error("Save template error:", res.status, text);
+      toast({ variant: "destructive", title: "Salvataggio non riuscito", description: text.slice(0, 160) || "Riprova tra qualche secondo." });
       return;
     }
     await qc.invalidateQueries({ queryKey: getListContractTemplatesQueryKey() });
+    toast({ title: "Template salvato" });
     closeEdit();
   };
 
@@ -92,10 +105,13 @@ export default function ContractsTemplates() {
       }),
     });
     if (!res.ok) {
-      alert("Errore creazione template");
+      const text = await res.text().catch(() => "");
+      console.error("Create template error:", res.status, text);
+      toast({ variant: "destructive", title: "Creazione non riuscita", description: text.slice(0, 160) || "Riprova tra qualche secondo." });
       return;
     }
     await qc.invalidateQueries({ queryKey: getListContractTemplatesQueryKey() });
+    toast({ title: "Template creato" });
   };
 
   const labelForType = (type: string) =>

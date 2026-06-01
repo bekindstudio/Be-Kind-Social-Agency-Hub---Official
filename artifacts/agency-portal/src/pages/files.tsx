@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
+import { useToast } from "@/hooks/use-toast";
 import { Trash2, ExternalLink, FileText, Image, FileSpreadsheet, File, X, Search } from "lucide-react";
 import { formatDate, formatFileSize } from "@/lib/utils";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -24,6 +25,7 @@ function FileIcon({ type }: { type: string }) {
 
 export default function Files() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { activeClient } = useClientContext();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
@@ -74,10 +76,37 @@ export default function Files() {
   const uploaderName = user?.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : "Utente";
 
   const handleUrlCreate = () => {
-    if (!urlForm.name.trim() || !urlForm.url.trim()) return;
+    const name = urlForm.name.trim();
+    const rawUrl = urlForm.url.trim();
+    if (!name || !rawUrl) {
+      toast({ variant: "destructive", title: "Campi obbligatori", description: "Nome e URL sono entrambi richiesti." });
+      return;
+    }
+    // Aggiunge protocollo http:// se l'utente ha incollato un dominio nudo,
+    // e blocca URL chiaramente non navigabili (es. "blah blah").
+    let normalizedUrl = rawUrl;
+    if (!/^https?:\/\//i.test(normalizedUrl)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+    try {
+      new URL(normalizedUrl);
+    } catch {
+      toast({ variant: "destructive", title: "URL non valido", description: "Inserisci un link valido (es. https://drive.google.com/...)." });
+      return;
+    }
     createFile.mutate(
-      { data: { name: urlForm.name, url: urlForm.url, type: urlForm.type, size: null, projectId: urlForm.projectId ? Number(urlForm.projectId) : null, uploadedBy: uploaderName } },
-      { onSuccess: () => { qc.invalidateQueries({ queryKey: getListFilesQueryKey() }); setShowUrlForm(false); setUrlForm({ name: "", url: "", type: "Documento", projectId: "" }); } }
+      { data: { name, url: normalizedUrl, type: urlForm.type, size: null, projectId: urlForm.projectId ? Number(urlForm.projectId) : null, uploadedBy: uploaderName } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getListFilesQueryKey() });
+          setShowUrlForm(false);
+          setUrlForm({ name: "", url: "", type: "Documento", projectId: "" });
+          toast({ title: "Link aggiunto" });
+        },
+        onError: (err: any) => {
+          toast({ variant: "destructive", title: "Salvataggio non riuscito", description: err?.message ?? "Riprova." });
+        },
+      }
     );
   };
 
@@ -91,12 +120,14 @@ export default function Files() {
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">File</h1>
-            <p className="text-muted-foreground text-sm mt-1">{files?.length ?? 0} link condivisi</p>
+            <h1 className="text-2xl font-bold tracking-tight">Link & File esterni</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              {files?.length ?? 0} link condivisi · per upload binari usa Google Drive del cliente
+            </p>
           </div>
           <button onClick={() => setShowUrlForm(!showUrlForm)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
             <ExternalLink size={16} />
-            Aggiungi link
+            Collega URL esterno
           </button>
         </div>
 
@@ -158,7 +189,7 @@ export default function Files() {
           <div className="text-center text-muted-foreground py-12">
             <ExternalLink size={40} className="mx-auto mb-3 text-muted-foreground/30" />
             <p className="font-medium">Nessun link trovato</p>
-            <p className="text-xs mt-1">Aggiungi un link esterno (es. Google Drive, Canva) col pulsante "Aggiungi link"</p>
+            <p className="text-xs mt-1">Collega URL esterni (Google Drive, Canva, Notion, Figma…) con il pulsante in alto a destra.</p>
           </div>
         ) : (
           <div className="grid gap-3">

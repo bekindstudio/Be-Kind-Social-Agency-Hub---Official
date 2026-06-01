@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHmac } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 import { db, clientsTable, projectsTable, tasksTable, contractsTable, clientReportsTable, teamMembersTable } from "@workspace/db";
 import {
@@ -11,6 +11,7 @@ import { z } from "zod";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
 import { validate } from "../middlewares/validate";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -238,7 +239,12 @@ router.post("/clients", validate(createClientSchema), async (req, res): Promise<
       return;
     }
 
-    // Auto-create onboarding advanced task linked to client
+    // Auto-create onboarding advanced task linked to client.
+    // Deliberatamente NON transazionale rispetto all'insert cliente: se la task
+    // fallisce (es. schema task non allineato dopo migration) l'utente
+    // preferisce avere comunque il cliente creato e poter aggiungere la task
+    // manualmente dopo. Il logger.warn rende visibile il fallimento silenzioso
+    // segnalato nell'audit di sicurezza.
     try {
       await db.insert(tasksTable).values({
         clientId: client.id,
@@ -260,8 +266,11 @@ router.post("/clients", validate(createClientSchema), async (req, res): Promise<
           { id: "ob9", testo: "Ricerca competitors completata", completato: false, gruppo: "" },
         ]),
       });
-    } catch {
-      // Do not fail client creation if onboarding task insertion fails.
+    } catch (err) {
+      logger.warn(
+        { err, clientId: client.id, clientName: client.name },
+        "POST /clients: onboarding task auto-creation failed (cliente creato comunque)",
+      );
     }
     res.status(201).json(serializeClient(client));
   } catch (routeError: any) {
@@ -310,19 +319,41 @@ async function assertClientAccessForShare(req: any, res: any, clientId: number):
   return true;
 }
 
+/**
+ * Genera token share firmato con scadenza embedded (default 90 giorni).
+ * Formato: <rand>.<expiryMs base36>.<sig hex 32 chars>
+ * Nessuna migration richiesta: usa la colonna shareToken esistente.
+ * Validato in public-portal.ts (vedi verifyShareToken).
+ */
+function shareTokenSecret(): string {
+  return process.env.SHARE_TOKEN_SECRET
+    || process.env.CRON_SECRET
+    || process.env.TOKEN_ENCRYPTION_KEY
+    || "bekind-share-token";
+}
+
+function generateShareToken(ttlDays = 90): string {
+  const rand = randomBytes(18).toString("base64url");
+  const expiryMs = (Date.now() + ttlDays * 86_400_000).toString(36);
+  const sig = createHmac("sha256", shareTokenSecret()).update(`${rand}.${expiryMs}`).digest("hex").slice(0, 32);
+  return `${rand}.${expiryMs}.${sig}`;
+}
+
 router.post("/clients/:id/share-link", async (req, res): Promise<void> => {
   const params = GetClientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
 
-  const token = randomBytes(24).toString("base64url");
+  const token = generateShareToken();
   const [updated] = await db
     .update(clientsTable)
     .set({ shareToken: token })
     .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
-  res.json({ shareToken: token });
+  // expiresAt esposto per UX (visualizzare scadenza nel dialog di condivisione).
+  const ttlMs = 90 * 86_400_000;
+  res.json({ shareToken: token, expiresAt: new Date(Date.now() + ttlMs).toISOString() });
 });
 
 router.delete("/clients/:id/share-link", async (req, res): Promise<void> => {

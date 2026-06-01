@@ -6,7 +6,7 @@ import {
   DeleteMessageParams,
   ListMessagesQueryParams,
 } from "@workspace/api-zod";
-import { getUserId, isEnvAdmin } from "../lib/access-control";
+import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 
 const router: IRouter = Router();
 
@@ -42,12 +42,26 @@ router.get("/messages", async (req, res): Promise<void> => {
   const teamMember = await getTeamMemberForUser(userId);
   const canDeleteAll = isEnvAdmin(userId);
 
-  let result = messages.map((m) => ({
-    ...m,
-    createdAt: m.createdAt.toISOString(),
-    projectName: m.projectId ? (projectMap.get(m.projectId) ?? null) : null,
-    canDelete: canDeleteAll || (teamMember?.id != null && m.authorId === teamMember.id),
-  }));
+  // ACL enforcement: utenti non-admin vedono solo messaggi di progetti dei
+  // clienti a cui hanno accesso. Messaggi senza projectId (room comune team)
+  // restano visibili a tutti gli utenti autenticati.
+  const accessible = canDeleteAll ? ("all" as const) : await getAccessibleClientIds(userId);
+  const isAccessibleProject = (projectId: number | null) => {
+    if (projectId == null) return true;
+    if (accessible === "all") return true;
+    const cid = projectClientMap.get(projectId);
+    if (cid == null) return true; // progetto interno senza cliente
+    return accessible.includes(cid);
+  };
+
+  let result = messages
+    .filter((m) => isAccessibleProject(m.projectId))
+    .map((m) => ({
+      ...m,
+      createdAt: m.createdAt.toISOString(),
+      projectName: m.projectId ? (projectMap.get(m.projectId) ?? null) : null,
+      canDelete: canDeleteAll || (teamMember?.id != null && m.authorId === teamMember.id),
+    }));
 
   if (query.data.projectId != null) {
     result = result.filter((m) => m.projectId === query.data.projectId);

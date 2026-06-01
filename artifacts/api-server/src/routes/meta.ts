@@ -2,8 +2,6 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { db, socialAccountsTable, clientsTable, clientPostsTable } from "@workspace/db";
-import { readFile, unlink, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { z } from "zod";
 import { decrypt, encrypt, isEncrypted } from "../lib/encrypt";
 import { getAccessibleClientIds, getUserId } from "../lib/access-control";
@@ -118,8 +116,14 @@ function mapMetaError(metaError: any) {
   return { status: 500, body: { error: "META_API_ERROR", metaCode: code, message } };
 }
 
-const LOCAL_META_TOKEN_PATH = resolve(process.cwd(), ".meta-token.local");
-
+/**
+ * Il token Meta viene letto SOLO da env var (su Vercel functions il filesystem
+ * è effimero quindi il fallback su disco era inutile e confondeva la logica).
+ * La persistenza vera dell'integrazione Meta è in `socialAccountsTable` (agency
+ * row clientId=0), gestita da connect-agency/refresh-agency/disconnect-agency.
+ * Le funzioni `persistMetaAccessToken`/`clearMetaAccessToken` aggiornano solo
+ * la cache in-process di process.env per il resto della request.
+ */
 function getPlainMetaToken(value: string | null | undefined): string | null {
   if (!value) return null;
   if (!isEncrypted(value)) return value;
@@ -134,27 +138,15 @@ async function readMetaAccessToken(): Promise<string | null> {
   if (process.env.META_ACCESS_TOKEN && process.env.META_ACCESS_TOKEN.trim().length > 0) {
     return getPlainMetaToken(process.env.META_ACCESS_TOKEN.trim());
   }
-  try {
-    const fileRaw = await readFile(LOCAL_META_TOKEN_PATH, "utf-8");
-    const parsed = JSON.parse(fileRaw) as { accessToken?: string };
-    return getPlainMetaToken(parsed.accessToken?.trim() || null);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 async function persistMetaAccessToken(token: string): Promise<void> {
   process.env.META_ACCESS_TOKEN = token;
-  await writeFile(LOCAL_META_TOKEN_PATH, JSON.stringify({ accessToken: token, updatedAt: new Date().toISOString() }, null, 2), "utf-8");
 }
 
 async function clearMetaAccessToken(): Promise<void> {
   process.env.META_ACCESS_TOKEN = "";
-  try {
-    await unlink(LOCAL_META_TOKEN_PATH);
-  } catch {
-    // ignore if file does not exist
-  }
 }
 
 async function getAgencyAccount() {

@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import { createHmac } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   db,
@@ -24,24 +25,63 @@ const router: IRouter = Router();
 
 type ClientRow = typeof clientsTable.$inferSelect;
 
-async function resolveClient(token: string): Promise<ClientRow | null> {
+function shareTokenSecret(): string {
+  return process.env.SHARE_TOKEN_SECRET
+    || process.env.CRON_SECRET
+    || process.env.TOKEN_ENCRYPTION_KEY
+    || "bekind-share-token";
+}
+
+/**
+ * Verifica il token share. Supporta due formati:
+ *  - "rand.expiryB36.sig"  → token firmato con scadenza (formato corrente)
+ *  - "rand"                → token legacy senza scadenza (pre-2026-06-01)
+ * Il legacy è accettato ma con avviso log: rigenerarlo dal dialog
+ * "Condividi col cliente" creerà uno nuovo firmato con TTL 90gg.
+ */
+function verifyShareToken(token: string): { ok: true; format: "signed" | "legacy" } | { ok: false; reason: "INVALID" | "EXPIRED" | "BAD_SIG" } {
+  const parts = token.split(".");
+  if (parts.length === 1) {
+    // Legacy: random bytes only, no expiry. Lunghezza tipica 24-32 char base64url.
+    if (token.length >= 16 && /^[A-Za-z0-9_-]+$/.test(token)) return { ok: true, format: "legacy" };
+    return { ok: false, reason: "INVALID" };
+  }
+  if (parts.length !== 3) return { ok: false, reason: "INVALID" };
+  const [rand, expiryB36, sig] = parts;
+  const expected = createHmac("sha256", shareTokenSecret()).update(`${rand}.${expiryB36}`).digest("hex").slice(0, 32);
+  if (sig !== expected) return { ok: false, reason: "BAD_SIG" };
+  const expiryMs = parseInt(expiryB36, 36);
+  if (!Number.isFinite(expiryMs)) return { ok: false, reason: "INVALID" };
+  if (expiryMs < Date.now()) return { ok: false, reason: "EXPIRED" };
+  return { ok: true, format: "signed" };
+}
+
+async function resolveClient(token: string): Promise<{ client: ClientRow | null; reason?: "INVALID" | "EXPIRED" | "BAD_SIG" }> {
   const t = (token ?? "").trim();
-  if (!t || t.length < 16) return null;
+  if (!t || t.length < 16) return { client: null, reason: "INVALID" };
+
+  const verdict = verifyShareToken(t);
+  if (!verdict.ok) return { client: null, reason: verdict.reason };
+
   const [client] = await db
     .select()
     .from(clientsTable)
     .where(and(eq(clientsTable.shareToken, t), isNull(clientsTable.deletedAt)));
-  return client ?? null;
+  return { client: client ?? null };
 }
 
-/** Middleware-style helper: risolve il token o risponde 404/410. */
+/** Middleware-style helper: risolve il token o risponde con il codice corretto. */
 async function withClient(req: Request, res: Response): Promise<ClientRow | null> {
-  const client = await resolveClient(req.params.token as string);
-  if (!client) {
-    res.status(404).json({ error: "Link non valido o revocato" });
+  const result = await resolveClient(req.params.token as string);
+  if (!result.client) {
+    if (result.reason === "EXPIRED") {
+      res.status(410).json({ error: "Link scaduto. Chiedi all'agenzia un nuovo link." });
+    } else {
+      res.status(404).json({ error: "Link non valido o revocato" });
+    }
     return null;
   }
-  return client;
+  return result.client;
 }
 
 // Info di base del cliente + sezioni abilitate (per il guscio della pagina pubblica).

@@ -72,26 +72,43 @@ router.get("/dashboard/events", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.get("/dashboard/activity", async (_req, res): Promise<void> => {
+router.get("/dashboard/activity", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId as string);
+  const isAccessibleClient = (id: number | null | undefined) => id == null ? false : accessible === "all" || accessible.includes(id);
+
+  // Pull con margine extra perché filtreremo per ACL; project/task possono non
+  // avere clientId direttamente (i task lo hanno tramite projectId).
   const [projects, tasks, messages, files] = await Promise.all([
-    db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)).limit(5),
-    db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)).limit(5),
-    db.select().from(messagesTable).orderBy(desc(messagesTable.createdAt)).limit(3),
-    db.select().from(filesTable).orderBy(desc(filesTable.createdAt)).limit(3),
+    db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt)).limit(30),
+    db.select().from(tasksTable).orderBy(desc(tasksTable.createdAt)).limit(30),
+    db.select().from(messagesTable).orderBy(desc(messagesTable.createdAt)).limit(15),
+    db.select().from(filesTable).orderBy(desc(filesTable.createdAt)).limit(15),
   ]);
+
+  const projectClientMap = new Map<number, number | null>(projects.map((p) => [p.id, p.clientId ?? null]));
 
   const activity: Array<{ id: number; type: string; description: string; entityName: string; createdAt: Date }> = [];
 
-  for (const p of projects) {
+  for (const p of projects.filter((p) => p.clientId == null || isAccessibleClient(p.clientId)).slice(0, 5)) {
     activity.push({ id: p.id * 10 + 1, type: "project", description: "Progetto creato", entityName: p.name, createdAt: p.createdAt });
   }
-  for (const t of tasks) {
+  for (const t of tasks.filter((t) => {
+    const cid = t.clientId ?? (t.projectId != null ? projectClientMap.get(t.projectId) ?? null : null);
+    return cid == null || isAccessibleClient(cid);
+  }).slice(0, 5)) {
     activity.push({ id: t.id * 10 + 2, type: "task", description: `Task ${t.status}`, entityName: t.title, createdAt: t.createdAt });
   }
-  for (const m of messages) {
+  for (const m of messages.filter((m) => {
+    const cid = m.projectId != null ? projectClientMap.get(m.projectId) ?? null : null;
+    return cid == null || isAccessibleClient(cid);
+  }).slice(0, 3)) {
     activity.push({ id: m.id * 10 + 3, type: "message", description: "Nuovo messaggio", entityName: m.authorName, createdAt: m.createdAt });
   }
-  for (const f of files) {
+  for (const f of files.filter((f) => {
+    const cid = f.projectId != null ? projectClientMap.get(f.projectId) ?? null : null;
+    return cid == null || isAccessibleClient(cid);
+  }).slice(0, 3)) {
     activity.push({ id: f.id * 10 + 4, type: "file", description: "File caricato", entityName: f.name, createdAt: f.createdAt });
   }
 

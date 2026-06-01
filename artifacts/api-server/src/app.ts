@@ -52,6 +52,44 @@ app.use("/api/ai", aiLimiter);
 app.use("/api/ai-chat", aiLimiter);
 app.use("/api/meta/publish", aiLimiter);
 
+/**
+ * Rate limit dedicato per scritture su risorse persistenti, per evitare flood
+ * (creazione massiva di clienti/progetti/task/messaggi). Soglia generosa per
+ * power user reali ma blocca facilmente bot e bug di doppio-click.
+ */
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "WRITE_RATE_LIMIT",
+    message: "Troppe richieste di scrittura. Aspetta qualche secondo.",
+  },
+  skip: (req) => req.method !== "POST" && req.method !== "PUT" && req.method !== "PATCH",
+});
+app.use("/api/clients", writeLimiter);
+app.use("/api/projects", writeLimiter);
+app.use("/api/tasks", writeLimiter);
+app.use("/api/messages", writeLimiter);
+app.use("/api/quotes", writeLimiter);
+
+/**
+ * Rate limit più stretto per il public portal (no auth, accesso via token):
+ * difende contro bruteforce del token share o flood del brief.
+ */
+const publicPortalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "PORTAL_RATE_LIMIT",
+    message: "Troppe richieste. Riprova tra un minuto.",
+  },
+});
+app.use("/api/public/portal", publicPortalLimiter);
+
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
@@ -63,11 +101,30 @@ const allowedOrigins = [
     .filter(Boolean),
 ];
 
-/** Vercel (deploy, preview, branch): accetta qualsiasi sottodominio *.vercel.app (il regex [a-z0-9-]+ escludeva alcuni host validi). */
+/**
+ * Vercel deploy/preview/branch del progetto ufficiale.
+ * Accetta:
+ *  - hostname principale del progetto (env PRIMARY_DOMAIN o suo fallback)
+ *  - sottodomini *.vercel.app SOLO se contengono il prefisso del progetto
+ *    (defaultProjectPrefix = "be-kind-social-agency-hub")
+ * Bloccato: qualsiasi altro `<repo>.vercel.app` di account terzi che potrebbero
+ * essere compromessi (CSRF cross-tenant).
+ */
+const PROJECT_PREFIXES = (
+  process.env.VERCEL_PROJECT_PREFIXES
+  ?? "be-kind-social-agency-hub"
+)
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
 function isAllowedVercelOrigin(origin: string): boolean {
   try {
     const { protocol, hostname } = new URL(origin);
-    return protocol === "https:" && hostname.endsWith(".vercel.app");
+    if (protocol !== "https:") return false;
+    if (!hostname.endsWith(".vercel.app")) return false;
+    const lower = hostname.toLowerCase();
+    return PROJECT_PREFIXES.some((prefix) => lower.startsWith(prefix));
   } catch {
     return false;
   }

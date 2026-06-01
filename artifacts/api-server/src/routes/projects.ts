@@ -21,7 +21,7 @@ const createProjectSchema = z.object({
   description: z.string().trim().nullable().optional(),
   clientId: z.union([z.number(), z.null()]).optional(),
   status: z.string().trim().optional(),
-  progress: z.number().optional(),
+  progress: z.number().int().min(0).max(100).optional(),
   deadline: z.string().trim().nullable().optional(),
   budget: z.union([z.number(), z.string(), z.null()]).optional(),
   budgetSpeso: z.union([z.number(), z.string(), z.null()]).optional(),

@@ -1,4 +1,4 @@
-import { CalendarDays, Search, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, Search, SlidersHorizontal, X, Sun, AlertTriangle, CalendarRange, UserX } from "lucide-react";
 import { cn, PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
 
 interface TaskFiltersProps {
@@ -28,6 +28,8 @@ interface TaskFiltersProps {
   onFilterDateToChange: (value: string) => void;
   hasActiveFilters: boolean;
   onClearFilters: () => void;
+  onApplyPreset?: (preset: "today" | "week" | "overdue" | "unassigned") => void;
+  activePreset?: string;
 }
 
 export function TaskFilters({
@@ -57,9 +59,46 @@ export function TaskFilters({
   onFilterDateToChange,
   hasActiveFilters,
   onClearFilters,
+  onApplyPreset,
+  activePreset,
 }: TaskFiltersProps) {
+  const presets: { key: "today" | "week" | "overdue" | "unassigned"; label: string; icon: any }[] = [
+    { key: "today", label: "Oggi", icon: Sun },
+    { key: "week", label: "Settimana", icon: CalendarRange },
+    { key: "overdue", label: "In ritardo", icon: AlertTriangle },
+    { key: "unassigned", label: "Non assegnate", icon: UserX },
+  ];
   return (
     <>
+      {onApplyPreset && (
+        <div className="mb-3 flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mr-1">Preset</span>
+          {presets.map((p) => {
+            const Icon = p.icon;
+            const active = activePreset === p.key;
+            return (
+              <button
+                key={p.key}
+                onClick={() => onApplyPreset(p.key)}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors",
+                  active ? "border-primary bg-primary/10 text-primary font-semibold" : "border-input hover:bg-muted"
+                )}
+              >
+                <Icon size={12} /> {p.label}
+              </button>
+            );
+          })}
+          {activePreset && (
+            <button
+              onClick={onClearFilters}
+              className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1"
+            >
+              azzera
+            </button>
+          )}
+        </div>
+      )}
       <div className="mb-3 flex items-center justify-between md:hidden">
         <button
           onClick={onToggleMobileFilters}
@@ -119,6 +158,7 @@ export function TaskFilters({
         </select>
         <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none" value={filterAssignee} onChange={(e) => onFilterAssigneeChange(e.target.value)}>
           <option value="">Tutti gli assegnatari</option>
+          <option value="unassigned">Non assegnate</option>
           {assigneeOptions.map((m) => (
             <option key={m.id} value={String(m.id)}>
               {m.name} {m.surname ?? ""}

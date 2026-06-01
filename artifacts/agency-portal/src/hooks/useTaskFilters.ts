@@ -32,7 +32,11 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
       const matchTipo = !filterTipo || task.tipo === filterTipo;
       const matchCategory = !filterCategory || (task.categoria ?? "") === filterCategory;
       const matchProject = !filterProject || String(task.projectId) === filterProject;
-      const matchAssignee = !filterAssignee || String(task.assigneeId) === filterAssignee;
+      const matchAssignee = !filterAssignee
+        ? true
+        : filterAssignee === "unassigned"
+          ? task.assigneeId == null
+          : String(task.assigneeId) === filterAssignee;
       const matchDateFrom = !filterDateFrom || (task.dueDate != null && task.dueDate >= filterDateFrom);
       const matchDateTo = !filterDateTo || (task.dueDate != null && task.dueDate <= filterDateTo);
       return matchActiveClient && matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;

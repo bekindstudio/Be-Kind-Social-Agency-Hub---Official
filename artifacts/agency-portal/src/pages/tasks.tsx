@@ -29,6 +29,7 @@ export default function Tasks() {
   const vm = useTasksPageController();
   const { toast } = useToast();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [activePreset, setActivePreset] = useState<string>("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -39,6 +40,68 @@ export default function Tasks() {
       window.history.replaceState({}, "", `/tasks${newSearch ? `?${newSearch}` : ""}`);
     }
   }, []);
+
+  const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const endOfWeekISO = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = day === 0 ? 0 : 7 - day;
+    d.setDate(d.getDate() + diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (vm.selectedTaskIds.length === 0) return;
+    const results = await Promise.allSettled(
+      vm.selectedTaskIds.map((id: number) =>
+        new Promise<void>((resolve, reject) => {
+          vm.updateTask.mutate(
+            { id, data: { status: newStatus } as any },
+            {
+              onSuccess: () => resolve(),
+              onError: (err: any) => reject(err),
+            }
+          );
+        })
+      )
+    );
+    const success = results.filter((r) => r.status === "fulfilled").length;
+    const failed = vm.selectedTaskIds.length - success;
+    vm.queryClient.invalidateQueries({ queryKey: vm.listTasksKey });
+    if (failed > 0) {
+      toast({ variant: "destructive", title: `${success} aggiornate, ${failed} fallite` });
+    } else {
+      toast({ title: `${success} task aggiornate` });
+    }
+  };
+
+  const applyPreset = (preset: "today" | "week" | "overdue" | "unassigned") => {
+    if (activePreset === preset) {
+      vm.clearFilters();
+      setActivePreset("");
+      return;
+    }
+    vm.clearFilters();
+    if (preset === "today") {
+      const t = todayISO();
+      vm.setFilterDateFrom(t);
+      vm.setFilterDateTo(t);
+    } else if (preset === "week") {
+      vm.setFilterDateFrom(todayISO());
+      vm.setFilterDateTo(endOfWeekISO());
+    } else if (preset === "overdue") {
+      // Le task overdue sono quelle con dueDate < oggi e status != done
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      vm.setFilterDateTo(`${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`);
+    } else if (preset === "unassigned") {
+      vm.setFilterAssignee("unassigned");
+    }
+    setActivePreset(preset);
+  };
 
   const handleWizardCreate = async ({ form, checklist }: { form: any; checklist: any[] }): Promise<void> => {
     if (!form.title?.trim()) return;
@@ -136,12 +199,15 @@ export default function Tasks() {
           filterDateTo={vm.filterDateTo}
           onFilterDateToChange={vm.setFilterDateTo}
           hasActiveFilters={vm.hasActiveFilters}
-          onClearFilters={vm.clearFilters}
+          onClearFilters={() => { vm.clearFilters(); setActivePreset(""); }}
+          onApplyPreset={applyPreset}
+          activePreset={activePreset}
         />
 
         <TaskBulkActions
           selectedIds={vm.selectedTaskIds}
           onDeleteSelected={vm.handleBulkDeleteTasks}
+          onBulkStatusChange={handleBulkStatusChange}
         />
 
         {vm.isLoading ? (

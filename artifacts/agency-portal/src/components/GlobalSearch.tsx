@@ -64,6 +64,9 @@ export function GlobalSearch() {
   if (!open) {
     return (
       <button
+        type="button"
+        aria-label="Apri ricerca globale"
+        title="Cerca clienti, progetti, task (Ctrl+K)"
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
         className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/50 border border-input rounded-lg hover:bg-muted transition-colors"
       >
@@ -88,7 +91,7 @@ export function GlobalSearch() {
           autoFocus
         />
         {query && (
-          <button onClick={() => { setQuery(""); inputRef.current?.focus(); }} className="text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label="Cancella ricerca" onClick={() => { setQuery(""); inputRef.current?.focus(); }} className="text-muted-foreground hover:text-foreground">
             <X size={14} />
           </button>
         )}

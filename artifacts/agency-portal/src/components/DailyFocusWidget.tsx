@@ -48,13 +48,15 @@ export function DailyFocusWidget({ onClick }: { onClick: () => void }) {
 
   return (
     <button
+      type="button"
+      aria-label={`Apri Focus giornaliero (${data.completedTasks}/${data.totalTasks} task completate)`}
       onClick={onClick}
       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
         allDone
           ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
           : "bg-muted hover:bg-muted/80 text-foreground"
       }`}
-      title="Apri Focus giornaliero"
+      title="Apri Focus giornaliero (Ctrl+J)"
     >
       {allDone ? (
         <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />

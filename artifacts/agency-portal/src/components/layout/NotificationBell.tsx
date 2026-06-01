@@ -169,6 +169,9 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
+        aria-label={`Notifiche${unreadCount + smart.unreadCount > 0 ? ` (${unreadCount + smart.unreadCount} non lette)` : ""}`}
+        title="Notifiche"
         onClick={() => { setOpen(!open); if (!open) fetchNotifications(); }}
         className={cn("relative p-2 rounded-lg hover:bg-sidebar-accent transition-colors", buttonClassName)}
       >
@@ -190,7 +193,7 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
                   <CheckCheck size={13} /> Segna tutte lette
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
+              <button type="button" aria-label="Chiudi pannello notifiche" onClick={() => setOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
                 <X size={14} />
               </button>
             </div>

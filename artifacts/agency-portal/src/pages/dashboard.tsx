@@ -537,15 +537,15 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6">
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6">
         {/* Top Header Bar */}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{greeting("Team")}</h1>
-            <p className="text-sm text-muted-foreground capitalize">{italianDate()}</p>
+            <h1 className="text-xl md:text-2xl font-bold">{greeting("Team")}</h1>
+            <p className="text-xs md:text-sm text-muted-foreground capitalize">{italianDate()}</p>
           </div>
-          <div className="flex items-center gap-2 relative">
-            <div className="relative w-72 max-w-[45vw]">
+          <div className="flex items-center gap-2 relative w-full lg:w-auto">
+            <div className="relative flex-1 lg:flex-none lg:w-72">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-input rounded-lg bg-background" placeholder="Cerca progetti, clienti, task..." />
               {search.trim() && (
@@ -564,7 +564,9 @@ export default function Dashboard() {
               panelClassName="right-0 left-auto ml-0 bottom-auto top-full mt-2"
             />
             <div className="relative">
-              <button onClick={() => setShowQuick((s) => !s)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg inline-flex items-center gap-1"><Plus size={14} /> Nuovo <ChevronDown size={14} /></button>
+              <button onClick={() => setShowQuick((s) => !s)} className="px-2 sm:px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg inline-flex items-center gap-1" aria-label="Nuovo">
+                <Plus size={14} /> <span className="hidden sm:inline">Nuovo</span> <ChevronDown size={14} />
+              </button>
               {showQuick && (
                 <div className="absolute right-0 mt-1 w-48 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
                   {[["Nuovo progetto", "/projects"], ["Nuova task", "/tasks"], ["Nuovo cliente", "/clients"], ["Nuovo preventivo", "/quotes"], ["Nuovo messaggio", "/chat"]].map(([l, h]) => (

@@ -1009,7 +1009,7 @@ export default function ClientDetail({ id }: Props) {
 
   return (
     <Layout>
-      <div className="p-8 max-w-5xl">
+      <div className="p-4 md:p-8 max-w-5xl">
         <Link href="/clients">
           <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer mb-6 transition-colors">
             <ChevronLeft size={16} /> Clienti
@@ -1126,7 +1126,7 @@ export default function ClientDetail({ id }: Props) {
                   <p className="text-xs font-medium text-muted-foreground mb-2">Referenti</p>
                   <div className="space-y-2">
                     {editContacts.map((c, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                      <div key={i} className="grid grid-cols-[1fr_1fr_auto] sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
                         <input placeholder="Nome" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.nome ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], nome: e.target.value }; setEditContacts(next); }} />
                         <input placeholder="Ruolo" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.ruolo ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], ruolo: e.target.value }; setEditContacts(next); }} />
                         <input placeholder="Email" className="px-2 py-1.5 text-sm border border-input rounded bg-background" value={c.email ?? ""} onChange={(e) => { const next = [...editContacts]; next[i] = { ...next[i], email: e.target.value }; setEditContacts(next); }} />
@@ -1193,7 +1193,7 @@ export default function ClientDetail({ id }: Props) {
         ) : (
           <div className="space-y-6 mb-10">
             <Section title="Informazioni Generali" icon={<Building2 size={15} className="text-primary" />}>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {FIELD("Email", viewClient.email)}
                 {FIELD("Telefono", viewClient.phone)}
                 {FIELD("Azienda", viewClient.company)}
@@ -1206,7 +1206,7 @@ export default function ClientDetail({ id }: Props) {
 
             {((viewClient as any).ragioneSociale || (viewClient as any).piva || (viewClient as any).codiceFiscale || (viewClient as any).indirizzo || (viewClient as any).pec || (viewClient as any).sdi || (viewClient as any).iban || (viewClient as any).metodoPagamento || (viewClient as any).terminiPagamento) && (
               <Section title="Dati di Fatturazione" icon={<Receipt size={15} className="text-primary" />}>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {FIELD("Ragione Sociale", (viewClient as any).ragioneSociale)}
                   {FIELD("Partita IVA", (viewClient as any).piva)}
                   {FIELD("Codice Fiscale", (viewClient as any).codiceFiscale)}
@@ -1256,7 +1256,7 @@ export default function ClientDetail({ id }: Props) {
 
             {((viewClient as any).instagramHandle || (viewClient as any).metaPageId || (viewClient as any).googleAdsId) && (
               <Section title="Social & Integrazioni" icon={<Share2 size={15} className="text-primary" />}>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {(viewClient as any).instagramHandle && (
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Instagram</p>

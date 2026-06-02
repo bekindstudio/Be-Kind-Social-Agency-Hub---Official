@@ -554,7 +554,7 @@ export default function ProjectDetail({ id }: Props) {
 
   return (
     <Layout>
-      <div className="p-8 space-y-5">
+      <div className="p-4 md:p-8 space-y-5">
         <Link href="/projects" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft size={16} /> Progetti
         </Link>

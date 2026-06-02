@@ -322,7 +322,7 @@ export default function Settings() {
 
   return (
     <Layout>
-      <div className="p-8 max-w-3xl">
+      <div className="p-4 md:p-8 max-w-3xl">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">Impostazioni</h1>
           <p className="text-muted-foreground text-sm mt-1">Configura il tuo portale e le integrazioni</p>

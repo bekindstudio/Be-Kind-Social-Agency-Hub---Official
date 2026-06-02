@@ -193,7 +193,7 @@ export default function Projects() {
 
   return (
     <Layout>
-      <div className="p-8">
+      <div className="p-4 md:p-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
           <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">Progetti attivi</p><p className="text-2xl font-bold">{stats.active}</p></div>
           <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">In scadenza questa settimana</p><p className="text-2xl font-bold">{stats.dueWeek}</p></div>

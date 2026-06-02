@@ -8,7 +8,10 @@
   "functions": {
     "api/**": { "maxDuration": 120 }
   },
-  "crons": [{ "path": "/api/cron/meta-token-renew", "schedule": "0 3 * * *" }],
+  "crons": [
+    { "path": "/api/cron/meta-token-renew", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/monthly-reports", "schedule": "0 4 1 * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }

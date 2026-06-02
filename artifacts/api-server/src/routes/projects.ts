@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import { db, projectsTable, clientsTable, tasksTable, projectActivityTable, projectTemplatesTable, projectMembersTable, projectMilestonesTable, projectExpensesTable } from "@workspace/db";
 import {
   GetProjectParams,
@@ -149,12 +149,19 @@ router.get("/projects", async (req, res): Promise<void> => {
     if (query.data.status != null) {
       projectConditions.push(eq(projectsTable.status, query.data.status));
     }
+    // Wave AF — riduzione N+1: proiezione su clients (solo id+name)
+    // + aggregazione task in una sola query SQL con COUNT FILTER WHERE.
+    // Prima: 3 SELECT con poi loop in JS su task rows. Adesso: 3 SELECT
+    // con la terza che restituisce già il counter per progetto.
     const projects = await db
       .select()
       .from(projectsTable)
       .where(and(...projectConditions))
       .orderBy(projectsTable.createdAt);
-    const clients = await db.select().from(clientsTable).where(isNull(clientsTable.deletedAt));
+    const clients = await db
+      .select({ id: clientsTable.id, name: clientsTable.name })
+      .from(clientsTable)
+      .where(isNull(clientsTable.deletedAt));
     const clientMap = new Map(clients.map((c) => [c.id, c.name]));
 
     const accessible = userId ? await getAccessibleClientIds(userId) : ("all" as const);
@@ -162,27 +169,32 @@ router.get("/projects", async (req, res): Promise<void> => {
 
     const visibleProjects = accessFiltered.filter((p) => canViewProject(p, userId));
     const visibleProjectIds = visibleProjects.map((p) => p.id);
-    const taskRows = visibleProjectIds.length > 0
+
+    // Aggregato task per progetto via SQL (PostgreSQL count + FILTER WHERE).
+    // Una sola query restituisce { project_id, total, done, overdue }.
+    type TaskAggRow = { projectId: number; total: number; done: number; overdue: number };
+    const taskAgg: TaskAggRow[] = visibleProjectIds.length > 0
       ? await db
-        .select({
-          projectId: tasksTable.projectId,
-          status: tasksTable.status,
-          dueDate: tasksTable.dueDate,
-        })
-        .from(tasksTable)
-        .where(and(isNull(tasksTable.deletedAt), inArray(tasksTable.projectId, visibleProjectIds)))
+          .select({
+            projectId: sql<number>`${tasksTable.projectId}`.as("projectId"),
+            total: sql<number>`count(*)::int`.as("total"),
+            done: sql<number>`count(*) FILTER (WHERE ${tasksTable.status} = 'done')::int`.as("done"),
+            overdue: sql<number>`count(*) FILTER (WHERE ${tasksTable.status} <> 'done' AND ${tasksTable.dueDate} < NOW()::date)::int`.as("overdue"),
+          })
+          .from(tasksTable)
+          .where(and(isNull(tasksTable.deletedAt), inArray(tasksTable.projectId, visibleProjectIds)))
+          .groupBy(tasksTable.projectId)
       : [];
 
     const taskStatsByProject = new Map<number, { total: number; done: number; overdue: number }>();
-    const now = new Date();
-    for (const task of taskRows) {
-      const pid = Number(task.projectId);
+    for (const row of taskAgg) {
+      const pid = Number(row.projectId);
       if (!Number.isFinite(pid)) continue;
-      const current = taskStatsByProject.get(pid) ?? { total: 0, done: 0, overdue: 0 };
-      current.total += 1;
-      if (task.status === "done") current.done += 1;
-      if (task.status !== "done" && task.dueDate && new Date(task.dueDate) < now) current.overdue += 1;
-      taskStatsByProject.set(pid, current);
+      taskStatsByProject.set(pid, {
+        total: Number(row.total ?? 0),
+        done: Number(row.done ?? 0),
+        overdue: Number(row.overdue ?? 0),
+      });
     }
 
     const result = visibleProjects.map((p) => {

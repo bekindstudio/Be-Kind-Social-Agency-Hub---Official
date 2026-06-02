@@ -50,6 +50,101 @@ const PAYMENT_OPTIONS = [
   "A ore",
 ];
 
+/**
+ * Template "starter" per progetti ricorrenti. Selezionati nello step 0 prima
+ * di nome/cliente, precompilano tipologia, descrizione, pagamento e suggeriscono
+ * una durata. L'utente può sempre ignorare ("Da zero") e fare manualmente.
+ */
+type Template = {
+  id: string;
+  emoji: string;
+  name: string;
+  description: string;
+  durationDays: number;
+  apply: (color: string) => Partial<FormState>;
+};
+const PROJECT_TEMPLATES: Template[] = [
+  {
+    id: "social-mensile",
+    emoji: "📱",
+    name: "Social Media mensile",
+    description: "Piano editoriale ricorrente con post, stories e community management.",
+    durationDays: 30,
+    apply: (color) => ({
+      description: "Gestione mensile dei canali social: piano editoriale, creazione contenuti, calendarizzazione, community management.",
+      projectTypes: ["Social Media"],
+      paymentStructure: "Mensile ricorrente",
+      color,
+    }),
+  },
+  {
+    id: "adv-meta",
+    emoji: "🎯",
+    name: "Campagna ADV Meta",
+    description: "Setup + ottimizzazione campagna pubblicitaria Meta (FB/IG).",
+    durationDays: 30,
+    apply: (color) => ({
+      description: "Lancio campagna ADV su Meta: audit account, target audiences, creazione creatività, lancio + ottimizzazione.",
+      projectTypes: ["ADV Meta"],
+      paymentStructure: "A milestone",
+      color,
+    }),
+  },
+  {
+    id: "adv-google",
+    emoji: "🔍",
+    name: "Campagna ADV Google",
+    description: "Search + Display, ottimizzazione conversioni.",
+    durationDays: 30,
+    apply: (color) => ({
+      description: "Lancio campagna Google Ads: keyword research, struttura account, copy ads, landing review, ottimizzazione settimanale.",
+      projectTypes: ["ADV Google"],
+      paymentStructure: "A milestone",
+      color,
+    }),
+  },
+  {
+    id: "restyling-sito",
+    emoji: "🌐",
+    name: "Restyling sito",
+    description: "Redesign + ottimizzazione SEO/UX del sito esistente.",
+    durationDays: 60,
+    apply: (color) => ({
+      description: "Restyling completo: audit attuale, wireframe, design, sviluppo, migrazione contenuti, go-live.",
+      projectTypes: ["Web", "SEO"],
+      paymentStructure: "A milestone",
+      color,
+    }),
+  },
+  {
+    id: "brand-identity",
+    emoji: "🎨",
+    name: "Brand Identity",
+    description: "Logo, palette, font, manuale, applicazioni base.",
+    durationDays: 45,
+    apply: (color) => ({
+      description: "Creazione brand identity: mood board, logo, palette, sistema tipografico, manuale d'uso, mockup applicazioni.",
+      projectTypes: ["Branding"],
+      paymentStructure: "A milestone",
+      color,
+    }),
+  },
+  {
+    id: "blank",
+    emoji: "✨",
+    name: "Da zero",
+    description: "Configura tutto manualmente.",
+    durationDays: 0,
+    apply: () => ({}),
+  },
+];
+
+function isoDateInDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 type FormState = {
   name: string;
   clientId: string;
@@ -115,6 +210,20 @@ export function ProjectWizard({
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState<Step>(0);
+  const [templateId, setTemplateId] = useState<string>("");
+
+  const applyTemplate = (tpl: Template) => {
+    setTemplateId(tpl.id);
+    const baseColor = pickClientColor(form.clientId || defaultClientId, clients) ?? form.color ?? "#7a8f5c";
+    const overrides = tpl.apply(baseColor);
+    setForm((prev) => ({
+      ...prev,
+      ...overrides,
+      // Suggerisci deadline solo se non già impostata e il template ha una durata
+      endDate: prev.endDate || (tpl.durationDays > 0 ? isoDateInDays(tpl.durationDays) : prev.endDate),
+      startDate: prev.startDate || (tpl.durationDays > 0 ? isoDateInDays(0) : prev.startDate),
+    }));
+  };
   const [form, setForm] = useState<FormState>(initialForm);
 
   const teamLabel = (m: TeamOption) =>
@@ -269,6 +378,40 @@ export function ProjectWizard({
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {step === 0 && (
             <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-primary" /> Parti da un template (opzionale)
+                </label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {PROJECT_TEMPLATES.map((tpl) => {
+                    const active = templateId === tpl.id;
+                    return (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => applyTemplate(tpl)}
+                        title={tpl.description}
+                        className={cn(
+                          "px-2.5 py-2 rounded-lg border text-left transition-colors text-xs",
+                          active
+                            ? "bg-primary/10 border-primary text-primary font-semibold"
+                            : "bg-background border-input hover:bg-muted"
+                        )}
+                      >
+                        <div className="flex items-center gap-1 leading-none">
+                          <span className="text-sm">{tpl.emoji}</span>
+                          <span className="truncate">{tpl.name}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {templateId && templateId !== "blank" && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Tipi, descrizione, struttura pagamento e durata pre-compilati. Puoi modificare tutto negli step seguenti.
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Nome del progetto *

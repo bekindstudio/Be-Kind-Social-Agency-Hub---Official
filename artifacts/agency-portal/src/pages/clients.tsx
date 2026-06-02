@@ -385,12 +385,14 @@ export default function Clients() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
           <div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input className="w-full pl-9 pr-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Cerca clienti..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterService} onChange={(e) => setFilterService(e.target.value)}><option value="">Servizio</option>{SERVICE_TYPES.map((s) => <option key={s}>{s}</option>)}</select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterContract} onChange={(e) => setFilterContract(e.target.value)}><option value="">Contratto</option>{CONTRACT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterHealth} onChange={(e) => setFilterHealth(e.target.value)}><option value="">Salute</option><option value="good">Buono/Ottimo</option><option value="attention">Attenzione</option><option value="critical">Rischio/Critico</option></select>
-          <button onClick={() => setViewMode(viewMode === "card" ? "table" : "card")} className="px-3 py-2 border border-input rounded-lg bg-background">{viewMode === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
+          <div className="grid grid-cols-3 sm:flex sm:items-center gap-2">
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterService} onChange={(e) => setFilterService(e.target.value)}><option value="">Servizio</option>{SERVICE_TYPES.map((s) => <option key={s}>{s}</option>)}</select>
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterContract} onChange={(e) => setFilterContract(e.target.value)}><option value="">Contratto</option>{CONTRACT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterHealth} onChange={(e) => setFilterHealth(e.target.value)}><option value="">Salute</option><option value="good">Buono/Ottimo</option><option value="attention">Attenzione</option><option value="critical">Rischio/Critico</option></select>
+          </div>
+          <button onClick={() => setViewMode(viewMode === "card" ? "table" : "card")} className="hidden sm:flex px-3 py-2 border border-input rounded-lg bg-background" aria-label={viewMode === "card" ? "Vista tabella" : "Vista card"}>{viewMode === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
         </div>
 
         {selectedClientIds.length > 0 && (
@@ -449,7 +451,7 @@ export default function Clients() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={(e) => handleDelete(e, client.id)} className="absolute top-2 right-2 p-1.5 bg-white/80 rounded-lg text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all shadow-sm"><Trash2 size={13} /></button>
+                  <button onClick={(e) => handleDelete(e, client.id)} className="absolute top-2 right-2 p-1.5 bg-white/80 rounded-lg text-muted-foreground hover:text-destructive opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all shadow-sm" aria-label="Elimina cliente"><Trash2 size={13} /></button>
                 </div>
               </Link>
             ))}

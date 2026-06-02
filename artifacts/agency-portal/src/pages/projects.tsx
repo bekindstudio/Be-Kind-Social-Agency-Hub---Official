@@ -206,13 +206,15 @@ export default function Projects() {
           <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2 shadow-sm"><Sparkles size={15} /> Nuovo Progetto</button>
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input className="w-full pl-9 pr-4 py-2 text-sm border border-input rounded-lg bg-background" placeholder="Cerca progetto o cliente..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Status</option>{STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={client} onChange={(e) => setClient(e.target.value)}><option value="">Client</option>{clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={type} onChange={(e) => setType(e.target.value)}><option value="">Type</option>{TYPE_OPTIONS.map((t) => <option key={t}>{t}</option>)}</select>
-          <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="dueDate">Due date</option><option value="name">Name</option><option value="budget">Budget</option><option value="progress">Progress</option><option value="lastActivity">Last activity</option><option value="client">Client</option></select>
-          <button onClick={() => setView(view === "card" ? "table" : "card")} className="px-2.5 py-2 border border-input rounded-lg bg-background">{view === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Status</option>{STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={client} onChange={(e) => setClient(e.target.value)}><option value="">Client</option>{clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={type} onChange={(e) => setType(e.target.value)}><option value="">Type</option>{TYPE_OPTIONS.map((t) => <option key={t}>{t}</option>)}</select>
+            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="dueDate">Due date</option><option value="name">Name</option><option value="budget">Budget</option><option value="progress">Progress</option><option value="lastActivity">Last activity</option><option value="client">Client</option></select>
+          </div>
+          <button onClick={() => setView(view === "card" ? "table" : "card")} className="hidden sm:flex px-2.5 py-2 border border-input rounded-lg bg-background" aria-label={view === "card" ? "Vista tabella" : "Vista card"}>{view === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
         </div>
 
         {selectedProjectIds.length > 0 && (
@@ -280,7 +282,7 @@ export default function Projects() {
                     <p className={cn("text-xs", p.dueDays != null && p.dueDays <= 7 ? "text-red-600 font-semibold" : "text-muted-foreground")}>{p.deadline ? formatDate(p.deadline) : "—"}</p>
                   </div>
                   {p.dueDays != null && p.dueDays < 0 && <div className="mt-2 text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> Scaduto da {Math.abs(p.dueDays)} giorni</div>}
-                  <div className="mt-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                  <div className="mt-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-wrap">
                     <button onClick={() => navigate(`/projects/${p.id}`)} className="px-2 py-1 text-xs border border-input rounded">Open</button>
                     <button onClick={() => navigate("/tasks")} className="px-2 py-1 text-xs border border-input rounded">New Task</button>
                     <button onClick={() => navigate("/chat")} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><MessageCircle size={12} /> Msg</button>

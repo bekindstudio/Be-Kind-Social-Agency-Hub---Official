@@ -126,7 +126,9 @@ function TaskKanban({
   const [dragOver, setDragOver] = useState<string | null>(null);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+    // Mobile: flex con scroll orizzontale + snap. Desktop (md+): grid 4 colonne.
+    // Le colonne hanno min-w-[260px] su mobile così entra ~1.3 colonne per swipe.
+    <div className="-mx-4 px-4 md:mx-0 md:px-0 flex md:grid overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none md:grid-cols-2 lg:grid-cols-4 gap-3 pb-2 md:pb-0">
       {KANBAN_COLUMNS.map((col) => {
         const items = tasks.filter((t) => normalizeStatus(t.status) === col.key);
         return (
@@ -140,7 +142,7 @@ function TaskKanban({
               setDragOver(null);
             }}
             className={cn(
-              "rounded-xl border p-2 min-h-[200px] flex flex-col transition-colors",
+              "rounded-xl border p-2 min-h-[200px] flex flex-col transition-colors shrink-0 w-[80vw] sm:w-[60vw] md:w-auto snap-start",
               col.color,
               dragOver === col.key && "ring-2 ring-primary/40",
             )}

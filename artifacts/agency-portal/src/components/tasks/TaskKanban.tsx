@@ -33,13 +33,14 @@ export function TaskKanban({
   const draggedTaskRef = useRef<number | null>(null);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+    // Mobile: scroll orizzontale con snap. Desktop (md+): grid 4 colonne.
+    <div className="-mx-4 px-4 md:mx-0 md:px-0 flex md:grid overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none md:grid-cols-2 xl:grid-cols-4 gap-4 pb-2 md:pb-0">
       {KANBAN_STATUSES.map((status) => {
         const colTasks = tasks.filter((task) => task.status === status);
         return (
           <div
             key={status}
-            className="bg-muted/30 rounded-xl p-3 min-h-[300px]"
+            className="bg-muted/30 rounded-xl p-3 min-h-[300px] shrink-0 w-[80vw] sm:w-[60vw] md:w-auto snap-start"
             onDragOver={(e) => {
               e.preventDefault();
               e.currentTarget.classList.add("ring-2", "ring-primary/40");

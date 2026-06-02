@@ -3,6 +3,7 @@ import { portalFetch } from "@workspace/api-client-react";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { CommandPalette } from "@/components/CommandPalette";
+import { InstallBanner } from "@/components/InstallBanner";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
 import { Bell, Menu } from "lucide-react";
@@ -121,6 +122,7 @@ export function Layout({ children }: LayoutProps) {
       />
 
       <CommandPalette />
+      <InstallBanner />
     </div>
   );
 }

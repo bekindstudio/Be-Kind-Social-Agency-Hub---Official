@@ -27,8 +27,8 @@ const createProjectSchema = z.object({
   budgetSpeso: z.union([z.number(), z.string(), z.null()]).optional(),
   category: z.string().trim().nullable().optional(),
   color: z.string().trim().nullable().optional(),
-  projectTypes: z.array(z.string()).optional(),
-  typeJson: z.array(z.string()).optional(),
+  projectTypes: z.array(z.string().trim().max(120)).max(20).optional(),
+  typeJson: z.array(z.string().trim().max(120)).max(20).optional(),
   startDate: z.string().trim().nullable().optional(),
   endDate: z.string().trim().nullable().optional(),
   oreStimate: z.union([z.number(), z.null()]).optional(),
@@ -40,9 +40,9 @@ const createProjectSchema = z.object({
   notes: z.string().trim().nullable().optional(),
   projectManagerId: z.union([z.number(), z.string(), z.null()]).optional(),
   members: z.array(z.object({
-    userId: z.union([z.number(), z.string()]),
-    role: z.string().optional(),
-  })).optional(),
+    userId: z.union([z.number(), z.string().regex(/^\d+$/)]),
+    role: z.string().trim().max(80).optional(),
+  })).max(50).optional(),
   autoCreateOnboardingTask: z.boolean().optional(),
 }).passthrough();
 

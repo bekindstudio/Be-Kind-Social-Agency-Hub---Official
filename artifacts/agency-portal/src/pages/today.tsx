@@ -191,7 +191,7 @@ export default function TodayPage() {
 
   return (
     <Layout>
-      <div className="p-6 md:p-8 max-w-6xl mx-auto">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-6 flex items-end justify-between gap-3 flex-wrap">
           <div>

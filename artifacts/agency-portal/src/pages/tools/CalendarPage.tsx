@@ -263,36 +263,38 @@ export default function CalendarPage() {
 
   return (
     <Layout>
-      <div className="p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="p-4 md:p-6">
+        <div className="mb-4 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Piano Editoriale + Calendario</h1>
+            <h1 className="text-xl md:text-2xl font-bold">Piano Editoriale + Calendario</h1>
             <p className="text-sm text-muted-foreground">Cliente attivo: {activeClient.name}</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="md:ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
+              aria-label="Periodo precedente"
               onClick={() => setCursor((prev) => (view === "week" ? addDays(prev, -7) : addMonths(prev, -1)))}
               className="rounded-lg border border-input p-2"
             >
               <ChevronLeft size={14} />
             </button>
-            <span className="min-w-[220px] text-center text-sm font-semibold capitalize">{periodTitle}</span>
+            <span className="flex-1 sm:flex-none min-w-[140px] md:min-w-[220px] text-center text-sm font-semibold capitalize">{periodTitle}</span>
             <button
               type="button"
+              aria-label="Periodo successivo"
               onClick={() => setCursor((prev) => (view === "week" ? addDays(prev, 7) : addMonths(prev, 1)))}
               className="rounded-lg border border-input p-2"
             >
               <ChevronRight size={14} />
             </button>
-            <div className="ml-2 flex items-center rounded-lg border border-input bg-card p-1">
+            <div className="md:ml-2 flex items-center rounded-lg border border-input bg-card p-1">
               {(["month", "week", "list"] as const).map((item) => (
                 <button key={item} type="button" onClick={() => setView(item)} className={`rounded px-2 py-1 text-xs ${view === item ? "bg-primary text-primary-foreground" : ""}`}>
-                  {item === "month" ? "Mese" : item === "week" ? "Settimana" : "Lista"}
+                  {item === "month" ? "Mese" : item === "week" ? "Sett." : "Lista"}
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => openNewPost(new Date())} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+            <button type="button" onClick={() => openNewPost(new Date())} className="ml-auto md:ml-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
               <Plus size={13} />
               Nuovo post
             </button>

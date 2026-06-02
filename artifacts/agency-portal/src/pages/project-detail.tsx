@@ -562,10 +562,10 @@ export default function ProjectDetail({ id }: Props) {
         </Link>
 
         {/* Header */}
-        <div className="bg-card border border-card-border rounded-xl p-5">
-          <div className="flex items-start justify-between gap-4">
+        <div className="bg-card border border-card-border rounded-xl p-4 md:p-5">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold truncate">{project.name}</h1>
+              <h1 className="text-xl md:text-2xl font-bold truncate">{project.name}</h1>
               <p className="text-sm text-muted-foreground">{data?.client?.name ?? project.clientName ?? "Cliente"}</p>
               <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                 {types.map((t) => <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">{t}</span>)}
@@ -573,7 +573,7 @@ export default function ProjectDetail({ id }: Props) {
                 <HealthBadge health={project.healthStatus ?? "on-track"} />
               </div>
             </div>
-            <div className="text-right text-sm shrink-0">
+            <div className="text-left md:text-right text-sm md:shrink-0">
               <p className="inline-flex items-center gap-1 text-muted-foreground">
                 <CalendarDays size={14} /> {project.deadline ? formatDate(project.deadline) : "Nessuna deadline"}
               </p>

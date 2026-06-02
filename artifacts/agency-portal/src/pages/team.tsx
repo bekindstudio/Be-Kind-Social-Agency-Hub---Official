@@ -378,7 +378,7 @@ export default function Team() {
                 </div>
               </div>
 
-              <div className="flex-1 grid grid-cols-2 gap-4">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Nome *</label>
                   <input className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Mario" value={form.name} onChange={(e) => f("name", e.target.value)} />

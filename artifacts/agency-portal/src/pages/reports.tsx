@@ -699,7 +699,7 @@ export default function Reports() {
           TIPO_LABELS={TIPO_LABELS}
           STATUS_LABELS={STATUS_LABELS}
           STATUS_COLORS={STATUS_COLORS}
-          openReport={openReport}
+          openReport={openReport as (r: any) => void}
           handleDelete={handleDelete}
           handleBulkDelete={handleBulkDelete}
           onCreateNew={({ defaultClientId, defaultMonth: month }) => {

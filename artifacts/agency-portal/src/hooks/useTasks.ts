@@ -40,13 +40,14 @@ export function useTasks() {
     return getOperationalTemplateById(templateId);
   }, [activeClient?.id]);
 
-  const projectList = useMemo(() => {
+  type ProjectLite = { id?: unknown; clientId?: unknown; clientName?: unknown };
+  const projectList = useMemo<ProjectLite[]>(() => {
     if (!projects) return [];
-    if (Array.isArray(projects)) return projects;
+    if (Array.isArray(projects)) return projects as ProjectLite[];
     if (Array.isArray((projects as { items?: unknown[] }).items)) {
-      return (projects as { items: unknown[] }).items;
+      return (projects as { items: ProjectLite[] }).items;
     }
-    return [projects].filter(Boolean);
+    return [projects as ProjectLite].filter(Boolean);
   }, [projects]);
 
   const memberList = useMemo(() => {

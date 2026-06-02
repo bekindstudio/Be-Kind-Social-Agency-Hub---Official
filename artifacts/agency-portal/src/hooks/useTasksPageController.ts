@@ -167,7 +167,8 @@ export function useTasksPageController() {
       updateTask.mutate(
         { id: editId, data: payload },
         {
-          onSuccess: (updated: TaskRow) => {
+          onSuccess: (raw) => {
+            const updated = raw as TaskRow;
             if (updated?.id != null) {
               applyTaskCacheUpdate((list) => list.map((task) => (task.id === updated.id ? { ...task, ...updated } : task)));
             }
@@ -190,7 +191,8 @@ export function useTasksPageController() {
     createTask.mutate(
       { data: payload },
       {
-        onSuccess: (created: TaskRow) => {
+        onSuccess: (raw) => {
+          const created = raw as TaskRow;
           if (created?.id != null) {
             applyTaskCacheUpdate((list) => [created, ...list]);
           }

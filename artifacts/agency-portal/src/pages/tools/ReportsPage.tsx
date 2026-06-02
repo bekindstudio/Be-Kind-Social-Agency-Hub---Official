@@ -225,7 +225,7 @@ export default function ReportsPage() {
   const enabledSections = (Object.values(sections) as boolean[]).filter(Boolean).length;
   const syncStatusLabel = meta.lastSyncAt ? new Date(meta.lastSyncAt).toLocaleString("it-IT") : "non disponibile";
 
-  const applyPreset = (presetId: (typeof quickPresets)[number]["id"]) => {
+  const applyPreset = (presetId: string) => {
     const preset = quickPresets.find((item) => item.id === presetId);
     if (!preset) return;
     setIntroMessage(preset.intro);

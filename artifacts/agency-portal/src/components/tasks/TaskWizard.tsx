@@ -359,7 +359,7 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
                           onChange={(e) => setField("pacchettoContenuti", e.target.value)}
                           className="w-full mt-1 px-4 py-3 text-sm border border-input rounded-xl bg-background"
                         >
-                          {PACCHETTI.map((p: string) => <option key={p}>{p}</option>)}
+                          {PACCHETTI.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                         </select>
                       </div>
                     </div>

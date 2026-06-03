@@ -944,8 +944,21 @@ export default function ClientDetail({ id }: Props) {
           setLogoPreview(null);
           toast({ title: "Cliente aggiornato" });
         },
-        onError: () => {
-          toast({ variant: "destructive", title: "Errore nel salvataggio", description: "Modifiche non salvate. Riprova." });
+        onError: (err: any) => {
+          // Tira fuori il messaggio reale dell'errore backend così l'utente vede
+          // cosa è andato storto (validation Zod, payload troppo grosso, rate limit, ecc.)
+          // invece del generico "Riprova".
+          const detail =
+            err?.data?.error
+            || err?.data?.message
+            || err?.message
+            || "Errore sconosciuto. Apri la console del browser per i dettagli.";
+          console.error("Save client error:", err);
+          toast({
+            variant: "destructive",
+            title: "Errore nel salvataggio",
+            description: String(detail).slice(0, 300),
+          });
         },
       }
     );

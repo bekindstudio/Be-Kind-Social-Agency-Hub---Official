@@ -739,13 +739,23 @@ export default function ClientDetail({ id }: Props) {
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
   useEffect(() => {
+    // B11: clearInterval già presente. Aggiunto guard "cancelled" per evitare
+    // setState dopo unmount se la fetch è ancora in volo quando l'utente
+    // naviga via (warning React in strict mode).
+    let cancelled = false;
     const interval = setInterval(() => {
-      if (!clientId) return;
-      portalFetch(`/api/reports/client/${clientId}`).then((r) => r.json()).then((data) => {
-        if (Array.isArray(data)) setReports(data);
-      }).catch(() => {});
+      if (!clientId || cancelled) return;
+      portalFetch(`/api/reports/client/${clientId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled && Array.isArray(data)) setReports(data);
+        })
+        .catch(() => {});
     }, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [clientId]);
 
   const handleApproveReport = async (id: number) => {

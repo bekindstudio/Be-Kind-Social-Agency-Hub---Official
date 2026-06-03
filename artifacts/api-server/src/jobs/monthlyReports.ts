@@ -84,7 +84,10 @@ export async function generateMonthlyReportDrafts(now: Date = new Date()): Promi
       });
       created += 1;
     } catch (err) {
-      logger.warn({ err, clientId: c.id }, "monthly-reports: insert bozza fallito per cliente");
+      // B15: log esplicito di message + nome cliente per diagnosi rapida
+      // (l'oggetto err da solo è spesso un blob illeggibile nei log JSON).
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn({ err, message, clientId: c.id, clientName: c.name, period }, "monthly-reports: insert bozza fallito per cliente");
       failed += 1;
     }
   }

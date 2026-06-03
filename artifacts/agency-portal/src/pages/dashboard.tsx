@@ -743,8 +743,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Calendario editoriale settimana (tutti i clienti aggregati) */}
-        {editorialAll && editorialAll.clients.length > 0 && (
+        {/* Calendario editoriale settimana (tutti i clienti aggregati).
+            B9: Array.isArray guard difensivo — se la response cambiasse forma o
+            arrivasse parziale, il render non crasha. */}
+        {editorialAll && Array.isArray(editorialAll.clients) && editorialAll.clients.length > 0 && editorialAll.overall && (
           <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div>

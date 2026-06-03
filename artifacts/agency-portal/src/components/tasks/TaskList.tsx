@@ -60,8 +60,10 @@ export function TaskList({
               const isAvanzata = task.tipo === "avanzata";
               const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
               const { done, total, pct } = calcProgress(items);
+              // Riga "completata": sfondo verde tenue + titolo barrato, coerente con TaskCard.
+              const isDone = task.status === "done";
               return (
-                <tr key={task.id} className="border-b border-card-border/50">
+                <tr key={task.id} className={cn("border-b border-card-border/50", isDone && "bg-emerald-50/40")}>
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
@@ -72,7 +74,13 @@ export function TaskList({
                     />
                   </td>
                   <td className="px-3 py-2 max-w-[280px]">
-                    <button onClick={() => handleOpenEdit(task)} className="font-medium hover:text-primary text-left truncate">
+                    <button
+                      onClick={() => handleOpenEdit(task)}
+                      className={cn(
+                        "font-medium hover:text-primary text-left truncate",
+                        isDone && "line-through text-muted-foreground",
+                      )}
+                    >
                       {task.title}
                     </button>
                     {/* F1: badge "Generale" sotto il titolo se la task non ha un progetto. */}
@@ -117,8 +125,10 @@ export function TaskList({
           const isAvanzata = task.tipo === "avanzata";
           const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
           const { done, total, pct } = calcProgress(items);
+          // Card mobile "completata": sfondo verde tenue + titolo barrato.
+          const isDone = task.status === "done";
           return (
-            <div key={task.id} className="p-3">
+            <div key={task.id} className={cn("p-3", isDone && "bg-emerald-50/40")}>
               <div className="flex items-start gap-2">
                 <input
                   type="checkbox"
@@ -128,7 +138,13 @@ export function TaskList({
                   aria-label={`Seleziona task ${task.title}`}
                 />
                 <div className="min-w-0 flex-1">
-                  <button onClick={() => handleOpenEdit(task)} className="font-medium text-left break-words hover:text-primary">
+                  <button
+                    onClick={() => handleOpenEdit(task)}
+                    className={cn(
+                      "font-medium text-left break-words hover:text-primary",
+                      isDone && "line-through text-muted-foreground",
+                    )}
+                  >
                     {task.title}
                   </button>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">

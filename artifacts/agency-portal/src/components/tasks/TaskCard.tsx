@@ -29,13 +29,20 @@ export function TaskCard({
   const isAvanzata = task.tipo === "avanzata";
   const items = isAvanzata ? parseChecklist(task.checklistJson) : [];
   const { pct } = calcProgress(items);
+  // Stile uniforme "completata": sfondo verde tenue, opacity ridotta, titolo barrato.
+  const isDone = task.status === "done";
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className="bg-card border border-card-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+      className={cn(
+        "border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow",
+        isDone
+          ? "bg-emerald-50/60 border-emerald-200 opacity-75"
+          : "bg-card border-card-border",
+      )}
     >
       <div className="mb-2">
         <input
@@ -48,7 +55,15 @@ export function TaskCard({
           aria-label={`Seleziona task ${task.title}`}
         />
       </div>
-      <p onClick={onOpenEdit} className="text-sm font-medium cursor-pointer hover:text-primary transition-colors line-clamp-2">{task.title}</p>
+      <p
+        onClick={onOpenEdit}
+        className={cn(
+          "text-sm font-medium cursor-pointer hover:text-primary transition-colors line-clamp-2",
+          isDone && "line-through text-muted-foreground",
+        )}
+      >
+        {task.title}
+      </p>
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", task.tipo === "avanzata" ? "bg-violet-100 text-violet-700" : "bg-gray-100 text-gray-600")}>
           {task.tipo === "avanzata" ? "Avanzata" : "Semplice"}

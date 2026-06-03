@@ -159,15 +159,20 @@ function TaskKanban({
               {items.map((task) => {
                 const assignee = task.assigneeId ? teamById.get(task.assigneeId) : null;
                 const overdue = col.key !== "done" && task.dueDate && new Date(task.dueDate) < new Date();
+                // Coerente con TaskCard/TaskList: card barrata + bg verde tenue quando done.
+                const isDone = col.key === "done";
                 return (
                   <div
                     key={task.id}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("text/task-id", String(task.id))}
                     onClick={() => onOpen(task)}
-                    className="bg-white border border-card-border rounded-lg p-2 text-sm shadow-sm hover:shadow-md cursor-pointer transition-shadow"
+                    className={cn(
+                      "border rounded-lg p-2 text-sm shadow-sm hover:shadow-md cursor-pointer transition-shadow",
+                      isDone ? "bg-emerald-50/60 border-emerald-200 opacity-75" : "bg-white border-card-border",
+                    )}
                   >
-                    <p className="font-medium text-xs leading-snug line-clamp-2">{task.title}</p>
+                    <p className={cn("font-medium text-xs leading-snug line-clamp-2", isDone && "line-through text-muted-foreground")}>{task.title}</p>
                     <div className="mt-1.5 flex items-center justify-between gap-1">
                       {task.priority && (
                         <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-semibold", priorityClass(task.priority))}>

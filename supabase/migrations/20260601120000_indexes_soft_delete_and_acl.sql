@@ -26,8 +26,8 @@ CREATE INDEX IF NOT EXISTS idx_files_project_id      ON files    (project_id) WH
 -- Lookup token share (single-row by token, very frequent on /public/portal/*)
 CREATE INDEX IF NOT EXISTS idx_clients_share_token   ON clients (share_token) WHERE share_token IS NOT NULL AND deleted_at IS NULL;
 
--- Lookup membri team per authUserId (used in messages routes ACL)
-CREATE INDEX IF NOT EXISTS idx_team_members_auth_user ON team_members (auth_user_id) WHERE auth_user_id IS NOT NULL;
+-- Lookup membri team per authUserId (colonna DB legacy "clerk_user_id" — vedi schema team-members.ts)
+CREATE INDEX IF NOT EXISTS idx_team_members_auth_user ON team_members (clerk_user_id) WHERE clerk_user_id IS NOT NULL;
 
 -- Indici dashboard widget order-by createdAt desc su tabelle large
 CREATE INDEX IF NOT EXISTS idx_projects_created_at_desc ON projects (created_at DESC) WHERE deleted_at IS NULL;

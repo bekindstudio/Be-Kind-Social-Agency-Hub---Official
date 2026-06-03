@@ -99,6 +99,25 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Quando c'è un cliente attivo costruiamo un contesto ricco che il backend
+  // userà nel buildSystemPrompt: settore + scadenza contratto + numero progetti.
+  // Caricato lazy alla prima invocazione del cliente (poi cached).
+  const [clientContextDetail, setClientContextDetail] = useState<any>(null);
+  useEffect(() => {
+    if (!activeClient?.id) { setClientContextDetail(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await portalFetch(`/api/clients/${activeClient.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setClientContextDetail(data);
+      } catch { /* ignore — fallback al contesto minimo */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeClient?.id]);
+
   const derivedClientContext = useMemo(() => {
     if (!activeClient) return null;
     return {
@@ -106,11 +125,17 @@ export function AiChatPanel({ mode = "drawer" }: { mode?: "drawer" | "fullpage" 
       data: {
         id: activeClient.id,
         name: activeClient.name,
+        sector: clientContextDetail?.settore ?? activeClient.industry,
         industry: activeClient.industry,
         status: activeClient.status,
+        contractEndDate: clientContextDetail?.contractEndDate ?? null,
+        activeProjects: clientContextDetail?.activeProjects ?? null,
+        instagramHandle: clientContextDetail?.instagramHandle ?? null,
+        website: clientContextDetail?.website ?? null,
+        notes: clientContextDetail?.notes ?? null,
       },
     };
-  }, [activeClient]);
+  }, [activeClient, clientContextDetail]);
   const effectiveContext = context ?? derivedClientContext;
   const contextType = effectiveContext?.type ?? "general";
 

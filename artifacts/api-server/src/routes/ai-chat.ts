@@ -12,9 +12,69 @@ import {
 } from "@workspace/db";
 import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import OpenAI from "openai";
 import { getAccessibleClientIds, getUserId } from "../lib/access-control";
 import { mapAiError } from "../lib/aiProvider";
 import { requireAiEnabled } from "../lib/ai-flag";
+
+/**
+ * Selezione provider AI per ridurre/eliminare il costo dei token.
+ *
+ * Preferenze in ordine:
+ *  1. AI_PROVIDER=gemini  → Google Gemini Flash via OpenAI-compatible endpoint
+ *     (GRATIS: 15 req/min, 1500/giorno, 1M token/giorno)
+ *  2. AI_PROVIDER=groq    → Groq Llama 3.3 70B (free tier 14400 req/giorno, super fast)
+ *  3. AI_PROVIDER=openai_compat → qualsiasi endpoint OpenAI-compatibile
+ *     (basta settare AI_OPENAI_BASE_URL + AI_OPENAI_API_KEY + AI_OPENAI_MODEL)
+ *  4. AI_PROVIDER=anthropic (o non settato + ANTHROPIC_API_KEY presente) → Claude (PAID)
+ *  5. Fallback → PRIVATE_PORTAL_AI_ONLY mode (zero costo, risposte template)
+ */
+type AiProvider = "gemini" | "groq" | "openai_compat" | "anthropic" | "private";
+
+function selectAiProvider(): AiProvider {
+  const explicit = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
+  if (explicit === "gemini" || explicit === "groq" || explicit === "openai_compat" || explicit === "anthropic" || explicit === "private") {
+    return explicit;
+  }
+  if (process.env.GEMINI_API_KEY?.trim()) return "gemini";
+  if (process.env.GROQ_API_KEY?.trim()) return "groq";
+  if (process.env.AI_OPENAI_API_KEY?.trim() && process.env.AI_OPENAI_BASE_URL?.trim()) return "openai_compat";
+  if (process.env.ANTHROPIC_API_KEY?.trim()) return "anthropic";
+  return "private";
+}
+
+function getOpenAiCompatClient(): { client: OpenAI; model: string } | null {
+  const provider = selectAiProvider();
+  if (provider === "gemini") {
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey) return null;
+    return {
+      client: new OpenAI({
+        apiKey,
+        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+      }),
+      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+    };
+  }
+  if (provider === "groq") {
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey) return null;
+    return {
+      client: new OpenAI({ apiKey, baseURL: "https://api.groq.com/openai/v1" }),
+      model: process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
+    };
+  }
+  if (provider === "openai_compat") {
+    const apiKey = process.env.AI_OPENAI_API_KEY?.trim();
+    const baseURL = process.env.AI_OPENAI_BASE_URL?.trim();
+    if (!apiKey || !baseURL) return null;
+    return {
+      client: new OpenAI({ apiKey, baseURL }),
+      model: process.env.AI_OPENAI_MODEL?.trim() || "gpt-4o-mini",
+    };
+  }
+  return null;
+}
 
 const router = Router();
 
@@ -387,7 +447,11 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
     clientDisconnected = true;
   });
 
-  if (PRIVATE_PORTAL_AI_ONLY) {
+  const provider = selectAiProvider();
+
+  // Branch 1: PRIVATE_PORTAL_AI_ONLY o nessun provider configurato.
+  // Risposte template generate da portalSnapshot, zero costo.
+  if (PRIVATE_PORTAL_AI_ONLY || provider === "private") {
     try {
       const privateReply = buildPrivatePortalReply(String(content), portalSnapshot);
       if (!clientDisconnected) {
@@ -413,6 +477,58 @@ router.post("/anthropic/conversations/:id/messages", async (req, res): Promise<v
     return;
   }
 
+  // Branch 2: provider OpenAI-compatibile (Gemini Flash gratis, Groq, custom).
+  // Stream via OpenAI SDK (compatibile con tutti gli endpoint compat).
+  if (provider === "gemini" || provider === "groq" || provider === "openai_compat") {
+    const compat = getOpenAiCompatClient();
+    if (!compat) {
+      if (!clientDisconnected) {
+        res.write(`data: ${JSON.stringify({ error: "AI_PROVIDER_NOT_CONFIGURED", message: "Provider AI selezionato ma API key mancante." })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+    try {
+      const stream = await compat.client.chat.completions.create({
+        model: compat.model,
+        stream: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        ],
+      });
+      for await (const chunk of stream) {
+        if (clientDisconnected) break;
+        const delta = chunk.choices?.[0]?.delta?.content ?? "";
+        if (delta) {
+          fullResponse += delta;
+          try { res.write(`data: ${JSON.stringify({ content: delta })}\n\n`); } catch { clientDisconnected = true; }
+        }
+        const usage = (chunk as any)?.usage;
+        if (usage?.completion_tokens) totalTokens = usage.completion_tokens;
+      }
+      if (fullResponse) {
+        await db.insert(aiMessages).values({
+          conversationId: convId, role: "assistant", content: fullResponse, tokensUsed: totalTokens || null,
+        });
+        await db.update(aiConversations).set({ updatedAt: new Date() }).where(eq(aiConversations.id, convId));
+      }
+      if (!clientDisconnected) {
+        try { res.write(`data: ${JSON.stringify({ done: true, provider })}\n\n`); res.end(); } catch {}
+      }
+    } catch (err: any) {
+      console.error(`AI chat error (${provider}):`, err?.message);
+      if (!clientDisconnected) {
+        const message = err?.message?.includes("RESOURCE_EXHAUSTED") || err?.status === 429
+          ? "Limite gratuito raggiunto. Riprova tra un minuto."
+          : err?.message ?? "Errore AI";
+        try { res.write(`data: ${JSON.stringify({ error: "AI_ERROR", message })}\n\n`); res.end(); } catch {}
+      }
+    }
+    return;
+  }
+
+  // Branch 3: Anthropic (default storico, PAID — Claude).
   try {
     const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-20250514",

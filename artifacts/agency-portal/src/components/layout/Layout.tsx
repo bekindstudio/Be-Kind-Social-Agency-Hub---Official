@@ -82,13 +82,18 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       <main className="flex-1 overflow-y-auto bg-background min-w-0">
-        <div className="sticky top-0 z-40 bg-background border-b border-border px-4 py-2.5 flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-lg hover:bg-muted transition-colors md:hidden">
+        {/* Topbar mobile-first: niente titolo "Be Kind Social Agency HUB" ridondante
+            (il logo è già in sidebar / nella PWA), bottone notifiche icon-only sotto
+            sm: per evitare che il label "Attiva notifiche web" mandi a capo tutto.
+            Su >= sm: torna il layout pieno con label e gap maggiori. */}
+        <div className="sticky top-0 z-40 bg-background border-b border-border px-2 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1.5 sm:gap-3 min-w-0">
+          <button onClick={() => setSidebarOpen(true)} className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors md:hidden" aria-label="Apri menu">
             <Menu size={20} />
           </button>
-          <span className="text-sm font-semibold md:hidden">Be Kind Social Agency HUB</span>
-          <ClientSelector />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="min-w-0 flex-1 sm:flex-initial">
+            <ClientSelector />
+          </div>
+          <div className="ml-auto flex items-center gap-1 sm:gap-2 shrink-0">
             {webNotifications.isSupported && (
               <button
                 type="button"
@@ -99,11 +104,12 @@ export function Layout({ children }: LayoutProps) {
                   }
                   void webNotifications.requestPermission();
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background p-1.5 sm:px-2.5 sm:py-1.5 text-xs font-medium hover:bg-muted transition-colors"
                 title={isWebNotifyActive ? "Disattiva notifiche web" : "Attiva notifiche web"}
+                aria-label={webNotifyLabel}
               >
                 <Bell size={14} />
-                {webNotifyLabel}
+                <span className="hidden sm:inline">{webNotifyLabel}</span>
               </button>
             )}
             <AutoSaveIndicator />

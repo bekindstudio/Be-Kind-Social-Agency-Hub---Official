@@ -36,6 +36,7 @@ import clientEventsRouter from "./client-events";
 import clientNotesRouter from "./client-notes";
 import cronRouter from "./cron";
 import googleDriveRouter from "./google-drive";
+import personalAgendaRouter from "./personal-agenda";
 
 const router: IRouter = Router();
 
@@ -80,5 +81,6 @@ router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);
 router.use(googleDriveRouter);
+router.use(personalAgendaRouter);
 
 export default router;

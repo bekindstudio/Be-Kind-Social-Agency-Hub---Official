@@ -20,6 +20,7 @@ import { Layout } from "@/components/layout/Layout";
 
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const TodayPage = lazy(() => import("@/pages/today"));
+const AgendaPage = lazy(() => import("@/pages/agenda"));
 const Clients = lazy(() => import("@/pages/clients"));
 const ClientDetail = lazy(() => import("@/pages/client-detail"));
 const Projects = lazy(() => import("@/pages/projects"));
@@ -206,6 +207,11 @@ function Router() {
         <Route path="/today">
           <RouteBoundary routeKey="/today">
             <RequireAuth><TodayPage /></RequireAuth>
+          </RouteBoundary>
+        </Route>
+        <Route path="/agenda">
+          <RouteBoundary routeKey="/agenda">
+            <RequireAuth><AgendaPage /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/trash">

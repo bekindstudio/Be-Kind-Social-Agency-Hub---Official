@@ -21,6 +21,7 @@ import {
   FileText,
   CalendarDays,
   Calendar,
+  CalendarClock,
   Target,
   Sun,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const navGroups = [
     label: "Principale",
     items: [
       { href: "/today", label: "Oggi", icon: Sun },
+      { href: "/agenda", label: "Agenda", icon: CalendarClock },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/clients", label: "Clienti", icon: Users },
       { href: "/projects", label: "Progetti", icon: FolderKanban },

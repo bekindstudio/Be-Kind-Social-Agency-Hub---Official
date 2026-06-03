@@ -36,3 +36,4 @@ export * from "./client-posts";
 export * from "./client-competitors";
 export * from "./client-events";
 export * from "./client-notes";
+export * from "./personal-agenda";

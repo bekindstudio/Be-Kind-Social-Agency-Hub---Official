@@ -95,12 +95,23 @@ export default function AgendaPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
 
-  const { data: events = [], isLoading } = useQuery<AgendaEvent[]>({
+  const { data: events = [], isLoading, error: loadError } = useQuery<AgendaEvent[]>({
     queryKey: ["personal-agenda"],
     staleTime: 30 * 1000,
+    retry: false,
     queryFn: async () => {
       const r = await portalFetch("/api/personal-agenda", { credentials: "include" });
-      if (!r.ok) return [];
+      if (!r.ok) {
+        // Wave BG: surfaccio l'errore reale invece di degradare a [] silenzioso.
+        // Caso tipico: 500 perché la migration SQL non è stata ancora applicata.
+        let detail = `HTTP ${r.status}`;
+        try {
+          const errBody = await r.json();
+          if (errBody?.error) detail = String(errBody.error);
+          else if (errBody?.message) detail = String(errBody.message);
+        } catch { /* non-JSON */ }
+        throw new Error(detail);
+      }
       return r.json();
     },
   });
@@ -187,15 +198,35 @@ export default function AgendaPage() {
         body: JSON.stringify(body),
       });
       if (!r.ok) {
-        toast({ variant: "destructive", title: editingId ? "Modifica non riuscita" : "Creazione non riuscita" });
+        // Wave BG: mostro il vero errore del server invece del generico
+        // "Creazione non riuscita". Causa frequente: tabella non ancora
+        // creata su Supabase (relation "personal_agenda_events" does not exist).
+        let detail = `HTTP ${r.status}`;
+        try {
+          const errBody = await r.json();
+          if (errBody?.error) detail = String(errBody.error);
+          else if (errBody?.message) detail = String(errBody.message);
+          else if (Array.isArray(errBody?.issues) && errBody.issues[0]?.message) {
+            detail = errBody.issues.map((i: any) => `${i.path?.join?.(".") || ""}: ${i.message}`).join(" · ");
+          }
+        } catch { /* body non-JSON, mantengo HTTP n */ }
+        toast({
+          variant: "destructive",
+          title: editingId ? "Modifica non riuscita" : "Creazione non riuscita",
+          description: detail,
+        });
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["personal-agenda"] });
       setFormOpen(false);
       setEditingId(null);
       toast({ title: editingId ? "Appuntamento aggiornato" : "Appuntamento creato" });
-    } catch {
-      toast({ variant: "destructive", title: "Errore di rete" });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Errore di rete",
+        description: err instanceof Error ? err.message : "Connessione non disponibile",
+      });
     }
   };
 
@@ -235,7 +266,20 @@ export default function AgendaPage() {
               <Plus size={14} /> Nuovo appuntamento
             </button>
           </div>
-          {isLoading ? (
+          {loadError ? (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mt-2">
+              <p className="text-sm font-semibold text-amber-900">Tabella agenda non disponibile</p>
+              <p className="text-xs text-amber-800 mt-1">
+                {(loadError as Error).message}
+              </p>
+              <p className="text-xs text-amber-800 mt-2">
+                Probabilmente la migration SQL non è ancora stata applicata su Supabase.
+                Vai su Supabase → SQL Editor → incolla il file{" "}
+                <code className="font-mono text-[11px] bg-white/60 px-1 rounded">supabase/migrations/20260603140000_personal_agenda.sql</code>{" "}
+                → Run.
+              </p>
+            </div>
+          ) : isLoading ? (
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight text-muted-foreground">
               Caricamento agenda…
             </h1>

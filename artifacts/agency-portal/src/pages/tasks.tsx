@@ -138,20 +138,46 @@ export default function Tasks() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8">
-        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Task</h1>
-            <p className="text-muted-foreground text-sm mt-1">{vm.taskList.length} task totali</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 md:gap-3">
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-              <button onClick={() => { vm.setViewMode("list"); localStorage.setItem("tasks-view", "list"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "list" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista lista"><List size={15} /></button>
-              <button onClick={() => { vm.setViewMode("kanban"); localStorage.setItem("tasks-view", "kanban"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "kanban" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista kanban"><Columns3 size={15} /></button>
+      <div className="p-4 md:p-8 max-w-6xl mx-auto">
+        {/* Hero (Wave BI): headline conciso "Hai N task da gestire" + line di
+            contesto. Sostituisce il vecchio "{N} task totali" che era solo
+            un numero senza utilità immediata. Pattern allineato a Today/Agenda. */}
+        {(() => {
+          const allTasks = vm.taskList as any[];
+          const doneCount = allTasks.filter((t) => t?.status === "done").length;
+          const pendingTasks = allTasks.filter((t) => t?.status !== "done");
+          const now = new Date();
+          const overdueCount = pendingTasks.filter((t) => t?.dueDate && new Date(t.dueDate) < now).length;
+          const todoCount = pendingTasks.length;
+          return (
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="min-w-0">
+                {todoCount === 0 ? (
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                    Nessuna task da gestire. <span className="text-emerald-600">Tutto fatto ✓</span>
+                  </h1>
+                ) : (
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                    Hai <span className="text-primary tabular-nums">{todoCount}</span> {todoCount === 1 ? "task" : "task"} da gestire
+                    {overdueCount > 0 && (
+                      <span className="text-amber-600">, {overdueCount} {overdueCount === 1 ? "scaduta" : "scadute"}</span>
+                    )}
+                  </h1>
+                )}
+                <p className="text-sm text-muted-foreground mt-2">
+                  {doneCount} {doneCount === 1 ? "completata" : "completate"} · {allTasks.length} totali
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                  <button onClick={() => { vm.setViewMode("list"); localStorage.setItem("tasks-view", "list"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "list" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista lista"><List size={15} /></button>
+                  <button onClick={() => { vm.setViewMode("kanban"); localStorage.setItem("tasks-view", "kanban"); }} className={`p-1.5 rounded-md transition-all ${vm.viewMode === "kanban" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`} title="Vista kanban"><Columns3 size={15} /></button>
+                </div>
+                <button onClick={() => setWizardOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"><Sparkles size={16} />Nuovo Task</button>
+              </div>
             </div>
-            <button onClick={() => setWizardOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity w-full sm:w-auto shadow-sm"><Sparkles size={16} />Nuovo Task</button>
-          </div>
-        </div>
+          );
+        })()}
 
         <TaskWizard
           open={wizardOpen}

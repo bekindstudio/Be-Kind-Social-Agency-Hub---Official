@@ -52,6 +52,8 @@ import {
   Lightbulb,
   Pin,
   PinOff,
+  MoreHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BRIEF_SECTIONS } from "@/lib/briefSchema";
@@ -147,10 +149,32 @@ const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "meta", label: "Meta", icon: Share2 },
 ];
 
+// Wave BI: tab raggruppate per ridurre l'affollamento. Le 4 più usate
+// sempre visibili, le altre 5 dietro un dropdown "Altro". Su mobile la
+// scrollbar orizzontale resta su tutte (il dropdown non aggiunge valore
+// quando lo schermo è già stretto).
+const PRIMARY_TAB_KEYS: TabKey[] = ["panoramica", "progetti", "brief", "editoriale"];
+
 function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const primaryTabs = TABS.filter((t) => PRIMARY_TAB_KEYS.includes(t.key));
+  const secondaryTabs = TABS.filter((t) => !PRIMARY_TAB_KEYS.includes(t.key));
+  const activeInSecondary = secondaryTabs.find((t) => t.key === active);
+
   return (
     <div className="sticky top-0 z-30 -mx-8 px-8 pt-1 pb-0 bg-background/95 backdrop-blur border-b border-card-border mb-6">
-      <div className="flex gap-1 overflow-x-auto">
+      {/* Mobile: scroll orizzontale di TUTTE le tab (più diretto su schermo stretto) */}
+      <div className="md:hidden flex gap-1 overflow-x-auto">
         {TABS.map((t) => {
           const Icon = t.icon;
           const on = active === t.key;
@@ -160,7 +184,7 @@ function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKe
               onClick={() => onChange(t.key)}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
-                on ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                on ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               <Icon size={15} />
@@ -168,6 +192,77 @@ function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKe
             </button>
           );
         })}
+      </div>
+
+      {/* Desktop (md+): 4 tab principali + dropdown "Altro" per le rimanenti */}
+      <div className="hidden md:flex gap-1 items-center">
+        {primaryTabs.map((t) => {
+          const Icon = t.icon;
+          const on = active === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => onChange(t.key)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                on ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon size={15} />
+              {t.label}
+            </button>
+          );
+        })}
+        <div ref={moreRef} className="relative ml-auto">
+          <button
+            type="button"
+            onClick={() => setMoreOpen((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              activeInSecondary
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+            title="Altre tab"
+          >
+            {activeInSecondary ? (
+              <>
+                <activeInSecondary.icon size={15} />
+                {activeInSecondary.label}
+              </>
+            ) : (
+              <>
+                <MoreHorizontal size={15} />
+                Altro
+              </>
+            )}
+            <ChevronDown size={13} className={cn("transition-transform", moreOpen && "rotate-180")} />
+          </button>
+          {moreOpen && (
+            <div className="absolute right-0 top-full mt-1 w-44 rounded-lg border border-card-border bg-card shadow-lg z-40 p-1">
+              {secondaryTabs.map((t) => {
+                const Icon = t.icon;
+                const on = active === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => {
+                      onChange(t.key);
+                      setMoreOpen(false);
+                    }}
+                    className={cn(
+                      "w-full inline-flex items-center gap-2 px-2.5 py-2 text-sm rounded-md transition-colors text-left",
+                      on ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <Icon size={14} />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

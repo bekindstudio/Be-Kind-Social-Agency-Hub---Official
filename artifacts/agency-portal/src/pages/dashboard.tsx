@@ -110,7 +110,7 @@ function KpiCard({ title, value, sub, trend, color, onClick, progress }: { title
       </div>
       <p className="text-3xl font-bold mt-1">{value}</p>
       <p className="text-xs text-muted-foreground mt-1">{sub}</p>
-      {trend && <p className="text-[11px] text-primary mt-1">{trend}</p>}
+      {trend && <p className="text-xs text-primary mt-1">{trend}</p>}
       {progress != null && (
         <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
           <div className="h-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
@@ -122,10 +122,10 @@ function KpiCard({ title, value, sub, trend, color, onClick, progress }: { title
 
 function AgencyKpiTile({ label, value, trend }: { label: string; value: string; trend?: string }) {
   return (
-    <div className="rounded-lg border border-card-border p-3 bg-muted/20">
-      <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">{label}</p>
+    <div className="rounded-lg border border-card-border p-3 bg-card">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="text-xl font-bold mt-1 tabular-nums">{value}</p>
-      {trend && <p className="text-[10px] text-muted-foreground mt-0.5">{trend}</p>}
+      {trend && <p className="text-xs text-muted-foreground mt-0.5">{trend}</p>}
     </div>
   );
 }
@@ -137,11 +137,11 @@ function FunnelStage({ label, value, referenceMax, color, rate }: { label: strin
       <div className="w-32 text-xs font-medium shrink-0">{label}</div>
       <div className="flex-1 h-7 bg-muted rounded relative overflow-hidden">
         <div className="h-full transition-all flex items-center justify-end px-2" style={{ width: `${widthPct}%`, backgroundColor: color }}>
-          <span className="text-[11px] font-bold text-white tabular-nums">{value}</span>
+          <span className="text-xs font-bold text-white tabular-nums">{value}</span>
         </div>
       </div>
       {rate != null && (
-        <span className="text-[10px] text-muted-foreground tabular-nums w-12 text-right">{rate}%</span>
+        <span className="text-xs text-muted-foreground tabular-nums w-12 text-right">{rate}%</span>
       )}
     </div>
   );
@@ -609,8 +609,8 @@ export default function Dashboard() {
           <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">KPI Agenzia · {agencyKpi.month.label}</p>
-                <h3 className="font-semibold text-sm">Numeri del mese e funnel commerciale</h3>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">KPI Agenzia · {agencyKpi.month.label}</p>
+                <h3 className="font-semibold text-sm mt-0.5">Numeri del mese e funnel commerciale</h3>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -691,13 +691,11 @@ export default function Dashboard() {
         {pendingApprovals && pendingApprovals.items.length > 0 && (
           <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Inbox size={17} />
-                </div>
+              <div className="flex items-center gap-2.5">
+                <Inbox size={18} className="text-amber-600 shrink-0" />
                 <div>
                   <h3 className="font-semibold text-sm">In attesa di te</h3>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {pendingApprovals.counts.total} elementi richiedono un'azione
                     {pendingApprovals.counts.postApproval > 0 && ` · ${pendingApprovals.counts.postApproval} post`}
                     {pendingApprovals.counts.reportReview > 0 && ` · ${pendingApprovals.counts.reportReview} report da revisionare`}
@@ -721,12 +719,12 @@ export default function Dashboard() {
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.clientColor }} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.title}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         {item.clientName} · {item.badge}
                       </p>
                     </div>
                     {dueDate && (
-                      <span className={cn("text-[10px] tabular-nums shrink-0", overdue ? "text-red-600 font-semibold" : "text-muted-foreground")}>
+                      <span className={cn("text-xs tabular-nums shrink-0", overdue ? "text-red-600 font-semibold" : "text-muted-foreground")}>
                         {dueDate.toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}
                       </span>
                     )}
@@ -735,7 +733,7 @@ export default function Dashboard() {
                 );
               })}
               {pendingApprovals.items.length > 12 && (
-                <p className="text-[11px] text-muted-foreground text-center pt-1">
+                <p className="text-xs text-muted-foreground text-center pt-1">
                   +{pendingApprovals.items.length - 12} altri
                 </p>
               )}
@@ -750,9 +748,9 @@ export default function Dashboard() {
           <div className="bg-card border border-card-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div>
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Settimana corrente · tutti i clienti</p>
-                <h3 className="font-semibold text-sm">Calendario editoriale aggregato</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Settimana corrente · tutti i clienti</p>
+                <h3 className="font-semibold text-sm mt-0.5">Calendario editoriale aggregato</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {editorialAll.overall.total} contenuti · {editorialAll.overall.pending} da approvare · {editorialAll.overall.published} pubblicati
                 </p>
               </div>
@@ -788,7 +786,7 @@ export default function Dashboard() {
                         <td key={i} className="text-center py-2 px-1">
                           {day.total > 0 ? (
                             <div className="inline-flex flex-col items-center gap-0.5" title={`Tot ${day.total} · pendenti ${day.pending} · approvati ${day.approved} · pubblicati ${day.published}`}>
-                              <span className="text-[11px] font-semibold tabular-nums">{day.total}</span>
+                              <span className="text-xs font-semibold tabular-nums">{day.total}</span>
                               <div className="flex items-center gap-0.5">
                                 {day.pending > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
                                 {day.approved > 0 && <span className="w-1.5 h-1.5 rounded-full bg-lime-500" />}
@@ -1041,7 +1039,7 @@ export default function Dashboard() {
                   const isTomorrow = dt.toDateString() === new Date(now.getTime() + 86400000).toDateString();
                   return (
                     <button key={i} onClick={() => navigate(d.ref)} className="w-full text-left border border-border rounded-lg p-2 text-sm hover:bg-muted/40">
-                      <p className={cn("text-[11px] font-semibold", isToday ? "text-red-600" : isTomorrow ? "text-amber-600" : "text-muted-foreground")}>{isToday ? "Oggi" : isTomorrow ? "Domani" : formatDate(d.when)}</p>
+                      <p className={cn("text-xs font-semibold", isToday ? "text-red-600" : isTomorrow ? "text-amber-600" : "text-muted-foreground")}>{isToday ? "Oggi" : isTomorrow ? "Domani" : formatDate(d.when)}</p>
                       <p>{d.title}</p>
                     </button>
                   );
@@ -1143,12 +1141,12 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3">
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task in sospeso</p><p className="font-semibold">{(summary as AnyObj)?.pendingTasks ?? 0}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Nuovi clienti (mese)</p><p className="font-semibold">{newClientsMonth}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Preventivi (template)</p><p className="font-semibold">{revenueData?.totalQuotes ?? "—"}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Valore preventivi accettati</p><p className="font-semibold">{revenueData?.totalRevenue != null ? `€ ${Number(revenueData.totalRevenue).toLocaleString("it-IT")}` : "—"}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-[11px] text-muted-foreground">Report inviati</p><p className="font-semibold">{reportsInviatiCount != null ? reportsInviatiCount : "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Task in sospeso</p><p className="font-semibold">{(summary as AnyObj)?.pendingTasks ?? 0}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Nuovi clienti (mese)</p><p className="font-semibold">{newClientsMonth}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Preventivi (template)</p><p className="font-semibold">{revenueData?.totalQuotes ?? "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Valore preventivi accettati</p><p className="font-semibold">{revenueData?.totalRevenue != null ? `€ ${Number(revenueData.totalRevenue).toLocaleString("it-IT")}` : "—"}</p></div>
+            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Report inviati</p><p className="font-semibold">{reportsInviatiCount != null ? reportsInviatiCount : "—"}</p></div>
           </div>
         </div>
 

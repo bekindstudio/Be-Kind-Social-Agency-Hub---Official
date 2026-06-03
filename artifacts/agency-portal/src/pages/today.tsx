@@ -52,22 +52,22 @@ function useApi<T>(key: (string | number)[], path: string, staleSec = 60): { dat
 function StatCard({
   label, value, hint, tone, icon: Icon, href,
 }: { label: string; value: number; hint?: string; tone: "neutral" | "warn" | "ok"; icon: any; href?: string }) {
-  const toneCls =
-    tone === "warn" ? "bg-amber-50 border-amber-200" :
-    tone === "ok" ? "bg-emerald-50 border-emerald-200" : "bg-card border-card-border";
-  const dot =
-    tone === "warn" ? "bg-amber-500" :
-    tone === "ok" ? "bg-emerald-500" : "bg-primary";
+  // Cleanup UX (Wave BD): niente più bg colorato pieno (4 card affiancate con
+  // ambra/verde/blu/grigio sovraccaricavano). Solo border-left sottile + valore
+  // colorato quando > 0 — l'occhio va dove conta, senza rumore cromatico.
+  const accent =
+    tone === "warn" ? "border-l-amber-400" :
+    tone === "ok" ? "border-l-emerald-400" : "border-l-primary/40";
+  const valueColor =
+    tone === "warn" && value > 0 ? "text-amber-700" :
+    tone === "ok" && value > 0 ? "text-emerald-700" : "text-foreground";
   const body = (
-    <div className={cn("rounded-xl border p-4 transition-colors hover:shadow-sm", toneCls)}>
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">{label}</p>
-        <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
+    <div className={cn("rounded-xl border border-card-border border-l-4 bg-card p-4 transition-colors hover:shadow-sm", accent)}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={cn("text-2xl font-bold mt-1", valueColor)}>{value}</p>
       <div className="flex items-center justify-between mt-1">
-        <p className="text-[11px] text-muted-foreground">{hint ?? " "}</p>
-        <Icon size={16} className="text-muted-foreground" />
+        <p className="text-xs text-muted-foreground">{hint ?? " "}</p>
+        <Icon size={15} className="text-muted-foreground/70" />
       </div>
     </div>
   );
@@ -93,10 +93,11 @@ function TaskTodayRow({
   const isDone = task.status === "done";
   return (
     <div className={cn(
-      "flex items-start gap-2.5 rounded-lg p-2.5 transition-colors group border",
-      overdue ? "border-amber-200 bg-amber-50 hover:bg-amber-100"
-        : isDone ? "border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50"
-        : "border-card-border/60 hover:bg-muted/40"
+      // Cleanup UX (Wave BD): niente bg ambra/verde pieni. Border-left sottile
+      // basta a comunicare overdue; per done solo opacity ridotta + line-through.
+      "flex items-start gap-2.5 rounded-lg p-2.5 transition-colors group border border-card-border/60 hover:bg-muted/40",
+      overdue && "border-l-2 border-l-amber-400",
+      isDone && "opacity-60",
     )}>
       {/* Checkbox inline per toggle done */}
       <button
@@ -122,14 +123,14 @@ function TaskTodayRow({
         <p className={cn("text-sm font-medium truncate", isDone && "line-through text-muted-foreground")}>
           {task.title}
         </p>
-        <p className={cn("text-[11px]", overdue ? "text-amber-700" : "text-muted-foreground")}>
+        <p className={cn("text-xs", overdue ? "text-amber-700" : "text-muted-foreground")}>
           {overdue && task.dueDate ? `Scaduta il ${formatDate(task.dueDate)}` : task.dueDate ? `Scadenza oggi` : "Senza scadenza"}
           {task.clientName ? ` · ${task.clientName}` : task.projectName ? ` · ${task.projectName}` : (!task.clientId && !task.projectId ? " · Generale" : "")}
         </p>
       </button>
 
       {task.priority === "urgent" && !isDone && (
-        <span className="text-[10px] rounded-full bg-rose-100 text-rose-700 px-2 py-0.5 shrink-0 mt-0.5">Urgente</span>
+        <span className="text-xs rounded-full bg-rose-100 text-rose-700 px-2 py-0.5 shrink-0 mt-0.5">Urgente</span>
       )}
       <ChevronRight size={13} className="text-muted-foreground shrink-0 mt-1" />
     </div>
@@ -395,7 +396,7 @@ export default function TodayPage() {
                       <button
                         type="button"
                         onClick={() => setShowAllTasks(false)}
-                        className="w-full text-center text-[10px] text-muted-foreground hover:underline pt-1"
+                        className="w-full text-center text-xs text-muted-foreground hover:underline pt-1"
                       >
                         Collassa
                       </button>
@@ -419,11 +420,11 @@ export default function TodayPage() {
                   <span className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: e.clientColor || "#7a8f5c" }} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{e.title}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {formatDate(e.date)}{e.clientName ? ` · ${e.clientName}` : ""}
                     </p>
                   </div>
-                  <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
+                  <span className="text-xs rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
                 </div>
               ))}
             </div>
@@ -443,18 +444,18 @@ export default function TodayPage() {
                     <FileText size={14} className="text-amber-600 mt-0.5 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{r.titolo ?? r.title ?? "Report"}</p>
-                      <p className="text-[11px] text-muted-foreground">In attesa di approvazione{r.clientName ? ` · ${r.clientName}` : ""}</p>
+                      <p className="text-xs text-muted-foreground">In attesa di approvazione{r.clientName ? ` · ${r.clientName}` : ""}</p>
                     </div>
                   </div>
                 </Link>
               ))}
               {aggregates.reportsToSend.slice(0, 4).map((r: AnyObj) => (
                 <Link key={r.id} href="/tools/reports">
-                  <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 hover:bg-emerald-100 transition-colors cursor-pointer">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-card-border/60 border-l-2 border-l-emerald-400 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
                     <FileText size={14} className="text-emerald-600 mt-0.5 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{r.titolo ?? r.title ?? "Report"}</p>
-                      <p className="text-[11px] text-emerald-700">Pronto da inviare{r.clientName ? ` · ${r.clientName}` : ""}</p>
+                      <p className="text-xs text-emerald-700">Pronto da inviare{r.clientName ? ` · ${r.clientName}` : ""}</p>
                     </div>
                   </div>
                 </Link>
@@ -475,7 +476,7 @@ export default function TodayPage() {
                     <BookOpen size={14} className="text-primary shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">Brief incompleto: {b.name}</p>
-                      <p className="text-[11px] text-muted-foreground">Compilato al {b.pct}%</p>
+                      <p className="text-xs text-muted-foreground">Compilato al {b.pct}%</p>
                     </div>
                     <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                   </div>
@@ -483,11 +484,11 @@ export default function TodayPage() {
               ))}
               {aggregates.contractsExpiring.slice(0, 4).map((c: AnyObj) => (
                 <Link key={c.id} href={`/clients/${c.clientId}`}>
-                  <div className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 hover:bg-amber-100 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-2.5 rounded-lg border border-card-border/60 border-l-2 border-l-amber-400 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
                     <Receipt size={14} className="text-amber-600 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">Contratto in scadenza: {c.clientName ?? "Cliente"}</p>
-                      <p className="text-[11px] text-amber-700">Scade il {formatDate(c.dataFine)}</p>
+                      <p className="text-xs text-amber-700">Scade il {formatDate(c.dataFine)}</p>
                     </div>
                     <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                   </div>
@@ -497,7 +498,7 @@ export default function TodayPage() {
           </SectionCard>
         </div>
 
-        <p className="mt-6 text-center text-[11px] text-muted-foreground">
+        <p className="mt-6 text-center text-xs text-muted-foreground">
           Dati aggiornati automaticamente. Vista per oggi · {sevenKey}
         </p>
       </div>
@@ -538,11 +539,9 @@ function TodayTasksPopup({
     <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-3" onClick={onClose}>
       <div className="bg-card border border-card-border rounded-2xl w-full max-w-3xl max-h-[90vh] shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-card-border flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <Sun size={18} className="text-amber-600" />
-          </div>
+          <Sun size={20} className="text-amber-500 shrink-0" />
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-base">Task di oggi</h2>
+            <h2 className="font-semibold text-base">Task di oggi</h2>
             <p className="text-xs text-muted-foreground">
               {todoCount} da fare · {tasksDoneToday.length} completate oggi · {total} totali
             </p>
@@ -555,8 +554,8 @@ function TodayTasksPopup({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {tasksOverdue.length > 0 && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-amber-700 font-semibold mb-2 flex items-center gap-1.5">
-                <AlertTriangle size={11} /> In ritardo ({tasksOverdue.length})
+              <h3 className="text-xs uppercase tracking-wide text-amber-700 font-semibold mb-2 flex items-center gap-1.5">
+                <AlertTriangle size={12} /> In ritardo ({tasksOverdue.length})
               </h3>
               <div className="space-y-1.5">
                 {tasksOverdue.map((t) => (
@@ -568,8 +567,8 @@ function TodayTasksPopup({
 
           {tasksToday.length > 0 && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-foreground/70 font-semibold mb-2 flex items-center gap-1.5">
-                <CheckSquare size={11} /> Da fare oggi ({tasksToday.length})
+              <h3 className="text-xs uppercase tracking-wide text-foreground/70 font-semibold mb-2 flex items-center gap-1.5">
+                <CheckSquare size={12} /> Da fare oggi ({tasksToday.length})
               </h3>
               <div className="space-y-1.5">
                 {tasksToday.map((t) => (
@@ -581,8 +580,8 @@ function TodayTasksPopup({
 
           {tasksDoneToday.length > 0 && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-emerald-700 font-semibold mb-2 flex items-center gap-1.5">
-                <Check size={11} /> Completate oggi ({tasksDoneToday.length})
+              <h3 className="text-xs uppercase tracking-wide text-emerald-700 font-semibold mb-2 flex items-center gap-1.5">
+                <Check size={12} /> Completate oggi ({tasksDoneToday.length})
               </h3>
               <div className="space-y-1.5">
                 {tasksDoneToday.map((t) => (
@@ -602,7 +601,7 @@ function TodayTasksPopup({
         </div>
 
         <div className="px-5 py-3 border-t border-card-border bg-muted/30 flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Click sulla task per andare al cliente · checkbox per marcare fatta
           </p>
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:opacity-90">

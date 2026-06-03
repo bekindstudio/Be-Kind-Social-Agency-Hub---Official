@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { portalFetch } from "@workspace/api-client-react";
 import { Bell, Check, CheckCheck, Trash2, X, CheckSquare, FileText, FileSignature, MessageCircle, Info, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,17 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
   const prevUnreadCount = useRef<number | null>(null);
   const soundEnabled = useRef(false);
   const smart = useSmartReminders();
+  const [, setLocation] = useLocation();
+  // Cancella la fetch precedente quando ne parte una nuova (evita race con polling concorrente).
+  const inflightAbortRef = useRef<AbortController | null>(null);
+  // Token incrementato ad ogni mutation (mark/delete): se un response GET in arrivo è "vecchio"
+  // rispetto all'ultima mutation, lo scartiamo per evitare di sovrascrivere stato fresco.
+  const mutationTokenRef = useRef(0);
+  // Limita /api/deadlines/check (side-effect DB) a una volta ogni 5 minuti per client,
+  // invece di chiamarlo ad ogni poll (era ~ogni 30s). Soluzione client-side temporanea
+  // in attesa di spostare la generazione scadenze su Vercel cron server-side.
+  const lastDeadlineCheckRef = useRef(0);
+  const DEADLINE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
   const playNotificationSound = useCallback(() => {
     try {
@@ -84,26 +96,54 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
   }, []);
 
   const fetchNotifications = useCallback(async () => {
+    // Annulla qualunque richiesta precedente ancora in volo: vince sempre l'ultima.
+    inflightAbortRef.current?.abort();
+    const controller = new AbortController();
+    inflightAbortRef.current = controller;
+    // Snapshot del token mutation al momento dello start: se cambia durante il fetch,
+    // significa che è arrivata una mark-read/delete e dobbiamo scartare questa risposta.
+    const tokenAtStart = mutationTokenRef.current;
     try {
-      // Genera/aggiorna gli avvisi di scadenza prima di leggere il feed notifiche.
-      await portalFetch("/api/deadlines/check", { method: "POST" }).catch(() => null);
+      // Genera/aggiorna gli avvisi di scadenza al massimo ogni 5 minuti per client.
+      // Era POST ad ogni poll (~30s) = side-effect DB ripetuto, troppo costoso.
+      const now = Date.now();
+      if (now - lastDeadlineCheckRef.current >= DEADLINE_CHECK_INTERVAL_MS) {
+        lastDeadlineCheckRef.current = now;
+        await portalFetch("/api/deadlines/check", {
+          method: "POST",
+          signal: controller.signal,
+        }).catch(() => null);
+      }
       const [notifRes, countRes] = await Promise.all([
-        portalFetch("/api/notifications"),
-        portalFetch("/api/notifications/unread-count"),
+        portalFetch("/api/notifications", { signal: controller.signal }),
+        portalFetch("/api/notifications/unread-count", { signal: controller.signal }),
       ]);
+      // Se nel frattempo è partita una nuova fetch (o una mutation), molla.
+      if (controller.signal.aborted || mutationTokenRef.current !== tokenAtStart) return;
       if (notifRes.status === 401 || countRes.status === 401) {
         setNotifications([]);
         setUnreadCount(0);
         return;
       }
-      if (notifRes.ok) setNotifications(await notifRes.json());
+      if (notifRes.ok) {
+        const data = await notifRes.json();
+        if (controller.signal.aborted || mutationTokenRef.current !== tokenAtStart) return;
+        setNotifications(data);
+      }
       if (countRes.ok) {
         const { count } = await countRes.json();
+        if (controller.signal.aborted || mutationTokenRef.current !== tokenAtStart) return;
         setUnreadCount(count);
       }
-    } catch {
+    } catch (err) {
+      // Le abort sono attese: non resettare lo stato in quel caso.
+      if ((err as { name?: string })?.name === "AbortError") return;
       setNotifications([]);
       setUnreadCount(0);
+    } finally {
+      if (inflightAbortRef.current === controller) {
+        inflightAbortRef.current = null;
+      }
     }
   }, []);
 
@@ -114,7 +154,12 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
         fetchNotifications();
       }
     }, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Annulla la fetch in volo all'unmount per evitare setState su componente smontato.
+      inflightAbortRef.current?.abort();
+      inflightAbortRef.current = null;
+    };
   }, [fetchNotifications, open]);
 
   useEffect(() => {
@@ -151,17 +196,21 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
   }, []);
 
   const markRead = async (id: number) => {
+    // Bump token PRIMA della mutation: ogni GET in volo verrà scartato al ritorno.
+    mutationTokenRef.current += 1;
     await portalFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
     fetchNotifications();
   };
 
   const markAllRead = async () => {
+    mutationTokenRef.current += 1;
     await portalFetch("/api/notifications/read-all", { method: "POST" });
     smart.markAllRead();
     fetchNotifications();
   };
 
   const deleteNotif = async (id: number) => {
+    mutationTokenRef.current += 1;
     await portalFetch(`/api/notifications/${id}`, { method: "DELETE" });
     fetchNotifications();
   };
@@ -184,7 +233,11 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
       </button>
 
       {open && (
-        <div className={cn("absolute left-full ml-2 bottom-0 w-80 bg-card border border-border rounded-xl shadow-xl z-50 max-h-[460px] flex flex-col", panelClassName)}>
+        // Default: pannello agganciato a destra sotto il bottone (caso header top-right).
+        // Per altri layout (es. sidebar verticale) passare `panelClassName` per override
+        // (es. "left-full ml-2 bottom-0" o "left-0 top-full mt-2").
+        // `max-w-[calc(100vw-1rem)]` evita overflow orizzontale su viewport stretti.
+        <div className={cn("absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] bg-card border border-border rounded-xl shadow-xl z-50 max-h-[460px] flex flex-col", panelClassName)}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-foreground">Notifiche</h3>
             <div className="flex items-center gap-1">
@@ -227,7 +280,8 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
                         )}
                         onClick={() => {
                           smart.markRead(reminder.id);
-                          window.location.href = reminder.link;
+                          setOpen(false);
+                          setLocation(reminder.link);
                         }}
                       >
                         <span className="inline-flex items-center gap-1 font-semibold">
@@ -258,7 +312,10 @@ export function NotificationBell({ buttonClassName, iconClassName, panelClassNam
                     )}
                     onClick={() => {
                       if (!n.isRead) markRead(n.id);
-                      if (n.link) window.location.href = n.link;
+                      if (n.link) {
+                        setOpen(false);
+                        setLocation(n.link);
+                      }
                     }}
                   >
                     <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", bg)}>

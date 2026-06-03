@@ -129,8 +129,12 @@ function getPlainMetaToken(value: string | null | undefined): string | null {
   if (!isEncrypted(value)) return value;
   try {
     return decrypt(value);
-  } catch {
-    return value;
+  } catch (err) {
+    // B13: log + null invece di ritornare il valore criptato as-is. Prima
+    // il fallback `return value` faceva sì che la request Meta API venisse
+    // chiamata con un token criptato → 401 silente impossibile da diagnosticare.
+    logger.warn({ err, message: err instanceof Error ? err.message : String(err) }, "Meta token: decrypt failed, ritorno null (riconnetti l'account)");
+    return null;
   }
 }
 

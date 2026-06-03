@@ -90,9 +90,19 @@ function serializeClient(c: typeof clientsTable.$inferSelect) {
     ...c,
     contacts: safeJsonArray(c.contactsJson),
     services: safeJsonArray(c.servicesJson),
-    createdAt: c.createdAt ? new Date(c.createdAt as any).toISOString() : null,
-    updatedAt: c.updatedAt ? new Date(c.updatedAt as any).toISOString() : null,
+    // B12: serializzazione date safe — se per qualche motivo c.createdAt
+    // è una stringa Invalid Date, .toISOString() esplodeva con 500.
+    // Ora coerciamo prima e ritorniamo null se non parsabile.
+    createdAt: safeToIso(c.createdAt),
+    updatedAt: safeToIso(c.updatedAt),
   };
+}
+
+function safeToIso(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(v as any);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function computeHealthScore(input: {

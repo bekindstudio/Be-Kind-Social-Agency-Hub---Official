@@ -48,6 +48,7 @@ function wasDismissedRecently(): boolean {
 export function InstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [iosHintOpen, setIosHintOpen] = useState(false);
+  const [genericHintOpen, setGenericHintOpen] = useState(false);
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -64,7 +65,13 @@ export function InstallBanner() {
     // iOS: nessun evento. Mostra il banner dopo 8s di permanenza.
     let iosTimer: number | undefined;
     if (isIos()) {
-      iosTimer = window.setTimeout(() => setShow(true), 8_000);
+      iosTimer = window.setTimeout(() => {
+        // Race-guard: se l'utente ha cliccato "Più tardi" prima dello scadere
+        // del timer, wasDismissedRecently() ora ritorna true e non riapriamo
+        // il banner. Il cleanup del clearTimeout copre solo l'unmount.
+        if (wasDismissedRecently()) return;
+        setShow(true);
+      }, 8_000);
     }
 
     return () => {
@@ -77,6 +84,7 @@ export function InstallBanner() {
     try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
     setShow(false);
     setIosHintOpen(false);
+    setGenericHintOpen(false);
   };
 
   const handleInstall = async () => {
@@ -93,7 +101,11 @@ export function InstallBanner() {
     }
     if (isIos()) {
       setIosHintOpen(true);
+      return;
     }
+    // Fallback: nessun beforeinstallprompt e non iOS (es. Firefox/Brave Android).
+    // Mostriamo istruzioni manuali generiche invece di lasciare il bottone silenzioso.
+    setGenericHintOpen(true);
   };
 
   if (!show) return null;
@@ -148,6 +160,21 @@ export function InstallBanner() {
               <li>3. Conferma il nome e tocca <strong>Aggiungi</strong>.</li>
             </ol>
             <p className="text-xs text-muted-foreground mb-3">L'app comparirà sulla Home con la sua icona, esattamente come un'app nativa.</p>
+            <button onClick={dismiss} className="w-full bg-primary text-primary-foreground rounded-lg py-2 text-sm font-semibold">Ok, capito</button>
+          </div>
+        </div>
+      )}
+
+      {genericHintOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => setGenericHintOpen(false)}>
+          <div className="bg-card rounded-2xl p-5 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-base mb-2">Installa l'app dal browser</h3>
+            <ol className="text-sm text-muted-foreground space-y-2 mb-4">
+              <li>1. Apri il menu del browser (icona <strong>tre puntini</strong> in alto a destra).</li>
+              <li>2. Tocca <strong>"Installa app"</strong> o <strong>"Aggiungi a schermata Home"</strong>.</li>
+              <li>3. Conferma per aggiungere l'icona alla Home.</li>
+            </ol>
+            <p className="text-xs text-muted-foreground mb-3">Se la voce non compare, prova con Chrome o Edge: alcuni browser (es. Firefox) non supportano l'installazione automatica.</p>
             <button onClick={dismiss} className="w-full bg-primary text-primary-foreground rounded-lg py-2 text-sm font-semibold">Ok, capito</button>
           </div>
         </div>

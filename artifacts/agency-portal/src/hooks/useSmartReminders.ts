@@ -1,10 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import { useListTasks } from "@workspace/api-client-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useListTasks, type Task } from "@workspace/api-client-react";
 import { useClientContext } from "@/context/ClientContext";
 import { getBriefCompletion } from "@/components/tools/brief/briefCompletion";
 import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 
 type ReminderSeverity = "critical" | "warning" | "info";
+
+// Canonical "closed" task statuses. The backend uses `done` for tasks (see
+// api-server/src/routes/tasks.ts) and `completed`/`archived` for projects, but
+// we accept all three here to stay resilient against legacy rows or future
+// schema tweaks — the bug we're guarding against is treating a closed task as
+// "unassigned" just because the status string evolved.
+const DONE_TASK_STATUSES = new Set<string>(["done", "completed", "archived"]);
+
+function isTaskOpen(task: Task): boolean {
+  return !DONE_TASK_STATUSES.has(task.status);
+}
+
+function isTaskUnassigned(task: Task): boolean {
+  // assigneeId is `number | null | undefined` in the schema; treat 0 as unset
+  // too so we don't miss seeded rows that use 0 as a sentinel.
+  return task.assigneeId == null || task.assigneeId === 0;
+}
 
 export interface SmartReminder {
   id: string;
@@ -36,16 +53,25 @@ export function useSmartReminders() {
   const { data: tasksRaw } = useListTasks({});
   const { preferences } = useReminderPreferences();
   const [readMap, setReadMap] = useState<ReadState>(() => readState());
+  const initialLoadRef = useRef(true);
 
   useEffect(() => {
+    // Skip the very first write right after mount: state was just hydrated
+    // from localStorage, persisting it again would be a no-op that can race
+    // with another tab writing meaningful data at the same time.
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(readMap));
   }, [readMap]);
 
-  const tasks = useMemo(() => {
-    if (!tasksRaw) return [] as any[];
-    if (Array.isArray(tasksRaw)) return tasksRaw as any[];
-    if (Array.isArray((tasksRaw as any).items)) return (tasksRaw as any).items as any[];
-    return [tasksRaw as any].filter(Boolean);
+  const tasks = useMemo<Task[]>(() => {
+    if (!tasksRaw) return [];
+    if (Array.isArray(tasksRaw)) return tasksRaw as Task[];
+    const maybeItems = (tasksRaw as { items?: unknown }).items;
+    if (Array.isArray(maybeItems)) return maybeItems as Task[];
+    return [tasksRaw as Task].filter(Boolean);
   }, [tasksRaw]);
 
   const reminders = useMemo<SmartReminder[]>(() => {
@@ -82,7 +108,7 @@ export function useSmartReminders() {
         }).length;
         if (blocked > 0) {
           output.push({
-            id: `blocked-posts-${client.id}-${blocked}`,
+            id: `blocked-posts-${client.id}`,
             title: `${blocked} post bloccati`,
             message: `${client.name} · verifica approvazioni/revisioni`,
             link: "/tools/calendar",
@@ -98,7 +124,7 @@ export function useSmartReminders() {
         const completion = getBriefCompletion(briefsByClient[client.id] ?? null);
         if (completion < preferences.briefCompletionThreshold) {
           output.push({
-            id: `brief-${client.id}-${completion}`,
+            id: `brief-${client.id}`,
             title: `Brief incompleto (${completion}%)`,
             message: `${client.name} · completare sezioni strategiche`,
             link: "/tools/brief",
@@ -126,7 +152,7 @@ export function useSmartReminders() {
         const hours = (now - new Date(analytics.updatedAt).getTime()) / (1000 * 60 * 60);
         if (hours > preferences.analyticsStaleHours) {
           output.push({
-            id: `analytics-stale-${client.id}-${Math.floor(hours)}`,
+            id: `analytics-stale-${client.id}`,
             title: "Analytics non aggiornate",
             message: `${client.name} · ultimo update ${Math.floor(hours)}h fa`,
             link: "/tools/analytics",
@@ -138,10 +164,10 @@ export function useSmartReminders() {
     }
 
     if (preferences.unassignedTasksEnabled) {
-      const unassignedCount = tasks.filter((task) => task.status !== "done" && !task.assigneeId).length;
+      const unassignedCount = tasks.filter((task) => isTaskOpen(task) && isTaskUnassigned(task)).length;
       if (unassignedCount > 0) {
         output.push({
-          id: `tasks-unassigned-${unassignedCount}`,
+          id: `tasks-unassigned`,
           title: `${unassignedCount} task senza owner`,
           message: "Assegna responsabilità per evitare blocchi operativi",
           link: "/tasks",
@@ -156,12 +182,25 @@ export function useSmartReminders() {
 
   useEffect(() => {
     // Keep read map clean from stale reminders.
+    // Skip cleanup while reminders are still loading (empty list often means
+    // clients/tasks haven't hydrated yet): wiping readMap to {} now would
+    // race against another tab that already has valid read state persisted.
+    if (reminders.length === 0) return;
     const activeIds = new Set(reminders.map((item) => item.id));
     setReadMap((prev) => {
+      const prevKeys = Object.keys(prev);
       const next: ReadState = {};
-      Object.keys(prev).forEach((id) => {
-        if (activeIds.has(id)) next[id] = prev[id];
+      let changed = false;
+      prevKeys.forEach((id) => {
+        if (activeIds.has(id)) {
+          next[id] = prev[id];
+        } else {
+          changed = true;
+        }
       });
+      // Bail out with the same reference if nothing actually changed: avoids
+      // a useless re-render and an unnecessary localStorage write.
+      if (!changed) return prev;
       return next;
     });
   }, [reminders]);

@@ -102,9 +102,13 @@ export function DailyFocusPopup({ open, onClose }: {
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const [animatingOut, setAnimatingOut] = useState(false);
   const [memberName, setMemberName] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<null | "start" | "complete" | "postpone" | "delegate" | "skip">(null);
   const lastQ1Index = useRef(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -149,16 +153,42 @@ export function DailyFocusPopup({ open, onClose }: {
     }
   }, [open, fetchTasks, authUnavailable]);
 
-  const logAction = useCallback(async (taskId: number, action: string, extra?: any) => {
+  const logAction = useCallback(async (taskId: number, action: string, extra?: any): Promise<boolean> => {
     try {
-      await portalFetch(`${API}/daily-focus/action`, {
+      const res = await portalFetch(`${API}/daily-focus/action`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, action, ...extra }),
       });
-    } catch {}
-  }, []);
+      if (!res.ok) {
+        let message = `Errore ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) message = body.error;
+        } catch {}
+        // Silence the noisy "viewed" telemetry call but surface user-driven actions.
+        if (action !== "viewed") {
+          toast({
+            variant: "destructive",
+            title: "Azione non riuscita",
+            description: message,
+          });
+        }
+        return false;
+      }
+      return true;
+    } catch (err) {
+      if (action !== "viewed") {
+        toast({
+          variant: "destructive",
+          title: "Azione non riuscita",
+          description: err instanceof Error ? err.message : "Errore di rete",
+        });
+      }
+      return false;
+    }
+  }, [toast]);
 
   const saveSession = useCallback(async () => {
     try {
@@ -178,8 +208,8 @@ export function DailyFocusPopup({ open, onClose }: {
     } catch {}
   }, [tasks, completed, skipped, delegated, postponed]);
 
-  const handleClose = useCallback(() => {
-    saveSession();
+  const handleClose = useCallback(async () => {
+    await saveSession();
     onClose();
   }, [saveSession, onClose]);
 
@@ -212,26 +242,48 @@ export function DailyFocusPopup({ open, onClose }: {
     }
   }, [currentIndex, showTip]);
 
-  const handleStartNow = useCallback((task: FocusTask) => {
-    logAction(task.id, "started");
-    toast({ title: `Hai iniziato: ${task.title}` });
-    handleClose();
-    navigate(`/projects`);
-  }, [logAction, handleClose, navigate, toast]);
+  const handleStartNow = useCallback(async (task: FocusTask) => {
+    if (pendingAction) return;
+    setPendingAction("start");
+    try {
+      const ok = await logAction(task.id, "started");
+      if (!ok) return;
+      toast({ title: `Hai iniziato: ${task.title}` });
+      await handleClose();
+      if (task.projectId) {
+        navigate(`/projects/${task.projectId}?task=${task.id}`);
+      } else {
+        navigate(`/tasks?focus=${task.id}`);
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  }, [logAction, handleClose, navigate, toast, pendingAction]);
 
-  const handleSkip = useCallback(() => {
+  const handleSkip = useCallback(async () => {
+    if (pendingAction) return;
     const task = tasks[currentIndex];
     if (task) {
-      logAction(task.id, "skipped");
-      setSkipped(s => new Set(s).add(task.id));
+      setPendingAction("skip");
+      try {
+        const ok = await logAction(task.id, "skipped");
+        if (!ok) return;
+        setSkipped(s => new Set(s).add(task.id));
+      } finally {
+        setPendingAction(null);
+      }
     }
     goNext();
-  }, [tasks, currentIndex, logAction, goNext]);
+  }, [tasks, currentIndex, logAction, goNext, pendingAction]);
 
-  const handleComplete = useCallback(() => {
+  const handleComplete = useCallback(async () => {
+    if (pendingAction) return;
     const task = tasks[currentIndex];
-    if (task) {
-      logAction(task.id, "completed");
+    if (!task) return;
+    setPendingAction("complete");
+    try {
+      const ok = await logAction(task.id, "completed");
+      if (!ok) return;
       setCompleted(c => new Set(c).add(task.id));
       confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 }, colors: ["#7a8f5c", "#9bb068", "#f59e0b", "#ef4444"] });
       setTimeout(() => {
@@ -239,31 +291,97 @@ export function DailyFocusPopup({ open, onClose }: {
           setCurrentIndex(i => i + 1);
         }
       }, 800);
+    } finally {
+      setPendingAction(null);
     }
-  }, [tasks, currentIndex, logAction]);
+  }, [tasks, currentIndex, logAction, pendingAction]);
 
-  const handlePostpone = useCallback(() => {
+  const handlePostpone = useCallback(async () => {
+    if (pendingAction) return;
     const task = tasks[currentIndex];
-    if (task) {
-      logAction(task.id, "postponed", { note: `Posticipata da ${user?.firstName ?? "utente"}` });
+    if (!task) return;
+    setPendingAction("postpone");
+    try {
+      const ok = await logAction(task.id, "postponed", { note: `Posticipata da ${user?.firstName ?? "utente"}` });
+      if (!ok) return;
       setPostponed((p) => new Set(p).add(task.id));
       goNext();
+    } finally {
+      setPendingAction(null);
     }
-  }, [tasks, currentIndex, logAction, user, goNext]);
+  }, [tasks, currentIndex, logAction, user, goNext, pendingAction]);
 
-  const handleDelegate = useCallback(() => {
+  const handleDelegate = useCallback(async () => {
+    if (pendingAction) return;
     const task = tasks[currentIndex];
-    if (task && delegateTarget) {
-      logAction(task.id, "delegated", { newAssigneeId: delegateTarget, note: `Delegata da ${user?.firstName ?? "utente"}` });
+    if (!(task && delegateTarget)) return;
+    setPendingAction("delegate");
+    try {
+      // 1. Riassegna direttamente via PATCH /api/tasks/:id. L'ACL di quel route
+      //    (userCanAccessTask) accetta admin/PM/account manager oltre
+      //    all'assegnatario corrente, evitando il 403 di /daily-focus/action
+      //    che blocca chiunque non sia gia' l'assegnatario.
+      const patchRes = await portalFetch(`${API}/tasks/${task.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeId: delegateTarget }),
+      });
+      if (!patchRes.ok) {
+        let message = `Errore ${patchRes.status}`;
+        try {
+          const body = await patchRes.json();
+          if (body?.error) message = body.error;
+        } catch {}
+        toast({
+          variant: "destructive",
+          title: "Delega non riuscita",
+          description: message,
+        });
+        return;
+      }
+      // 2. Log telemetria 'delegated' (best-effort: se fallisce non rollback la
+      //    delega che e' gia' avvenuta al passo 1).
+      try {
+        await portalFetch(`${API}/daily-focus/action`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskId: task.id,
+            action: "delegated",
+            newAssigneeId: delegateTarget,
+            note: `Delegata da ${user?.firstName ?? "utente"}`,
+          }),
+        });
+      } catch {}
       setDelegated((d) => new Set(d).add(task.id));
       setShowDelegate(false);
+      toast({ title: "Task delegata con successo" });
       goNext();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Delega non riuscita",
+        description: err instanceof Error ? err.message : "Errore di rete",
+      });
+    } finally {
+      setPendingAction(null);
     }
-  }, [tasks, currentIndex, delegateTarget, logAction, user, goNext]);
+  }, [tasks, currentIndex, delegateTarget, user, goNext, pendingAction, toast]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
+      // Non intercettare i tasti quando l'utente sta digitando in un input
+      // (es. <select> aperta nel pannello Delega) o tenendo premuto un
+      // modificatore che e' tipicamente di scorciatoie browser/SO.
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "ArrowRight" || e.key === "n") goNext();
       else if (e.key === "ArrowLeft" || e.key === "p") goPrev();
       else if (e.key === "Enter") { const t = tasks[currentIndex]; if (t) handleStartNow(t); }
@@ -276,6 +394,66 @@ export function DailyFocusPopup({ open, onClose }: {
     return () => window.removeEventListener("keydown", handler);
   }, [open, goNext, goPrev, handleStartNow, handleSkip, handleComplete, handleClose, tasks, currentIndex]);
 
+  // Blocca lo scroll del body quando il dialog e' aperto e ripristina su close.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  // Salva l'elemento attualmente focalizzato per ripristinarlo alla chiusura
+  // (restore focus al trigger che ha aperto il modale).
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    return () => {
+      const prev = previousFocusRef.current;
+      if (prev && typeof prev.focus === "function") prev.focus();
+    };
+  }, [open]);
+
+  // Auto-focus sul bottone primario ("Inizia ora") appena disponibile; fallback
+  // su X close per stati di loading/empty in cui il CTA non esiste ancora.
+  useEffect(() => {
+    if (!open || loading) return;
+    const target = primaryActionRef.current ?? closeButtonRef.current;
+    if (!target) return;
+    const id = window.requestAnimationFrame(() => target.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [open, loading, currentIndex, tasks.length]);
+
+  // Focus trap minimo: cicla Tab/Shift+Tab tra gli elementi focusabili
+  // all'interno del dialog, evitando che il focus esca sul background.
+  useEffect(() => {
+    if (!open) return;
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const container = containerRef.current;
+      if (!container) return;
+      const focusable = container.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !container.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleTab);
+    return () => document.removeEventListener("keydown", handleTab);
+  }, [open]);
+
   if (!open) return null;
 
   const displayName = user?.firstName ?? memberName ?? "Team";
@@ -286,9 +464,17 @@ export function DailyFocusPopup({ open, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={handleClose}
+        aria-hidden="true"
+      />
       <div
         ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="daily-focus-title"
+        onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => { touchStartX.current = e.changedTouches[0]?.clientX ?? null; }}
         onTouchEnd={(e) => {
           const start = touchStartX.current;
@@ -305,14 +491,20 @@ export function DailyFocusPopup({ open, onClose }: {
         <div className="px-6 pt-5 pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">{getGreeting(displayName)}</h2>
+              <h2 id="daily-focus-title" className="text-lg font-semibold text-foreground">{getGreeting(displayName)}</h2>
               <p className="text-sm text-muted-foreground mt-0.5">{formatItalianDate()}</p>
             </div>
             <div className="flex items-center gap-3">
               {tasks.length > 0 && (
                 <span className="text-sm text-muted-foreground font-medium">{currentIndex + 1} di {tasks.length}</span>
               )}
-              <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={handleClose}
+                aria-label="Chiudi"
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -481,7 +673,7 @@ export function DailyFocusPopup({ open, onClose }: {
                     ))}
                   </select>
                   <div className="flex gap-2">
-                    <button onClick={handleDelegate} disabled={!delegateTarget} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50">Conferma</button>
+                    <button onClick={handleDelegate} disabled={!delegateTarget || pendingAction !== null} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50">{pendingAction === "delegate" ? "Delego..." : "Conferma"}</button>
                     <button onClick={() => setShowDelegate(false)} className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted">Annulla</button>
                   </div>
                 </div>
@@ -503,20 +695,33 @@ export function DailyFocusPopup({ open, onClose }: {
             {/* Primary actions */}
             <div className="flex gap-2">
               <button
+                ref={primaryActionRef}
                 onClick={() => handleStartNow(task)}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity text-sm"
+                disabled={pendingAction !== null}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Play size={15} /> Inizia ora
+                {pendingAction === "start" ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Avvio...
+                  </>
+                ) : (
+                  <>
+                    <Play size={15} /> Inizia ora
+                  </>
+                )}
               </button>
               <button
                 onClick={goNext}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors text-sm"
+                disabled={pendingAction !== null}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Prossima <ChevronRight size={15} />
               </button>
               <button
                 onClick={handleSkip}
-                className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors text-sm text-muted-foreground"
+                disabled={pendingAction !== null}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors text-sm text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <SkipForward size={15} /> Salta
               </button>
@@ -524,11 +729,11 @@ export function DailyFocusPopup({ open, onClose }: {
 
             {/* Secondary actions */}
             <div className="flex items-center justify-center gap-4 text-xs">
-              <button onClick={() => setShowDelegate(true)} className="text-muted-foreground hover:text-foreground transition-colors">Delega al team</button>
+              <button onClick={() => setShowDelegate(true)} disabled={pendingAction !== null} className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60 disabled:cursor-not-allowed">Delega al team</button>
               <span className="text-border">|</span>
-              <button onClick={handlePostpone} className="text-muted-foreground hover:text-foreground transition-colors">Sposta a domani</button>
+              <button onClick={handlePostpone} disabled={pendingAction !== null} className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60 disabled:cursor-not-allowed">{pendingAction === "postpone" ? "Sposto..." : "Sposta a domani"}</button>
               <span className="text-border">|</span>
-              <button onClick={handleComplete} className="text-muted-foreground hover:text-foreground transition-colors">Segna come completata</button>
+              <button onClick={handleComplete} disabled={pendingAction !== null} className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60 disabled:cursor-not-allowed">{pendingAction === "complete" ? "Completo..." : "Segna come completata"}</button>
             </div>
 
             {/* Dots */}

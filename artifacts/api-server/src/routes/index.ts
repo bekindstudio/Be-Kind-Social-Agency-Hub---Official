@@ -33,6 +33,7 @@ import trashRouter from "./trash";
 import clientPostsRouter from "./client-posts";
 import clientCompetitorsRouter from "./client-competitors";
 import clientEventsRouter from "./client-events";
+import clientNotesRouter from "./client-notes";
 import cronRouter from "./cron";
 import googleDriveRouter from "./google-drive";
 
@@ -74,6 +75,7 @@ router.use(editorialPlansRouter);
 router.use("/clients", clientPostsRouter);
 router.use("/clients", clientCompetitorsRouter);
 router.use("/clients", clientEventsRouter);
+router.use(clientNotesRouter);
 router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);

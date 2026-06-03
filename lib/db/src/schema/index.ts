@@ -35,3 +35,4 @@ export * from "./task-comments";
 export * from "./client-posts";
 export * from "./client-competitors";
 export * from "./client-events";
+export * from "./client-notes";

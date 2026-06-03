@@ -49,6 +49,9 @@ import {
   BarChart3,
   Layers,
   FolderOpen,
+  Lightbulb,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BRIEF_SECTIONS } from "@/lib/briefSchema";
@@ -131,7 +134,7 @@ const PRIORITY_OPTIONS = [
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 /* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
-type TabKey = "panoramica" | "progetti" | "brief" | "editoriale" | "eventi" | "report" | "file" | "meta";
+type TabKey = "panoramica" | "progetti" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "meta";
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "panoramica", label: "Panoramica", icon: Layers },
   { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
@@ -140,6 +143,7 @@ const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "eventi", label: "Eventi", icon: CalendarDays },
   { key: "report", label: "Report", icon: BarChart3 },
   { key: "file", label: "File", icon: FolderOpen },
+  { key: "idee", label: "Idee", icon: Lightbulb },
   { key: "meta", label: "Meta", icon: Share2 },
 ];
 
@@ -525,6 +529,234 @@ function DrivePanel({ clientId, clientName, driveUrl, clientEmail, onRefresh }: 
               Nota: lo scope <code>drive.file</code> mostra solo file creati dall'app o caricati con accesso esplicito. Se la cartella è stata creata altrove, dovrai ricrearla dal portale per vederne il contenuto.
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Tab Idee/Note: card libere per cliente ────────────────────────── */
+type ClientNoteRow = {
+  id: number;
+  clientId: number;
+  content: string;
+  color: string;
+  pinned: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+const NOTE_COLORS = [
+  { value: "#fef3c7", label: "Giallo" },
+  { value: "#dbeafe", label: "Blu" },
+  { value: "#dcfce7", label: "Verde" },
+  { value: "#fce7f3", label: "Rosa" },
+  { value: "#f3e8ff", label: "Viola" },
+  { value: "#fed7aa", label: "Arancio" },
+  { value: "#e0e7ff", label: "Indaco" },
+];
+
+function ClientNotesTab({ clientId }: { clientId: number }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: notes, isLoading } = useQuery<ClientNoteRow[]>({
+    queryKey: ["client-notes", clientId],
+    queryFn: async () => {
+      const r = await portalFetch(`/api/clients/${clientId}/notes`);
+      if (!r.ok) throw new Error("notes load failed");
+      const j = await r.json();
+      return Array.isArray(j) ? j : [];
+    },
+    staleTime: 30_000,
+  });
+  const list = notes ?? [];
+  const [draft, setDraft] = useState("");
+  const [draftColor, setDraftColor] = useState(NOTE_COLORS[0].value);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingContent, setEditingContent] = useState("");
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["client-notes", clientId] });
+
+  const handleAdd = async () => {
+    if (!draft.trim() || saving) return;
+    setSaving(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: draft.trim(), color: draftColor }),
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        toast({ variant: "destructive", title: "Salvataggio nota non riuscito", description: txt.slice(0, 200) });
+        return;
+      }
+      setDraft("");
+      refresh();
+    } finally { setSaving(false); }
+  };
+
+  const handleTogglePin = async (n: ClientNoteRow) => {
+    const r = await portalFetch(`/api/clients/${clientId}/notes/${n.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned: !n.pinned }),
+    });
+    if (r.ok) refresh();
+    else toast({ variant: "destructive", title: "Operazione non riuscita" });
+  };
+
+  const handleDelete = async (n: ClientNoteRow) => {
+    if (!confirm("Eliminare questa nota?")) return;
+    const r = await portalFetch(`/api/clients/${clientId}/notes/${n.id}`, { method: "DELETE" });
+    if (r.ok || r.status === 204) {
+      toast({ title: "Nota eliminata" });
+      refresh();
+    } else {
+      toast({ variant: "destructive", title: "Eliminazione non riuscita" });
+    }
+  };
+
+  const handleSaveEdit = async (n: ClientNoteRow) => {
+    if (!editingContent.trim()) return;
+    const r = await portalFetch(`/api/clients/${clientId}/notes/${n.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: editingContent.trim() }),
+    });
+    if (r.ok) {
+      setEditingId(null);
+      setEditingContent("");
+      refresh();
+    } else {
+      toast({ variant: "destructive", title: "Salvataggio non riuscito" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Form add nuova nota */}
+      <div className="bg-card border border-card-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+            <Lightbulb size={17} className="text-amber-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm">Appunta un'idea</h3>
+            <p className="text-[11px] text-muted-foreground">Note libere per il cliente: idee per contenuti, telefonate, promemoria…</p>
+          </div>
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Es. Fare reel con backstage del lancio prodotto · Telefonare entro venerdì · Provare a proporre webinar a settembre…"
+          rows={3}
+          className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void handleAdd();
+            }
+          }}
+        />
+        <div className="mt-2 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1">
+            {NOTE_COLORS.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => setDraftColor(c.value)}
+                title={c.label}
+                aria-label={`Colore ${c.label}`}
+                className={cn(
+                  "w-6 h-6 rounded-full border transition-all",
+                  draftColor === c.value ? "border-foreground scale-110" : "border-card-border hover:scale-105"
+                )}
+                style={{ backgroundColor: c.value }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">⌘+Enter</span>
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={!draft.trim() || saving}
+              className="px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg disabled:opacity-50 hover:opacity-90"
+            >
+              {saving ? "Salvo…" : "Aggiungi"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista note */}
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground text-center py-6">Caricamento…</p>
+      ) : list.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-card-border p-8 text-center">
+          <Lightbulb size={28} className="mx-auto text-muted-foreground/60 mb-2" />
+          <p className="text-sm font-medium">Nessuna idea ancora</p>
+          <p className="text-xs text-muted-foreground mt-1">Aggiungi la prima sopra ↑</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {list.map((n) => (
+            <div
+              key={n.id}
+              className="rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-2 group"
+              style={{ backgroundColor: n.color }}
+            >
+              {editingId === n.id ? (
+                <>
+                  <textarea
+                    autoFocus
+                    value={editingContent}
+                    onChange={(e) => setEditingContent(e.target.value)}
+                    rows={4}
+                    className="w-full px-2 py-1 text-sm border border-foreground/20 rounded bg-white/70 resize-none"
+                  />
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={() => { setEditingId(null); setEditingContent(""); }} className="text-[11px] px-2 py-1 rounded hover:bg-white/50">Annulla</button>
+                    <button onClick={() => handleSaveEdit(n)} disabled={!editingContent.trim()} className="text-[11px] px-2 py-1 rounded bg-foreground text-background disabled:opacity-50">Salva</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p
+                    className="text-sm text-foreground/90 whitespace-pre-wrap break-words cursor-text leading-snug"
+                    onClick={() => { setEditingId(n.id); setEditingContent(n.content); }}
+                  >
+                    {n.content}
+                  </p>
+                  <div className="flex items-center justify-between gap-1 mt-auto pt-1 border-t border-foreground/10">
+                    <span className="text-[10px] text-foreground/60 tabular-nums">
+                      {n.createdAt ? new Date(n.createdAt).toLocaleDateString("it-IT", { day: "2-digit", month: "short" }) : ""}
+                    </span>
+                    <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleTogglePin(n)}
+                        title={n.pinned ? "Rimuovi dal top" : "Fissa in alto"}
+                        aria-label={n.pinned ? "Rimuovi dal top" : "Fissa in alto"}
+                        className="p-1 rounded hover:bg-white/40"
+                      >
+                        {n.pinned ? <Pin size={12} className="text-amber-700" /> : <PinOff size={12} className="text-foreground/60" />}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(n)}
+                        title="Elimina"
+                        aria-label="Elimina nota"
+                        className="p-1 rounded hover:bg-white/40 text-foreground/60 hover:text-destructive"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1378,6 +1610,11 @@ export default function ClientDetail({ id }: Props) {
             driveUrl={(viewClient as any).driveUrl ?? null}
             onRefresh={() => { void queryClient.invalidateQueries({ queryKey: ["client", clientId] }); }}
           />
+        )}
+
+        {/* ─── TAB: Idee/Note ─── */}
+        {activeTab === "idee" && (
+          <ClientNotesTab clientId={clientId} />
         )}
 
         {/* ─── TAB: Meta ─── */}

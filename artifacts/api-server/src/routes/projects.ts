@@ -643,4 +643,63 @@ router.delete("/projects/:id", async (req, res): Promise<void> => {
   res.json({ ok: true, trashLogId: r.trashLogId, message: "Spostato nel cestino" });
 });
 
+/* ─── Spese progetto ──────────────────────────────────────────────────────
+ * GET /projects/:id/expenses → lista (oltre a /workspace che le include già).
+ * POST /projects/:id/expenses → crea una spesa.
+ * DELETE /projects/:id/expenses/:expenseId → elimina una spesa.
+ * Le ACL ricalcano userCanAccessProject. Le spese aggiornano implicitamente
+ * il calcolo "spent" nel /workspace (somma di tutte le righe).
+ */
+const createExpenseSchema = z.object({
+  description: z.string().trim().min(1).max(255),
+  category: z.string().trim().max(80).optional(),
+  amount: z.union([z.number(), z.string()]),
+  date: z.string().trim().min(1).max(40),
+});
+
+router.get("/projects/:id/expenses", async (req, res): Promise<void> => {
+  const params = GetProjectParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const userId = getUid(req);
+  const [project] = await db.select().from(projectsTable).where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(project, userId))) { res.status(403).json({ error: "Accesso non autorizzato" }); return; }
+  const rows = await db.select().from(projectExpensesTable).where(eq(projectExpensesTable.projectId, project.id));
+  res.json(rows.map((r) => ({ ...r, amount: Number(r.amount), createdAt: r.createdAt?.toISOString() ?? null })));
+});
+
+router.post("/projects/:id/expenses", validate(createExpenseSchema), async (req, res): Promise<void> => {
+  const params = GetProjectParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const userId = getUid(req);
+  const [project] = await db.select().from(projectsTable).where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(project, userId))) { res.status(403).json({ error: "Accesso non autorizzato" }); return; }
+  const body = req.body as z.infer<typeof createExpenseSchema>;
+  const amountNum = Number(body.amount);
+  if (!Number.isFinite(amountNum) || amountNum < 0) { res.status(400).json({ error: "Amount non valido" }); return; }
+  const [created] = await db.insert(projectExpensesTable).values({
+    projectId: project.id,
+    description: body.description.trim(),
+    category: body.category?.trim() || "Altro",
+    amount: String(amountNum),
+    date: body.date,
+    addedBy: userId,
+  }).returning();
+  res.status(201).json({ ...created, amount: Number(created.amount), createdAt: created.createdAt?.toISOString() ?? null });
+});
+
+router.delete("/projects/:id/expenses/:expenseId", async (req, res): Promise<void> => {
+  const params = GetProjectParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const expenseId = Number(req.params.expenseId);
+  if (!Number.isFinite(expenseId) || expenseId <= 0) { res.status(400).json({ error: "Expense ID non valido" }); return; }
+  const userId = getUid(req);
+  const [project] = await db.select().from(projectsTable).where(and(eq(projectsTable.id, params.data.id), isNull(projectsTable.deletedAt)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!(await userCanAccessProject(project, userId))) { res.status(403).json({ error: "Accesso non autorizzato" }); return; }
+  await db.delete(projectExpensesTable).where(and(eq(projectExpensesTable.id, expenseId), eq(projectExpensesTable.projectId, project.id)));
+  res.status(204).end();
+});
+
 export default router;

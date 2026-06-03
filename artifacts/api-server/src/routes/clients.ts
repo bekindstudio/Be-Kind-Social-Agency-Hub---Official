@@ -36,7 +36,10 @@ const createClientSchema = z.object({
   phone: z.string().trim().max(40).nullable().optional(),
   company: z.string().trim().max(200).nullable().optional(),
   color: z.string().trim().max(20).optional(),
-  logoUrl: z.string().trim().max(2048).nullable().optional(),
+  // logoUrl può essere data:image/...;base64,... (50-300KB tipici per un PNG 256x256
+  // con trasparenza); il cap 2MB consente loghi ragionevoli sia come URL esterno
+  // sia come data URL inline.
+  logoUrl: z.string().trim().max(2_000_000).nullable().optional(),
   piva: z.string().trim().max(40).nullable().optional(),
   codiceFiscale: z.string().trim().max(40).nullable().optional(),
   indirizzo: z.string().trim().max(255).nullable().optional(),

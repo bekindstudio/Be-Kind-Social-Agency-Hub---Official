@@ -20,6 +20,9 @@ import {
   Pencil,
   CalendarRange,
   Calendar as CalendarIcon,
+  X,
+  Receipt,
+  Trash2,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -43,7 +46,7 @@ async function patchTask(taskId: number | string, body: Record<string, unknown>)
   });
 }
 
-type TabKey = "panoramica" | "task" | "editoriale" | "eventi" | "team" | "file" | "log";
+type TabKey = "panoramica" | "task" | "editoriale" | "eventi" | "team" | "file" | "spese" | "log";
 const TABS: { key: TabKey; label: string; icon: typeof LayoutDashboard }[] = [
   { key: "panoramica", label: "Panoramica", icon: LayoutDashboard },
   { key: "task", label: "Task", icon: KanbanSquare },
@@ -51,6 +54,7 @@ const TABS: { key: TabKey; label: string; icon: typeof LayoutDashboard }[] = [
   { key: "eventi", label: "Eventi", icon: CalendarIcon },
   { key: "team", label: "Team", icon: Users },
   { key: "file", label: "File", icon: FolderOpen },
+  { key: "spese", label: "Spese", icon: Receipt },
   { key: "log", label: "Log", icon: History },
 ];
 
@@ -329,6 +333,410 @@ function Avatar({ member, size = 24 }: { member: TeamMember; size?: number }) {
       style={{ width: size, height: size, backgroundColor: member.avatarColor ?? "#7a8f5c" }}
     >
       {initial}
+    </div>
+  );
+}
+
+/* ─── Tab File del progetto: lista reale + aggiungi link inline ──────────── */
+type ProjectFileRow = {
+  id: number;
+  name: string;
+  url: string;
+  type: string;
+  size: number | null;
+  uploadedBy: string | null;
+  createdAt: string;
+};
+
+function ProjectFilesTab({ projectId, clientDriveUrl, clientId }: {
+  projectId: number;
+  clientDriveUrl: string | null;
+  clientId: number | null;
+}) {
+  const [files, setFiles] = useState<ProjectFileRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftUrl, setDraftUrl] = useState("");
+  const [draftType, setDraftType] = useState("Documento");
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await portalFetch(`/api/files?projectId=${projectId}`);
+      if (r.ok) {
+        const json = await r.json();
+        setFiles(Array.isArray(json) ? json : []);
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, [projectId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleAdd = async () => {
+    const name = draftName.trim();
+    const rawUrl = draftUrl.trim();
+    if (!name || !rawUrl) {
+      toast({ variant: "destructive", title: "Campi obbligatori", description: "Nome e URL sono richiesti." });
+      return;
+    }
+    let normalizedUrl = rawUrl;
+    if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+    try { new URL(normalizedUrl); } catch {
+      toast({ variant: "destructive", title: "URL non valido" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await portalFetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, url: normalizedUrl, type: draftType, size: null, projectId, uploadedBy: null }),
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        toast({ variant: "destructive", title: "Salvataggio non riuscito", description: txt.slice(0, 160) || "Riprova." });
+        return;
+      }
+      toast({ title: "File aggiunto" });
+      setDraftName(""); setDraftUrl(""); setDraftType("Documento");
+      setShowForm(false);
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Eliminare "${name}"?`)) return;
+    const r = await portalFetch(`/api/files/${id}`, { method: "DELETE" });
+    if (r.ok || r.status === 204) {
+      toast({ title: "File eliminato" });
+      await load();
+    } else {
+      toast({ variant: "destructive", title: "Eliminazione non riuscita" });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {clientDriveUrl && (
+        <a href={clientDriveUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 hover:bg-primary/10 transition-colors">
+          <FolderOpen size={16} className="text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">Cartella Drive del cliente</p>
+            <p className="text-[11px] text-muted-foreground truncate">{clientDriveUrl}</p>
+          </div>
+          <span className="text-xs text-primary">Apri →</span>
+        </a>
+      )}
+
+      <div className="bg-card border border-card-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-sm">File del progetto</h3>
+            <p className="text-[11px] text-muted-foreground">{files.length} link associati a questo progetto</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <Plus size={12} /> {showForm ? "Annulla" : "Aggiungi link"}
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="rounded-lg border border-card-border bg-muted/30 p-3 mb-3 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                placeholder="Nome *"
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                className="px-3 py-2 text-sm border border-input rounded-lg bg-background"
+              />
+              <select
+                value={draftType}
+                onChange={(e) => setDraftType(e.target.value)}
+                className="px-3 py-2 text-sm border border-input rounded-lg bg-background"
+              >
+                <option>Documento</option>
+                <option>Immagine</option>
+                <option>Video</option>
+                <option>Drive</option>
+                <option>Figma</option>
+                <option>Canva</option>
+                <option>Notion</option>
+                <option>Altro</option>
+              </select>
+            </div>
+            <input
+              placeholder="URL *  (https://...)"
+              value={draftUrl}
+              onChange={(e) => setDraftUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleAdd(); }}
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-xs border border-input rounded-lg">Annulla</button>
+              <button onClick={handleAdd} disabled={saving} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50">
+                {saving ? "Salvo…" : "Aggiungi"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-xs text-muted-foreground py-3">Caricamento…</p>
+        ) : files.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Nessun link aggiunto. Collega Drive, Canva, Figma, Notion o qualsiasi URL utile al progetto.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {files.map((f) => (
+              <div key={f.id} className="flex items-center gap-2 rounded-lg p-2 border border-card-border hover:bg-muted/30 transition-colors">
+                <FolderOpen size={14} className="text-muted-foreground shrink-0" />
+                <a href={f.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 hover:text-primary text-sm font-medium truncate">
+                  {f.name}
+                </a>
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">{f.type}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums hidden md:inline">
+                  {f.createdAt ? new Date(f.createdAt).toLocaleDateString("it-IT") : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(f.id, f.name)}
+                  className="p-1 text-muted-foreground hover:text-destructive shrink-0"
+                  aria-label="Elimina file"
+                  title="Elimina"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {clientId && (
+          <div className="mt-3 pt-3 border-t border-border/40">
+            <Link href={`/clients/${clientId}`} className="text-[11px] text-muted-foreground hover:text-primary">
+              ← Vedi tutti i file del cliente
+            </Link>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Tab Spese progetto: aggiungi/elimina spese, totale realtime ─────── */
+type ExpenseRow = {
+  id: number;
+  description: string;
+  category: string;
+  amount: number;
+  date: string;
+  addedBy: string | null;
+  createdAt: string | null;
+};
+
+const EXPENSE_CATEGORIES = ["Stock images", "ADV spend", "Tool subscription", "Freelance", "Trasferta", "Software", "Hardware", "Altro"];
+
+function ProjectExpensesTab({ projectId, budget, onChange }: { projectId: number; budget: number; onChange?: () => void }) {
+  const [items, setItems] = useState<ExpenseRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [draftDesc, setDraftDesc] = useState("");
+  const [draftAmount, setDraftAmount] = useState("");
+  const [draftCategory, setDraftCategory] = useState(EXPENSE_CATEGORIES[0]);
+  const [draftDate, setDraftDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await portalFetch(`/api/projects/${projectId}/expenses`);
+      if (r.ok) {
+        const json = await r.json();
+        setItems(Array.isArray(json) ? json : []);
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, [projectId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const totalSpent = useMemo(() => items.reduce((s, i) => s + Number(i.amount ?? 0), 0), [items]);
+
+  const handleAdd = async () => {
+    if (!draftDesc.trim() || !draftAmount) {
+      toast({ variant: "destructive", title: "Campi obbligatori", description: "Descrizione e importo sono richiesti." });
+      return;
+    }
+    const amountNum = Number(draftAmount);
+    if (!Number.isFinite(amountNum) || amountNum < 0) {
+      toast({ variant: "destructive", title: "Importo non valido" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await portalFetch(`/api/projects/${projectId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: draftDesc.trim(), category: draftCategory, amount: amountNum, date: draftDate }),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        toast({ variant: "destructive", title: "Salvataggio non riuscito", description: text.slice(0, 160) || "Riprova" });
+        return;
+      }
+      toast({ title: "Spesa aggiunta", description: `€ ${amountNum.toLocaleString("it-IT")} · ${draftDesc.trim()}` });
+      setDraftDesc(""); setDraftAmount(""); setDraftCategory(EXPENSE_CATEGORIES[0]);
+      setShowForm(false);
+      await load();
+      onChange?.();
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Eliminare questa spesa?")) return;
+    const r = await portalFetch(`/api/projects/${projectId}/expenses/${id}`, { method: "DELETE" });
+    if (r.ok || r.status === 204) {
+      toast({ title: "Spesa eliminata" });
+      await load();
+      onChange?.();
+    } else {
+      toast({ variant: "destructive", title: "Eliminazione non riuscita" });
+    }
+  };
+
+  const budgetPct = budget > 0 ? Math.round((totalSpent / budget) * 100) : 0;
+  const remaining = Math.max(0, budget - totalSpent);
+
+  return (
+    <div className="space-y-3">
+      {/* Summary card */}
+      <div className="bg-card border border-card-border rounded-xl p-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Speso</p>
+            <p className="text-xl font-bold tabular-nums">€ {totalSpent.toLocaleString("it-IT")}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Budget</p>
+            <p className="text-xl font-bold tabular-nums">€ {budget.toLocaleString("it-IT")}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Rimanente</p>
+            <p className={cn("text-xl font-bold tabular-nums", budget > 0 && remaining === 0 ? "text-red-600" : "")}>€ {remaining.toLocaleString("it-IT")}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Spese</p>
+            <p className="text-xl font-bold tabular-nums">{items.length}</p>
+          </div>
+        </div>
+        {budget > 0 && (
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn("h-full transition-all", budgetPct > 95 ? "bg-red-500" : budgetPct >= 80 ? "bg-amber-500" : "bg-emerald-500")}
+              style={{ width: `${Math.min(100, budgetPct)}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Form + lista */}
+      <div className="bg-card border border-card-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm">Spese registrate</h3>
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <Plus size={12} /> {showForm ? "Annulla" : "Aggiungi spesa"}
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="rounded-lg border border-card-border bg-muted/30 p-3 mb-3 space-y-2">
+            <input
+              autoFocus
+              placeholder="Descrizione *"
+              value={draftDesc}
+              onChange={(e) => setDraftDesc(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleAdd(); }}
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Importo €  *"
+                value={draftAmount}
+                onChange={(e) => setDraftAmount(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleAdd(); }}
+                className="px-3 py-2 text-sm border border-input rounded-lg bg-background"
+              />
+              <select
+                value={draftCategory}
+                onChange={(e) => setDraftCategory(e.target.value)}
+                className="px-3 py-2 text-sm border border-input rounded-lg bg-background"
+              >
+                {EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+              <input
+                type="date"
+                value={draftDate}
+                onChange={(e) => setDraftDate(e.target.value)}
+                className="px-3 py-2 text-sm border border-input rounded-lg bg-background"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-xs border border-input rounded-lg">Annulla</button>
+              <button onClick={handleAdd} disabled={saving} className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg disabled:opacity-50">
+                {saving ? "Salvo…" : "Salva spesa"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-xs text-muted-foreground py-3">Caricamento…</p>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Nessuna spesa registrata. Aggiungi qui acquisti tool, freelance, ADV spend, ecc.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {items
+              .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+              .map((it) => (
+                <div key={it.id} className="flex items-center gap-2 rounded-lg p-2 border border-card-border hover:bg-muted/30 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{it.description}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {it.category} · {it.date ? new Date(it.date).toLocaleDateString("it-IT") : ""}
+                    </p>
+                  </div>
+                  <p className="font-semibold tabular-nums text-sm shrink-0">€ {Number(it.amount).toLocaleString("it-IT")}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(it.id)}
+                    className="p-1 text-muted-foreground hover:text-destructive shrink-0"
+                    aria-label="Elimina spesa"
+                    title="Elimina"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -958,20 +1366,12 @@ export default function ProjectDetail({ id }: Props) {
 
         {/* ─── TAB: File ─── */}
         {tab === "file" && (
-          <div className="bg-card border border-card-border rounded-xl p-6">
-            <h3 className="font-semibold text-sm mb-2">File del progetto</h3>
-            <p className="text-sm text-muted-foreground">
-              I file legati a questo cliente (compresa la cartella Drive) sono nella scheda cliente.
-            </p>
-            {data?.client?.id && (
-              <Link
-                href={`/clients/${data.client.id}`}
-                className="inline-block mt-3 text-sm text-primary hover:underline"
-              >
-                Apri scheda cliente → tab File
-              </Link>
-            )}
-          </div>
+          <ProjectFilesTab projectId={project.id} clientDriveUrl={data?.client?.driveUrl ?? null} clientId={data?.client?.id ?? null} />
+        )}
+
+        {/* ─── TAB: Spese ─── */}
+        {tab === "spese" && (
+          <ProjectExpensesTab projectId={project.id} budget={budget} onChange={load} />
         )}
 
         {/* ─── TAB: Log ─── */}

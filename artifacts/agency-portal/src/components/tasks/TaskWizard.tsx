@@ -209,11 +209,14 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
                   onChange={(e) => setField("projectId", e.target.value)}
                   className="w-full mt-1 px-4 py-3 text-sm border border-input rounded-xl bg-background"
                 >
-                  <option value="">Nessun progetto</option>
+                  <option value="">Nessun progetto (task generale)</option>
                   {projectOptions.map((p) => (
                     <option key={p.id} value={String(p.id)}>{p.name}</option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Lascia "Nessun progetto" per task interne (acquisti, meeting, scadenze personali…). La trovi comunque in Tasks col badge <span className="px-1 py-0.5 rounded bg-zinc-200 text-zinc-700 text-[10px] font-semibold">Generale</span>.
+                </p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Descrizione (opzionale)</label>

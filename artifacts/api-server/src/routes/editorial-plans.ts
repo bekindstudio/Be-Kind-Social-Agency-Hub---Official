@@ -9,10 +9,25 @@ import {
   editorialTemplatesTable,
   clientsTable,
 } from "@workspace/db";
+import { z } from "zod";
 import { getUserId, isEnvAdmin, getAccessibleClientIds } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+// B7: schema esplicito per POST/PATCH per evitare che payload malformati
+// arrivino al DB e poi crashino la GET. Soft-cap permissivi: tutto opzionale
+// tranne i 3 obbligatori già gestiti dall'handler.
+const createEditorialPlanSchema = z.object({
+  clientId: z.union([z.number(), z.string().regex(/^\d+$/)]),
+  month: z.union([z.number().int().min(1).max(12), z.string().regex(/^([1-9]|1[0-2])$/)]),
+  year: z.union([z.number().int().min(2020).max(2100), z.string().regex(/^20\d{2}$/)]),
+  platformsJson: z.array(z.string().trim().max(40)).max(20).optional(),
+  packageType: z.string().trim().max(40).nullable().optional(),
+  notesInternal: z.string().trim().max(5_000).nullable().optional(),
+  templateId: z.union([z.number(), z.string().regex(/^\d+$/), z.null()]).optional(),
+}).passthrough();
 
 function serializePlan(p: any) {
   return {
@@ -146,7 +161,7 @@ router.get("/editorial-plans/:id", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/editorial-plans", async (req, res): Promise<void> => {
+router.post("/editorial-plans", validate(createEditorialPlanSchema), async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const { clientId, month, year, platformsJson, packageType, notesInternal, templateId } = req.body;
 
@@ -445,7 +460,17 @@ router.patch("/editorial-slots/:id", async (req, res): Promise<void> => {
   for (const key of allowedFields) {
     if (req.body[key] !== undefined) {
       if (key === "categoryId") {
-        updates[key] = req.body[key] ? Number(req.body[key]) : null;
+        // B8: prima `req.body[key] ? Number(...) : null` trasformava "0"
+        // (categoria id 0, edge case ma legittimo) in null perché "0" è truthy
+        // ma 0 è falsy → mismatch. Adesso null/undefined/"" → null, altrimenti
+        // Number con guard finita.
+        const raw = req.body[key];
+        if (raw === null || raw === undefined || raw === "") {
+          updates[key] = null;
+        } else {
+          const n = Number(raw);
+          updates[key] = Number.isFinite(n) ? n : null;
+        }
       } else {
         updates[key] = req.body[key];
       }

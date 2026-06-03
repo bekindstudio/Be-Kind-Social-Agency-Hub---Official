@@ -58,6 +58,12 @@ export function TaskCard({
             {task.categoria}
           </span>
         )}
+        {/* F1: badge "Generale" per task senza projectId (interne agenzia, non legate a un cliente). */}
+        {task.projectId == null && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task generale (non legata a un progetto)">
+            Generale
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span>

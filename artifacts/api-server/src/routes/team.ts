@@ -30,17 +30,26 @@ router.get("/team/:id", async (req, res): Promise<void> => {
   res.json(serializeMember(member));
 });
 
+// B14: email validation prima del DB insert. Senza, l'admin poteva inserire
+// "notanemail" che poi rompeva la fase di invite Supabase a metà flusso.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 router.post("/team", async (req, res): Promise<void> => {
   if (!(await isRequestAdmin(req))) { res.status(403).json({ error: "Solo un amministratore può gestire il team" }); return; }
   const b = req.body as Record<string, unknown>;
   const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : "");
-  const name = str("name");
-  const email = str("email");
+  const name = str("name").trim();
+  const email = str("email").trim();
   const authUserId =
     (typeof b.authUserId === "string" && b.authUserId.trim()) ||
     (typeof b.clerkUserId === "string" && b.clerkUserId.trim()) ||
     null;
   if (!name || !email) { res.status(400).json({ error: "Nome e email sono obbligatori" }); return; }
+  if (!EMAIL_REGEX.test(email)) { res.status(400).json({ error: "Email non valida" }); return; }
+  if (name.length > 120 || email.length > 255) {
+    res.status(400).json({ error: "Nome o email troppo lunghi" });
+    return;
+  }
   const [member] = await db.insert(teamMembersTable).values({
     name,
     surname: str("surname") || "",
@@ -74,6 +83,13 @@ router.patch("/team/:id", async (req, res): Promise<void> => {
   if (updates.clerkUserId !== undefined && updates.authUserId === undefined) {
     updates.authUserId = updates.clerkUserId;
     delete updates.clerkUserId;
+  }
+
+  // B14: valida email anche in PATCH se viene cambiata.
+  if (typeof updates.email === "string") {
+    const e = (updates.email as string).trim();
+    if (!EMAIL_REGEX.test(e)) { res.status(400).json({ error: "Email non valida" }); return; }
+    updates.email = e;
   }
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nessun campo da aggiornare" }); return; }

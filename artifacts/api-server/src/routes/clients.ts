@@ -17,15 +17,18 @@ const router: IRouter = Router();
 
 // Schemi per i JSON field strutturati (audit security #15/16):
 // prima erano accettati as-is e serializzati a DB. Adesso validati prima.
+// NB: tutti nullable perché il frontend manda null per campi vuoti del contact
+// (es. email vuota → null) — senza nullable la validation fallisce e l'utente
+// vede "Errore nel salvataggio" generico.
 const clientContactSchema = z.object({
-  nome: z.string().trim().max(120).optional(),
-  cognome: z.string().trim().max(120).optional(),
-  ruolo: z.string().trim().max(120).optional(),
-  email: z.string().trim().max(255).optional(),
-  telefono: z.string().trim().max(40).optional(),
-  isPrimary: z.boolean().optional(),
-  metodoContattoPreferito: z.string().trim().max(40).optional(),
-  orarioPreferito: z.string().trim().max(40).optional(),
+  nome: z.string().trim().max(120).nullable().optional(),
+  cognome: z.string().trim().max(120).nullable().optional(),
+  ruolo: z.string().trim().max(120).nullable().optional(),
+  email: z.string().trim().max(255).nullable().optional(),
+  telefono: z.string().trim().max(40).nullable().optional(),
+  isPrimary: z.boolean().nullable().optional(),
+  metodoContattoPreferito: z.string().trim().max(40).nullable().optional(),
+  orarioPreferito: z.string().trim().max(40).nullable().optional(),
 }).passthrough();
 
 const createClientSchema = z.object({

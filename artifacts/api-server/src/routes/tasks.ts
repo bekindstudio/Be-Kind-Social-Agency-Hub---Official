@@ -125,6 +125,14 @@ router.get("/tasks", async (req, res): Promise<void> => {
   if (query.data.status != null) conditions.push(eq(tasksTable.status, query.data.status));
 
   if (clientId != null && Number.isFinite(clientId)) {
+    // B2: ACL su clientId query param. Senza questo check, un utente ristretto
+    // poteva indovinare `?clientId=999` e leggere i task di un cliente non
+    // accessibile (cross-tenant leak).
+    const accessibleEarly = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId);
+    if (accessibleEarly !== "all" && !accessibleEarly.includes(clientId)) {
+      res.status(403).json({ error: "Accesso negato a questo cliente" });
+      return;
+    }
     const clientProjects = await db
       .select({ id: projectsTable.id })
       .from(projectsTable)

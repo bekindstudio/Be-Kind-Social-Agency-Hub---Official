@@ -346,11 +346,17 @@ async function assertClientAccessForShare(req: any, res: any, clientId: number):
  * Nessuna migration richiesta: usa la colonna shareToken esistente.
  * Validato in public-portal.ts (vedi verifyShareToken).
  */
+// B3: coerente con public-portal.ts shareTokenSecret(). In prod no fallback
+// hardcoded → se nessuna env è settata, token generati saranno comunque
+// validabili (entrambe le route usano la stessa funzione) ma non forgiabili
+// da chi conosce il default.
 function shareTokenSecret(): string {
-  return process.env.SHARE_TOKEN_SECRET
+  const fromEnv = process.env.SHARE_TOKEN_SECRET
     || process.env.CRON_SECRET
-    || process.env.TOKEN_ENCRYPTION_KEY
-    || "bekind-share-token";
+    || process.env.TOKEN_ENCRYPTION_KEY;
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === "production") return "";
+  return "bekind-share-token-dev-only";
 }
 
 function generateShareToken(ttlDays = 90): string {

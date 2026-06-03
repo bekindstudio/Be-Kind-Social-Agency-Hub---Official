@@ -10,8 +10,13 @@ router.get("/activity-log", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
 
-  const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
-  const offset = parseInt(req.query.offset as string) || 0;
+  // B5: guard esplicito su NaN. Il vecchio `parseInt(x) || 30` funzionava per
+  // valori non numerici (NaN falsy), ma Math.min(NaN, 100) restituisce NaN che
+  // Drizzle passava silenziosamente a Postgres con effetti imprevedibili.
+  const limitRaw = parseInt(req.query.limit as string);
+  const offsetRaw = parseInt(req.query.offset as string);
+  const limit = Math.min(Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 30, 100);
+  const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
 
   const rows = await db.select().from(activityLog)
     .orderBy(desc(activityLog.createdAt))

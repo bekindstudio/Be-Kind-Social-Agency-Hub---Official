@@ -25,11 +25,18 @@ const router: IRouter = Router();
 
 type ClientRow = typeof clientsTable.$inferSelect;
 
+// B3: in produzione, se nessuna fonte di entropy è configurata, ritorna
+// stringa vuota → tutti i token saranno rifiutati (HMAC differente da
+// quello generato in clients.ts). Prima il fallback "bekind-share-token"
+// hardcoded consentiva a un attaccante di forgiare token validi conoscendo
+// solo il default. In dev, lascia il fallback per non bloccare lo sviluppo.
 function shareTokenSecret(): string {
-  return process.env.SHARE_TOKEN_SECRET
+  const fromEnv = process.env.SHARE_TOKEN_SECRET
     || process.env.CRON_SECRET
-    || process.env.TOKEN_ENCRYPTION_KEY
-    || "bekind-share-token";
+    || process.env.TOKEN_ENCRYPTION_KEY;
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === "production") return "";
+  return "bekind-share-token-dev-only";
 }
 
 /**

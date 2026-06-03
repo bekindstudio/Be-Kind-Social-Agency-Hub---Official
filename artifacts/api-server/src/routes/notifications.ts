@@ -46,6 +46,12 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response): Pro
   const userId = requireNotificationUser(req, res);
   if (!userId) return;
   const id = parseInt(req.params.id as string);
+  // B4: prima senza guard, "/notifications/abc/read" passava NaN a SQL
+  // → query non matchava nessun record → 204 ingannevole.
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID notifica non valido" });
+    return;
+  }
   const [row] = await db.update(notifications)
     .set({ isRead: true })
     .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
@@ -67,6 +73,10 @@ router.delete("/notifications/:id", async (req: Request, res: Response): Promise
   const userId = requireNotificationUser(req, res);
   if (!userId) return;
   const id = parseInt(req.params.id as string);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID notifica non valido" });
+    return;
+  }
   await db.delete(notifications)
     .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
   res.sendStatus(204);

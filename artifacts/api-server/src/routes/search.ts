@@ -53,9 +53,14 @@ router.get("/search", async (req, res): Promise<void> => {
       .limit(5),
   ]);
 
+  // ACL: items senza clientId vengono nascosti per utenti ristretti (B1).
+  // Admin/env admin hanno accessible === "all" e li vedono comunque.
+  // Era un bug: `!i.clientId || accessible.includes(...)` lasciava passare
+  // tutti gli item interni senza cliente assegnato, permettendo accesso a
+  // progetti/quote/contratti di gestione interna anche a utenti ristretti.
   const filterByAccess = <T extends { clientId?: number | null }>(items: T[]) => {
     if (accessible === "all") return items;
-    return items.filter((i) => !i.clientId || accessible.includes(i.clientId));
+    return items.filter((i) => i.clientId != null && accessible.includes(i.clientId));
   };
 
   const filteredProjects = filterByAccess(projects);

@@ -13,8 +13,6 @@ import {
   CheckSquare,
   Inbox,
   FileText,
-  Receipt,
-  BookOpen,
   ChevronRight,
   List,
   X,
@@ -286,61 +284,47 @@ export default function TodayPage() {
   return (
     <Layout>
       <div className="p-4 md:p-8 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-6 flex items-end justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Sun size={22} className="text-amber-500" /> {greeting}, {userLabel}
-            </h1>
-            <p className="text-sm text-muted-foreground capitalize">
-              {new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground">Vista quotidiana · tutti i clienti</p>
-        </div>
+        {/* Hero compatto (Wave BE): una sola headline che dice quante task
+            hai per oggi. Niente più 4 StatCard che competono per attenzione. */}
+        {(() => {
+          const todoCount = aggregates.tasksOverdue.length + aggregates.tasksToday.length;
+          const overdueCount = aggregates.tasksOverdue.length;
+          return (
+            <div className="mb-8">
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <p className="text-sm text-muted-foreground capitalize inline-flex items-center gap-2">
+                  <Sun size={16} className="text-amber-500" />
+                  {greeting}, {userLabel} · {new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
+                </p>
+                <p className="text-xs text-muted-foreground">Vista quotidiana · tutti i clienti</p>
+              </div>
+              {todoCount === 0 ? (
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                  Nessuna task per oggi. <span className="text-emerald-600">Tutto in ordine ✓</span>
+                </h1>
+              ) : (
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                  Hai <span className="text-primary tabular-nums">{todoCount}</span> {todoCount === 1 ? "task" : "task"} per oggi
+                  {overdueCount > 0 && (
+                    <span className="text-amber-600">, {overdueCount} in ritardo</span>
+                  )}
+                </h1>
+              )}
+              {(aggregates.tasksDoneToday.length > 0 || aggregates.eventsThisWeek.length > 0) && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  {aggregates.tasksDoneToday.length > 0 && `${aggregates.tasksDoneToday.length} ${aggregates.tasksDoneToday.length === 1 ? "completata" : "completate"} oggi`}
+                  {aggregates.tasksDoneToday.length > 0 && aggregates.eventsThisWeek.length > 0 && " · "}
+                  {aggregates.eventsThisWeek.length > 0 && `${aggregates.eventsThisWeek.length} ${aggregates.eventsThisWeek.length === 1 ? "evento" : "eventi"} nei prossimi 7 giorni`}
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatCard
-            label="Task scadute"
-            value={aggregates.tasksOverdue.length}
-            hint={aggregates.tasksOverdue.length ? "Da recuperare" : "Tutto in ordine"}
-            tone={aggregates.tasksOverdue.length > 0 ? "warn" : "ok"}
-            icon={AlertTriangle}
-            href="/tasks"
-          />
-          <StatCard
-            label="Task oggi"
-            value={aggregates.tasksToday.length}
-            hint={aggregates.tasksToday.length ? `${aggregates.tasksDoneToday.length} completate oggi` : "Nessuna scadenza"}
-            tone="neutral"
-            icon={CheckSquare}
-            href="/tasks"
-          />
-          <StatCard
-            label="Eventi 7gg"
-            value={aggregates.eventsThisWeek.length}
-            hint={aggregates.eventsToday.length ? `${aggregates.eventsToday.length} oggi` : "Nessuno oggi"}
-            tone="neutral"
-            icon={CalendarDays}
-            href="/tools/events"
-          />
-          <StatCard
-            label="Da approvare"
-            value={aggregates.reportsToApprove.length + aggregates.reportsToSend.length}
-            hint={
-              aggregates.reportsToApprove.length || aggregates.reportsToSend.length
-                ? `${aggregates.reportsToApprove.length} in revisione · ${aggregates.reportsToSend.length} da inviare`
-                : "Nessun report pendente"
-            }
-            tone={aggregates.reportsToApprove.length + aggregates.reportsToSend.length > 0 ? "warn" : "ok"}
-            icon={Inbox}
-            href="/tools/reports"
-          />
-        </div>
-
-        {/* Sezioni principali */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Sezione principale: solo "Da fare oggi" full-width. Le altre 3
+            sezioni (Eventi, Approvare, Promemoria) sono consolidate sotto
+            in un blocco compatto "Altro da sapere" — meno carico cognitivo. */}
+        <div className="space-y-4">
           {/* Da fare oggi — tutte (scadute + di oggi + completate oggi), no slice
               Click task → naviga al cliente, checkbox per toggle done */}
           <SectionCard
@@ -407,95 +391,84 @@ export default function TodayPage() {
             </div>
           </SectionCard>
 
-          {/* Eventi prossimi */}
-          <SectionCard
-            title="Eventi prossimi (7gg)"
-            icon={CalendarDays}
-            action={<Link href="/tools/events"><span className="text-xs text-primary hover:underline inline-flex items-center gap-1">Tutti gli eventi <ChevronRight size={12} /></span></Link>}
-            empty={aggregates.eventsThisWeek.length === 0}
-          >
-            <div className="space-y-2">
-              {aggregates.eventsThisWeek.slice(0, 6).map((e: AnyObj) => (
-                <div key={e.id} className="flex items-start gap-2.5 rounded-lg border border-card-border/60 p-2.5">
-                  <span className="h-2 w-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: e.clientColor || "#7a8f5c" }} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{e.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(e.date)}{e.clientName ? ` · ${e.clientName}` : ""}
-                    </p>
-                  </div>
-                  <span className="text-xs rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
+          {/* Altro da sapere (Wave BE): 3 righe compatte che consolidano
+              Eventi/Report/Promemoria. Ogni riga linka alla pagina dedicata
+              per il dettaglio — qui basta il conteggio + il next item. */}
+          {(() => {
+            const nextEvent = [...aggregates.eventsThisWeek]
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+            const totalReports = aggregates.reportsToApprove.length + aggregates.reportsToSend.length;
+            const totalReminders = aggregates.briefsIncomplete.length + aggregates.contractsExpiring.length;
+            const anything = aggregates.eventsThisWeek.length + totalReports + totalReminders;
+            if (anything === 0) return null;
+            return (
+              <div className="rounded-xl border border-card-border bg-card p-5">
+                <h2 className="font-semibold text-sm flex items-center gap-2 mb-1">
+                  <Inbox size={15} className="text-primary" /> Altro da sapere
+                </h2>
+                <div className="divide-y divide-card-border/50 -mx-5">
+                  {aggregates.eventsThisWeek.length > 0 && (
+                    <Link href="/tools/events">
+                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <CalendarDays size={16} className="text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {aggregates.eventsThisWeek.length} {aggregates.eventsThisWeek.length === 1 ? "evento" : "eventi"} nei prossimi 7 giorni
+                          </p>
+                          {nextEvent && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              Prossimo: {nextEvent.title} · {formatDate(nextEvent.date)}{nextEvent.clientName ? ` · ${nextEvent.clientName}` : ""}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                      </div>
+                    </Link>
+                  )}
+                  {totalReports > 0 && (
+                    <Link href="/tools/reports">
+                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <FileText size={16} className="text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {totalReports} {totalReports === 1 ? "report" : "report"} da gestire
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {aggregates.reportsToApprove.length > 0 && `${aggregates.reportsToApprove.length} in revisione`}
+                            {aggregates.reportsToApprove.length > 0 && aggregates.reportsToSend.length > 0 && " · "}
+                            {aggregates.reportsToSend.length > 0 && `${aggregates.reportsToSend.length} pronti da inviare`}
+                          </p>
+                        </div>
+                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                      </div>
+                    </Link>
+                  )}
+                  {totalReminders > 0 && (
+                    <Link href={aggregates.briefsIncomplete[0]
+                      ? `/clients/${aggregates.briefsIncomplete[0].clientId}`
+                      : aggregates.contractsExpiring[0]
+                        ? `/clients/${aggregates.contractsExpiring[0].clientId}`
+                        : "/clients"}>
+                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {totalReminders} {totalReminders === 1 ? "promemoria" : "promemoria"}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {aggregates.briefsIncomplete.length > 0 && `${aggregates.briefsIncomplete.length} brief incompleti`}
+                            {aggregates.briefsIncomplete.length > 0 && aggregates.contractsExpiring.length > 0 && " · "}
+                            {aggregates.contractsExpiring.length > 0 && `${aggregates.contractsExpiring.length} contratti in scadenza`}
+                          </p>
+                        </div>
+                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                      </div>
+                    </Link>
+                  )}
                 </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          {/* Da approvare / inviare */}
-          <SectionCard
-            title="Da approvare / inviare"
-            icon={Inbox}
-            action={<Link href="/tools/reports"><span className="text-xs text-primary hover:underline inline-flex items-center gap-1">Tutti i report <ChevronRight size={12} /></span></Link>}
-            empty={aggregates.reportsToApprove.length === 0 && aggregates.reportsToSend.length === 0}
-          >
-            <div className="space-y-2">
-              {aggregates.reportsToApprove.slice(0, 4).map((r: AnyObj) => (
-                <Link key={r.id} href="/tools/reports">
-                  <div className="flex items-start gap-2.5 rounded-lg border border-card-border/60 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
-                    <FileText size={14} className="text-amber-600 mt-0.5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{r.titolo ?? r.title ?? "Report"}</p>
-                      <p className="text-xs text-muted-foreground">In attesa di approvazione{r.clientName ? ` · ${r.clientName}` : ""}</p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-              {aggregates.reportsToSend.slice(0, 4).map((r: AnyObj) => (
-                <Link key={r.id} href="/tools/reports">
-                  <div className="flex items-start gap-2.5 rounded-lg border border-card-border/60 border-l-2 border-l-emerald-400 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
-                    <FileText size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{r.titolo ?? r.title ?? "Report"}</p>
-                      <p className="text-xs text-emerald-700">Pronto da inviare{r.clientName ? ` · ${r.clientName}` : ""}</p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </SectionCard>
-
-          {/* Promemoria intelligenti */}
-          <SectionCard
-            title="Promemoria"
-            icon={AlertTriangle}
-            empty={aggregates.briefsIncomplete.length === 0 && aggregates.contractsExpiring.length === 0}
-          >
-            <div className="space-y-2">
-              {aggregates.briefsIncomplete.slice(0, 4).map((b) => (
-                <Link key={b.clientId} href={`/clients/${b.clientId}`}>
-                  <div className="flex items-center gap-2.5 rounded-lg border border-card-border/60 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
-                    <BookOpen size={14} className="text-primary shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">Brief incompleto: {b.name}</p>
-                      <p className="text-xs text-muted-foreground">Compilato al {b.pct}%</p>
-                    </div>
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                  </div>
-                </Link>
-              ))}
-              {aggregates.contractsExpiring.slice(0, 4).map((c: AnyObj) => (
-                <Link key={c.id} href={`/clients/${c.clientId}`}>
-                  <div className="flex items-center gap-2.5 rounded-lg border border-card-border/60 border-l-2 border-l-amber-400 p-2.5 hover:bg-muted/40 transition-colors cursor-pointer">
-                    <Receipt size={14} className="text-amber-600 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">Contratto in scadenza: {c.clientName ?? "Cliente"}</p>
-                      <p className="text-xs text-amber-700">Scade il {formatDate(c.dataFine)}</p>
-                    </div>
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </SectionCard>
+              </div>
+            );
+          })()}
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">

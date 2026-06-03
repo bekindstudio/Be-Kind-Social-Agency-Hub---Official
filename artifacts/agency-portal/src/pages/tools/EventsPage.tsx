@@ -206,10 +206,14 @@ export default function EventsPage() {
   return (
     <Layout>
       <div className="mx-auto max-w-[1600px] space-y-4 p-6 lg:p-8">
+        {/* Hero (Wave BJ): allineato a Today/Tasks. Tipografia più grande,
+            cliente attivo evidenziato. */}
         <div>
-          <h1 className="text-2xl font-bold">Calendario Eventi Cliente</h1>
-          <p className="text-sm text-muted-foreground">
-            Promemoria interno dei momenti importanti per {activeClient?.name ?? "il cliente selezionato"}.
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+            Calendario eventi {activeClient ? <span className="text-primary">· {activeClient.name}</span> : ""}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Promemoria interno dei momenti importanti del cliente selezionato.
           </p>
         </div>
 

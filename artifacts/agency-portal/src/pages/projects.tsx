@@ -193,17 +193,29 @@ export default function Projects() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-          <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">Progetti attivi</p><p className="text-2xl font-bold">{stats.active}</p></div>
-          <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">In scadenza questa settimana</p><p className="text-2xl font-bold">{stats.dueWeek}</p></div>
-          <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">Completati questo mese</p><p className="text-2xl font-bold">{stats.completedMonth}</p></div>
-          <div className="bg-card border border-card-border rounded-xl p-4"><p className="text-xs text-muted-foreground">Valore totale in corso</p><p className="text-2xl font-bold">€ {stats.valueInCourse.toLocaleString("it-IT")}</p></div>
-        </div>
-
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">Project Management</h1>
-          <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center gap-2 shadow-sm"><Sparkles size={15} /> Nuovo Progetto</button>
+      <div className="p-4 md:p-8 max-w-6xl mx-auto">
+        {/* Hero (Wave BJ): "Hai N progetti, X in scadenza" sostituisce le
+            4 stat-card uguali in fila. Il bottone "Nuovo Progetto" sta a
+            destra del titolo, non più su riga separata. */}
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            {stats.active === 0 ? (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                Nessun progetto attivo
+              </h1>
+            ) : (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                Hai <span className="text-primary tabular-nums">{stats.active}</span> {stats.active === 1 ? "progetto" : "progetti"} attivi
+                {stats.dueWeek > 0 && (
+                  <span className="text-amber-600">, {stats.dueWeek} in scadenza questa settimana</span>
+                )}
+              </h1>
+            )}
+            <p className="text-sm text-muted-foreground mt-2">
+              {stats.completedMonth} completati questo mese · € {stats.valueInCourse.toLocaleString("it-IT")} valore totale in corso
+            </p>
+          </div>
+          <button onClick={() => setShowCreate(true)} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium inline-flex items-center justify-center gap-2 shadow-sm shrink-0"><Sparkles size={15} /> Nuovo Progetto</button>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">

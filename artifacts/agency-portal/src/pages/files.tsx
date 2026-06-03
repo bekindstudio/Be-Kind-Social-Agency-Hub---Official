@@ -117,15 +117,22 @@ export default function Files() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Link & File esterni</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {files?.length ?? 0} link condivisi · per upload binari usa Google Drive del cliente
-            </p>
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
+        {/* Hero (Wave BJ): conta link condivisi, hint sul Drive per binari. */}
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            {(files?.length ?? 0) === 0 ? (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                Nessun link condiviso
+              </h1>
+            ) : (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                <span className="text-primary tabular-nums">{files?.length ?? 0}</span> {(files?.length ?? 0) === 1 ? "link condiviso" : "link condivisi"}
+              </h1>
+            )}
+            <p className="text-sm text-muted-foreground mt-2">Per upload di file binari usa Google Drive del cliente.</p>
           </div>
-          <button onClick={() => setShowUrlForm(!showUrlForm)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+          <button onClick={() => setShowUrlForm(!showUrlForm)} className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shrink-0">
             <ExternalLink size={16} />
             Collega URL esterno
           </button>

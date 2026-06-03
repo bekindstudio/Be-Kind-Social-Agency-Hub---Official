@@ -324,15 +324,25 @@ export default function Team() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8 max-w-5xl">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-            <p className="text-muted-foreground text-sm mt-1">{members.length} collaboratori</p>
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
+        {/* Hero (Wave BJ): conta collaboratori in evidenza, niente sub-line
+            inutile. Pulsante "Aggiungi" allineato a destra. */}
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            {members.length === 0 ? (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                Nessun collaboratore nel team
+              </h1>
+            ) : (
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                <span className="text-primary tabular-nums">{members.length}</span> {members.length === 1 ? "collaboratore" : "collaboratori"} nel team
+              </h1>
+            )}
+            <p className="text-sm text-muted-foreground mt-2">Gestisci ruoli, accessi e assegnazioni dei membri.</p>
           </div>
           <button
             onClick={() => { setShowForm(true); setEditId(null); setForm(EMPTY_FORM); }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
           >
             <Plus size={16} />
             Aggiungi Membro

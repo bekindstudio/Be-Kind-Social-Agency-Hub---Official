@@ -517,33 +517,48 @@ export default function Quotes() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8">
-        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Preventivi</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {filteredQuotes.length} di {visibleQuotes.length} preventivi
-            </p>
-          </div>
-          <div className="grid grid-cols-2 md:flex items-center gap-2">
-            <button onClick={exportQuotesCsv} className="flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors">
-              <Download size={14} />
-              CSV
-            </button>
-            <button onClick={exportQuotesXlsx} className="flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors">
-              <Download size={14} />
-              XLSX
-            </button>
-            <button onClick={exportQuotesPdf} className="flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors">
-              <Download size={14} />
-              PDF
-            </button>
-            <button onClick={openCreate} className="col-span-2 md:col-span-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-              <Plus size={16} />
-              Nuovo Preventivo
-            </button>
-          </div>
-        </div>
+      <div className="p-4 md:p-8 max-w-6xl mx-auto">
+        {/* Hero (Wave BJ): preventivi attivi (bozza+inviato) + accettati,
+            con valore in evidenza. Export e Nuovo a destra in modo più calmo. */}
+        {(() => {
+          const pending = visibleQuotes.filter((q: any) => q?.status === "bozza" || q?.status === "inviato").length;
+          const accepted = visibleQuotes.filter((q: any) => q?.status === "accettato").length;
+          return (
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="min-w-0">
+                {visibleQuotes.length === 0 ? (
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                    Nessun preventivo
+                  </h1>
+                ) : (
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                    <span className="text-primary tabular-nums">{pending}</span> {pending === 1 ? "preventivo aperto" : "preventivi aperti"}
+                    {accepted > 0 && (
+                      <span className="text-emerald-600">, {accepted} {accepted === 1 ? "accettato" : "accettati"}</span>
+                    )}
+                  </h1>
+                )}
+                <p className="text-sm text-muted-foreground mt-2">
+                  {visibleQuotes.length} totali · {filteredQuotes.length} visibili con i filtri correnti
+                </p>
+              </div>
+              <div className="grid grid-cols-2 md:flex items-center gap-2 shrink-0">
+                <button onClick={exportQuotesCsv} className="flex items-center justify-center gap-1.5 px-2.5 py-2 border border-input rounded-lg text-xs hover:bg-muted transition-colors">
+                  <Download size={13} /> CSV
+                </button>
+                <button onClick={exportQuotesXlsx} className="flex items-center justify-center gap-1.5 px-2.5 py-2 border border-input rounded-lg text-xs hover:bg-muted transition-colors">
+                  <Download size={13} /> XLSX
+                </button>
+                <button onClick={exportQuotesPdf} className="flex items-center justify-center gap-1.5 px-2.5 py-2 border border-input rounded-lg text-xs hover:bg-muted transition-colors">
+                  <Download size={13} /> PDF
+                </button>
+                <button onClick={openCreate} className="col-span-2 md:col-span-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+                  <Plus size={16} /> Nuovo
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="mb-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <input

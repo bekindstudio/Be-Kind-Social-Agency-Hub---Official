@@ -179,7 +179,10 @@ router.get("/projects", async (req, res): Promise<void> => {
             projectId: sql<number>`${tasksTable.projectId}`.as("projectId"),
             total: sql<number>`count(*)::int`.as("total"),
             done: sql<number>`count(*) FILTER (WHERE ${tasksTable.status} = 'done')::int`.as("done"),
-            overdue: sql<number>`count(*) FILTER (WHERE ${tasksTable.status} <> 'done' AND ${tasksTable.dueDate} < NOW()::date)::int`.as("overdue"),
+            // dueDate è colonna text "YYYY-MM-DD"; confronto lessicografico
+            // con la data odierna in formato ISO. Evita cast text→date che
+            // fallisce se dueDate contiene un valore malformato.
+            overdue: sql<number>`count(*) FILTER (WHERE ${tasksTable.status} <> 'done' AND ${tasksTable.dueDate} IS NOT NULL AND ${tasksTable.dueDate} < to_char(now(), 'YYYY-MM-DD'))::int`.as("overdue"),
           })
           .from(tasksTable)
           .where(and(isNull(tasksTable.deletedAt), inArray(tasksTable.projectId, visibleProjectIds)))

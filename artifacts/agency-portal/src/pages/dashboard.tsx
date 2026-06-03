@@ -590,29 +590,47 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPI */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          <KpiCard title="Progetti Attivi" value={activeProjects.length} sub={`${dueWeekProjects.length} in scadenza questa settimana`} trend="+2 vs mese scorso" color={KPI_COLORS[0]} onClick={() => navigate("/projects")} />
-          <KpiCard title="Task di Oggi" value={tasksTodayTotal} sub={`${tasksTodayDone} completate oggi`} progress={tasksTodayTotal ? (tasksTodayDone / tasksTodayTotal) * 100 : 0} color={KPI_COLORS[1]} onClick={() => navigate("/tasks")} />
-          <KpiCard title="Clienti Attivi" value={clients.length} sub={`${clients.filter((c: AnyObj) => c.contractStatus === "in_scadenza").length} contratti in scadenza (30gg)`} trend={`${clientsAtRisk.length} clienti a rischio`} color={KPI_COLORS[2]} onClick={() => navigate("/clients")} />
-          <KpiCard
-            title="Task in Sospeso"
-            value={(summary as AnyObj)?.pendingTasks ?? 0}
-            sub={`${tasksOverdue.length} task in ritardo`}
-            color={KPI_COLORS[3]}
-            onClick={() => navigate("/tasks")}
-          />
-        </div>
+        {/* Hero (Wave BI): "cosa richiede la mia attenzione adesso?" invece di
+            4 KpiCard equipotenti. Headline = sintesi actionable, sub-line =
+            contesto numerico. Stesso pattern applicato a Today/Agenda. */}
+        {(() => {
+          const pendingTotal = pendingApprovals?.counts?.total ?? 0;
+          const actionable = pendingTotal + tasksOverdue.length;
+          return (
+            <div>
+              {actionable === 0 ? (
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                  Tutto sotto controllo. <span className="text-emerald-600">Nessuna azione urgente ✓</span>
+                </h1>
+              ) : (
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
+                  Hai <span className="text-primary tabular-nums">{actionable}</span> {actionable === 1 ? "cosa" : "cose"} da gestire
+                  {tasksOverdue.length > 0 && (
+                    <span className="text-amber-600">, {tasksOverdue.length} {tasksOverdue.length === 1 ? "task scaduta" : "task scadute"}</span>
+                  )}
+                </h1>
+              )}
+              <p className="text-sm text-muted-foreground mt-2">
+                {activeProjects.length} progetti attivi · {tasksTodayTotal} task per oggi ({tasksTodayDone} {tasksTodayDone === 1 ? "fatta" : "fatte"}) · {clients.length} clienti attivi
+              </p>
+            </div>
+          );
+        })()}
 
-        {/* KPI Agenzia (mese corrente + funnel Quote→Project) */}
+        {/* KPI Agenzia (mese corrente + funnel Quote→Project)
+            Wave BI: scende DOPO "In attesa di te" — è informativo, non
+            actionable: chi apre la Dashboard di solito vuole vedere prima
+            cosa va sistemato, non i KPI commerciali del mese. */}
         {agencyKpi && (
-          <div className="bg-card border border-card-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+          <details className="bg-card border border-card-border rounded-xl group">
+            <summary className="cursor-pointer p-4 flex items-center justify-between gap-2 list-none [&::-webkit-details-marker]:hidden">
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">KPI Agenzia · {agencyKpi.month.label}</p>
                 <h3 className="font-semibold text-sm mt-0.5">Numeri del mese e funnel commerciale</h3>
               </div>
-            </div>
+              <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="px-4 pb-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               <AgencyKpiTile
                 label="Fatturato mese"
@@ -684,7 +702,8 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-          </div>
+            </div>
+          </details>
         )}
 
         {/* Coda unificata: cose in attesa di azione cross-cliente */}

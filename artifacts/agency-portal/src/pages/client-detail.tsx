@@ -955,19 +955,28 @@ export default function ClientDetail({ id }: Props) {
           toast({ title: "Cliente aggiornato" });
         },
         onError: (err: any) => {
-          // Tira fuori il messaggio reale dell'errore backend così l'utente vede
-          // cosa è andato storto (validation Zod, payload troppo grosso, rate limit, ecc.)
-          // invece del generico "Riprova".
-          const detail =
-            err?.data?.error
-            || err?.data?.message
-            || err?.message
-            || "Errore sconosciuto. Apri la console del browser per i dettagli.";
-          console.error("Save client error:", err);
+          // Il middleware backend validate() ritorna { error: "VALIDATION_ERROR",
+          // issues: [{field, message}, ...] }. Estraiamo issues per dire all'utente
+          // QUALE campo ha fallito invece del generico "VALIDATION_ERROR".
+          const data = err?.data;
+          const issues = Array.isArray(data?.issues) ? data.issues : [];
+          let detail: string;
+          if (issues.length > 0) {
+            detail = issues
+              .slice(0, 5)
+              .map((i: any) => `${i.field || "?"}: ${i.message || "invalid"}`)
+              .join(" · ");
+          } else {
+            detail = data?.error
+              || data?.message
+              || err?.message
+              || "Errore sconosciuto. Apri la console (F12) per i dettagli.";
+          }
+          console.error("Save client error:", err, "issues:", issues);
           toast({
             variant: "destructive",
             title: "Errore nel salvataggio",
-            description: String(detail).slice(0, 300),
+            description: String(detail).slice(0, 400),
           });
         },
       }

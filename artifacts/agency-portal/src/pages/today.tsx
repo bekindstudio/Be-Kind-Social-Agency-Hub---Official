@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { portalFetch } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
 import {
   Sun,
@@ -15,6 +16,9 @@ import {
   Receipt,
   BookOpen,
   ChevronRight,
+  List,
+  X,
+  Check,
 } from "lucide-react";
 
 /* Pagina "Oggi" — dashboard giornaliera focalizzata.
@@ -70,6 +74,68 @@ function StatCard({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
+/**
+ * Naviga alla destinazione "più contestuale" per una task:
+ * - se ha clientId → scheda cliente con tab Progetti & Task
+ * - altrimenti se ha projectId → dettaglio progetto
+ * - altrimenti → lista task globale filtrata sull'id (deep link).
+ * Risponde alla richiesta utente: "clic su task → vai al cliente, non a /tasks".
+ */
+function taskHref(t: AnyObj): string {
+  if (t?.clientId) return `/clients/${t.clientId}`;
+  if (t?.projectId) return `/projects/${t.projectId}`;
+  return `/tasks?id=${t?.id ?? ""}`;
+}
+
+function TaskTodayRow({
+  task, onClick, onToggleDone, overdue,
+}: { task: AnyObj; onClick: () => void; onToggleDone: () => void; overdue: boolean }) {
+  const isDone = task.status === "done";
+  return (
+    <div className={cn(
+      "flex items-start gap-2.5 rounded-lg p-2.5 transition-colors group border",
+      overdue ? "border-amber-200 bg-amber-50 hover:bg-amber-100"
+        : isDone ? "border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50"
+        : "border-card-border/60 hover:bg-muted/40"
+    )}>
+      {/* Checkbox inline per toggle done */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleDone(); }}
+        aria-label={isDone ? "Segna come da fare" : "Segna come fatta"}
+        title={isDone ? "Segna come da fare" : "Segna come fatta"}
+        className={cn(
+          "shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors",
+          isDone
+            ? "bg-emerald-600 border-emerald-600 text-white"
+            : "border-muted-foreground/40 hover:border-primary hover:bg-primary/5"
+        )}
+      >
+        {isDone && <Check size={12} strokeWidth={3} />}
+      </button>
+
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-left flex-1 min-w-0"
+      >
+        <p className={cn("text-sm font-medium truncate", isDone && "line-through text-muted-foreground")}>
+          {task.title}
+        </p>
+        <p className={cn("text-[11px]", overdue ? "text-amber-700" : "text-muted-foreground")}>
+          {overdue && task.dueDate ? `Scaduta il ${formatDate(task.dueDate)}` : task.dueDate ? `Scadenza oggi` : "Senza scadenza"}
+          {task.clientName ? ` · ${task.clientName}` : task.projectName ? ` · ${task.projectName}` : (!task.clientId && !task.projectId ? " · Generale" : "")}
+        </p>
+      </button>
+
+      {task.priority === "urgent" && !isDone && (
+        <span className="text-[10px] rounded-full bg-rose-100 text-rose-700 px-2 py-0.5 shrink-0 mt-0.5">Urgente</span>
+      )}
+      <ChevronRight size={13} className="text-muted-foreground shrink-0 mt-1" />
+    </div>
+  );
+}
+
 function SectionCard({ title, icon: Icon, action, children, empty }: { title: string; icon: any; action?: React.ReactNode; children: React.ReactNode; empty?: boolean }) {
   return (
     <div className="rounded-xl border border-card-border bg-card p-5">
@@ -87,6 +153,33 @@ function SectionCard({ title, icon: Icon, action, children, empty }: { title: st
 export default function TodayPage() {
   const [, navigate] = useLocation();
   const { user } = useSupabaseAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
+
+  // Toggle done/undone su una task con optimistic update locale + refetch.
+  const toggleTaskDone = async (task: AnyObj) => {
+    const newStatus = task.status === "done" ? "todo" : "done";
+    try {
+      const r = await portalFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!r.ok) {
+        toast({ variant: "destructive", title: "Aggiornamento non riuscito" });
+        return;
+      }
+      // Invalida le query touched (today.tasks)
+      queryClient.invalidateQueries({ queryKey: ["today", "tasks"] });
+      if (newStatus === "done") {
+        toast({ title: `✓ ${task.title}` });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Errore di rete" });
+    }
+  };
 
   const todayKey = isoDate(startOfToday());
   const sevenDaysFromNow = new Date(startOfToday().getTime() + 7 * 86400000);
@@ -247,37 +340,69 @@ export default function TodayPage() {
 
         {/* Sezioni principali */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Da fare oggi */}
+          {/* Da fare oggi — tutte (scadute + di oggi + completate oggi), no slice
+              Click task → naviga al cliente, checkbox per toggle done */}
           <SectionCard
             title="Da fare oggi"
             icon={CheckSquare}
-            action={<Link href="/tasks"><span className="text-xs text-primary hover:underline inline-flex items-center gap-1">Tutte le task <ChevronRight size={12} /></span></Link>}
+            action={
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPopupOpen(true)}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                  title="Apri vista popup con tutte le task del giorno"
+                >
+                  <List size={12} /> Vista completa
+                </button>
+                <Link href="/tasks"><span className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">Tutte <ChevronRight size={12} /></span></Link>
+              </div>
+            }
             empty={aggregates.tasksOverdue.length === 0 && aggregates.tasksToday.length === 0}
           >
             <div className="space-y-2">
-              {aggregates.tasksOverdue.slice(0, 4).map((t: AnyObj) => (
-                <button key={t.id} onClick={() => navigate("/tasks")} className="w-full flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-left hover:bg-amber-100 transition-colors">
-                  <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{t.title}</p>
-                    <p className="text-[11px] text-amber-700">
-                      Scaduta il {formatDate(t.dueDate)}{t.projectName ? ` · ${t.projectName}` : ""}
-                    </p>
-                  </div>
-                </button>
-              ))}
-              {aggregates.tasksToday.slice(0, 5).map((t: AnyObj) => (
-                <button key={t.id} onClick={() => navigate("/tasks")} className="w-full flex items-start gap-2.5 rounded-lg border border-card-border/60 p-2.5 text-left hover:bg-muted/40 transition-colors">
-                  <CheckSquare size={14} className="text-primary mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{t.title}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Oggi{t.projectName ? ` · ${t.projectName}` : ""}
-                    </p>
-                  </div>
-                  {t.priority === "urgent" && <span className="text-[10px] rounded-full bg-rose-100 text-rose-700 px-2 py-0.5">Urgente</span>}
-                </button>
-              ))}
+              {/* Scadute prima, poi di oggi. Mostro fino a 10 senza toggle, sopra
+                  espongo un bottone "Vedi altre N" che le fa apparire tutte. */}
+              {(() => {
+                const all = [
+                  ...aggregates.tasksOverdue.map((t) => ({ t, overdue: true })),
+                  ...aggregates.tasksToday.map((t) => ({ t, overdue: false })),
+                ];
+                const limit = 10;
+                const visible = showAllTasks ? all : all.slice(0, limit);
+                const hidden = all.length - visible.length;
+                return (
+                  <>
+                    {visible.map(({ t, overdue }) => (
+                      <TaskTodayRow
+                        key={t.id}
+                        task={t}
+                        overdue={overdue}
+                        onClick={() => navigate(taskHref(t))}
+                        onToggleDone={() => toggleTaskDone(t)}
+                      />
+                    ))}
+                    {hidden > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllTasks(true)}
+                        className="w-full text-center text-xs text-primary hover:underline py-1.5 border border-dashed border-card-border rounded-lg"
+                      >
+                        Mostra altre {hidden} task
+                      </button>
+                    )}
+                    {showAllTasks && all.length > limit && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllTasks(false)}
+                        className="w-full text-center text-[10px] text-muted-foreground hover:underline pt-1"
+                      >
+                        Collassa
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </SectionCard>
 
@@ -376,6 +501,115 @@ export default function TodayPage() {
           Dati aggiornati automaticamente. Vista per oggi · {sevenKey}
         </p>
       </div>
+
+      {/* Wave BA: Popup full-page con TUTTE le task del giorno + scadute + completate.
+          Vista alternativa al DailyFocusPopup one-at-a-time. */}
+      {popupOpen && (
+        <TodayTasksPopup
+          tasksOverdue={aggregates.tasksOverdue}
+          tasksToday={aggregates.tasksToday}
+          tasksDoneToday={aggregates.tasksDoneToday}
+          onClose={() => setPopupOpen(false)}
+          onClick={(t) => { setPopupOpen(false); navigate(taskHref(t)); }}
+          onToggleDone={toggleTaskDone}
+        />
+      )}
     </Layout>
+  );
+}
+
+/* ─── Popup vista completa task del giorno (Wave BA) ──────────────────────
+   Differenza vs DailyFocusPopup: quello fa "una task alla volta" con focus.
+   Questo le mostra TUTTE in lista in un colpo solo, per chi vuole pianificare
+   la giornata. Checkbox per toggle done inline + click per andare al cliente. */
+function TodayTasksPopup({
+  tasksOverdue, tasksToday, tasksDoneToday, onClose, onClick, onToggleDone,
+}: {
+  tasksOverdue: AnyObj[];
+  tasksToday: AnyObj[];
+  tasksDoneToday: AnyObj[];
+  onClose: () => void;
+  onClick: (t: AnyObj) => void;
+  onToggleDone: (t: AnyObj) => void;
+}) {
+  const total = tasksOverdue.length + tasksToday.length + tasksDoneToday.length;
+  const todoCount = tasksOverdue.length + tasksToday.length;
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-card border border-card-border rounded-2xl w-full max-w-3xl max-h-[90vh] shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-card-border flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+            <Sun size={18} className="text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-bold text-base">Task di oggi</h2>
+            <p className="text-xs text-muted-foreground">
+              {todoCount} da fare · {tasksDoneToday.length} completate oggi · {total} totali
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Chiudi" className="p-2 rounded-lg hover:bg-muted">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {tasksOverdue.length > 0 && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-amber-700 font-semibold mb-2 flex items-center gap-1.5">
+                <AlertTriangle size={11} /> In ritardo ({tasksOverdue.length})
+              </h3>
+              <div className="space-y-1.5">
+                {tasksOverdue.map((t) => (
+                  <TaskTodayRow key={t.id} task={t} overdue onClick={() => onClick(t)} onToggleDone={() => onToggleDone(t)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {tasksToday.length > 0 && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-foreground/70 font-semibold mb-2 flex items-center gap-1.5">
+                <CheckSquare size={11} /> Da fare oggi ({tasksToday.length})
+              </h3>
+              <div className="space-y-1.5">
+                {tasksToday.map((t) => (
+                  <TaskTodayRow key={t.id} task={t} overdue={false} onClick={() => onClick(t)} onToggleDone={() => onToggleDone(t)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {tasksDoneToday.length > 0 && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-widest text-emerald-700 font-semibold mb-2 flex items-center gap-1.5">
+                <Check size={11} /> Completate oggi ({tasksDoneToday.length})
+              </h3>
+              <div className="space-y-1.5">
+                {tasksDoneToday.map((t) => (
+                  <TaskTodayRow key={t.id} task={t} overdue={false} onClick={() => onClick(t)} onToggleDone={() => onToggleDone(t)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {total === 0 && (
+            <div className="text-center py-12">
+              <CheckSquare size={28} className="mx-auto text-muted-foreground/60 mb-3" />
+              <p className="text-sm font-medium">Nessuna task per oggi</p>
+              <p className="text-xs text-muted-foreground mt-1">Goditi la pausa o pianifica le prossime.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-card-border bg-muted/30 flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground">
+            Click sulla task per andare al cliente · checkbox per marcare fatta
+          </p>
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:opacity-90">
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

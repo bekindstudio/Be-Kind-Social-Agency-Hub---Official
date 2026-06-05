@@ -946,6 +946,16 @@ export default function ClientDetail({ id }: Props) {
   const { clients: contextClients, setActiveClient } = useClientContext();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Sincronizza il cliente attivo nella barra in alto (ClientSelector) col
+  // cliente che stai guardando: aprendo /clients/:id — anche via click su una
+  // task da /today — la barra cambia automaticamente su questo cliente, così
+  // pagina e selettore in alto restano sempre allineati.
+  useEffect(() => {
+    const match = contextClients.find((item) => String(item.id) === String(clientId));
+    if (match) setActiveClient(match);
+  }, [clientId, contextClients, setActiveClient]);
+
   const [editing, setEditing] = useState(false);
   // Deep-link dall'/today: ?tab=<key> apre il tab giusto (es. "progetti" per le
   // task del cliente), ?task=<id> evidenzia e scrolla sulla riga della task.

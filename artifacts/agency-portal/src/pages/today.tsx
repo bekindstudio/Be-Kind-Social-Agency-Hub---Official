@@ -72,19 +72,6 @@ function StatCard({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
-/**
- * Naviga alla destinazione "più contestuale" per una task:
- * - se ha clientId → scheda cliente con tab Progetti & Task
- * - altrimenti se ha projectId → dettaglio progetto
- * - altrimenti → lista task globale filtrata sull'id (deep link).
- * Risponde alla richiesta utente: "clic su task → vai al cliente, non a /tasks".
- */
-function taskHref(t: AnyObj): string {
-  if (t?.clientId) return `/clients/${t.clientId}`;
-  if (t?.projectId) return `/projects/${t.projectId}`;
-  return `/tasks?id=${t?.id ?? ""}`;
-}
-
 function TaskTodayRow({
   task, onClick, onToggleDone, overdue,
 }: { task: AnyObj; onClick: () => void; onToggleDone: () => void; overdue: boolean }) {
@@ -123,7 +110,11 @@ function TaskTodayRow({
         </p>
         <p className={cn("text-xs", overdue ? "text-amber-700" : "text-muted-foreground")}>
           {overdue && task.dueDate ? `Scaduta il ${formatDate(task.dueDate)}` : task.dueDate ? `Scadenza oggi` : "Senza scadenza"}
-          {task.clientName ? ` · ${task.clientName}` : task.projectName ? ` · ${task.projectName}` : (!task.clientId && !task.projectId ? " · Generale" : "")}
+          {/* Mostra SEMPRE il cliente (in evidenza) così si capisce di chi è la
+              task; poi il progetto come contesto secondario. */}
+          {task.clientName && <> · <span className="font-medium text-foreground/80">{task.clientName}</span></>}
+          {task.projectName ? ` · ${task.projectName}` : ""}
+          {!task.clientName && !task.projectName && !task.clientId && !task.projectId ? " · Generale" : ""}
         </p>
       </button>
 
@@ -190,6 +181,50 @@ export default function TodayPage() {
   const reports = useApi<AnyObj[]>(["today", "reports"], "/api/reports", 90).data ?? [];
   const expContracts = useApi<AnyObj[]>(["today", "expContracts"], "/api/client-contracts/expiring", 120).data ?? [];
   const clients = useApi<AnyObj[]>(["today", "clients"], "/api/clients", 120).data ?? [];
+  const projects = useApi<AnyObj[]>(["today", "projects"], "/api/projects", 120).data ?? [];
+
+  // ── Risoluzione cliente per ciascuna task ──────────────────────────────
+  // Le task legate a un progetto NON portano il nome cliente (solo projectId/
+  // projectName). Lo ricaviamo via progetto → cliente. Serve sia per mostrarlo
+  // nella riga ("cliente · progetto") sia per il click che deve portare al
+  // cliente giusto, non a quello eventualmente filtrato altrove.
+  const clientNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const c of clients) if (c?.id != null) m.set(Number(c.id), String(c.name ?? ""));
+    return m;
+  }, [clients]);
+  const projectClientById = useMemo(() => {
+    const m = new Map<number, { clientId: number | null; clientName: string | null }>();
+    for (const p of projects) if (p?.id != null) m.set(Number(p.id), { clientId: p.clientId ?? null, clientName: p.clientName ?? null });
+    return m;
+  }, [projects]);
+  const resolveClient = (t: AnyObj): { clientId: number | null; clientName: string | null } => {
+    const proj = t?.projectId != null ? projectClientById.get(Number(t.projectId)) : undefined;
+    const clientId = (t?.clientId ?? proj?.clientId) ?? null;
+    const clientName =
+      t?.clientName
+      ?? (clientId != null ? clientNameById.get(Number(clientId)) : undefined)
+      ?? proj?.clientName
+      ?? null;
+    return { clientId, clientName };
+  };
+  // Task arricchite col cliente risolto: tutte le viste (lista, popup) lo usano.
+  const tasksEnriched = useMemo(
+    () => tasks.map((t): AnyObj => {
+      const { clientId, clientName } = resolveClient(t);
+      return { ...t, clientId: clientId ?? t.clientId ?? null, clientName: clientName ?? null };
+    }),
+    [tasks, clientNameById, projectClientById],
+  );
+
+  // Click su task → cliente proprietario, tab "Progetti & Task", task evidenziata.
+  // Fallback: progetto (se senza cliente) o lista task globale (task generale).
+  const taskHref = (t: AnyObj): string => {
+    const { clientId } = resolveClient(t);
+    if (clientId) return `/clients/${clientId}?tab=progetti&task=${t.id}`;
+    if (t?.projectId) return `/projects/${t.projectId}`;
+    return `/tasks?id=${t?.id ?? ""}`;
+  };
 
   // Brief per ciascun cliente — uso react-query per ogni cliente
   const briefQueries = clients.slice(0, 30).map((c: AnyObj) => {
@@ -234,16 +269,16 @@ export default function TodayPage() {
     const tomorrow = new Date(today.getTime() + 86400000);
     const week = sevenDaysFromNow;
 
-    const tasksDoneToday = tasks.filter(
+    const tasksDoneToday = tasksEnriched.filter(
       (t) => t.status === "done" && (t.completedAt ? new Date(t.completedAt).getTime() >= today.getTime() : false),
     );
-    const tasksOverdue = tasks.filter(
+    const tasksOverdue = tasksEnriched.filter(
       (t) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < today,
     );
-    const tasksToday = tasks.filter(
+    const tasksToday = tasksEnriched.filter(
       (t) => t.status !== "done" && t.dueDate && isoDate(new Date(t.dueDate)) === todayKey,
     );
-    const tasksThisWeek = tasks.filter((t) => {
+    const tasksThisWeek = tasksEnriched.filter((t) => {
       if (t.status === "done") return false;
       if (!t.dueDate) return false;
       const d = new Date(t.dueDate);
@@ -269,7 +304,7 @@ export default function TodayPage() {
       briefsIncomplete,
       contractsExpiring: expContracts,
     };
-  }, [tasks, events, reports, expContracts, briefStats, todayKey, sevenDaysFromNow]);
+  }, [tasksEnriched, events, reports, expContracts, briefStats, todayKey, sevenDaysFromNow]);
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();

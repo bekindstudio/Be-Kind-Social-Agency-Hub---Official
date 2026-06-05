@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { CheckSquare, FolderKanban, Plus } from "lucide-react";
 import { cn, PRIORITY_COLORS, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS } from "@/lib/utils";
 
@@ -13,6 +14,7 @@ export function ClientProjectsSection({
   handleAddProject,
   createProject,
   clientTasks,
+  highlightTaskId,
   showTaskForm,
   setShowTaskForm,
   taskForm,
@@ -34,6 +36,7 @@ export function ClientProjectsSection({
   handleAddProject: () => void;
   createProject: any;
   clientTasks: any[];
+  highlightTaskId?: number | null;
   showTaskForm: boolean;
   setShowTaskForm: (value: boolean) => void;
   taskForm: any;
@@ -44,6 +47,13 @@ export function ClientProjectsSection({
   handleAddTask: () => void;
   createTask: any;
 }) {
+  // Scrolla sulla task evidenziata (deep-link ?task=<id> dall'/today).
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (highlightTaskId != null && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightTaskId, clientTasks]);
   return (
     <>
       <Section
@@ -200,7 +210,16 @@ export function ClientProjectsSection({
           ) : (
             <div className="space-y-2">
               {clientTasks.map((t: any) => (
-                <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background">
+                <div
+                  key={t.id}
+                  ref={highlightTaskId != null && t.id === highlightTaskId ? highlightRef : undefined}
+                  className={cn(
+                    "flex items-center gap-3 p-3 rounded-lg border bg-background transition-colors",
+                    highlightTaskId != null && t.id === highlightTaskId
+                      ? "border-primary ring-2 ring-primary/30 bg-primary/5"
+                      : "border-border",
+                  )}
+                >
                   <div className={cn(
                     "w-4 h-4 rounded-full border-2 shrink-0",
                     t.status === "done" ? "bg-emerald-500 border-emerald-500" : "border-muted-foreground"

@@ -947,7 +947,20 @@ export default function ClientDetail({ id }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("panoramica");
+  // Deep-link dall'/today: ?tab=<key> apre il tab giusto (es. "progetti" per le
+  // task del cliente), ?task=<id> evidenzia e scrolla sulla riga della task.
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      const valid: TabKey[] = ["panoramica", "progetti", "brief", "editoriale", "eventi", "report", "file", "idee", "meta"];
+      if (t && (valid as string[]).includes(t)) return t as TabKey;
+    } catch { /* ignore */ }
+    return "panoramica";
+  });
+  const highlightTaskId = (() => {
+    try { const v = new URLSearchParams(window.location.search).get("task"); return v ? Number(v) : null; }
+    catch { return null; }
+  })();
   const [form, setForm] = useState<Record<string, string>>({});
   const [editContacts, setEditContacts] = useState<Array<Record<string, string>>>([]);
   const [editServices, setEditServices] = useState<string[]>([]);
@@ -1777,6 +1790,7 @@ export default function ClientDetail({ id }: Props) {
             handleAddProject={handleAddProject}
             createProject={createProject}
             clientTasks={clientTasks}
+            highlightTaskId={highlightTaskId}
             showTaskForm={showTaskForm}
             setShowTaskForm={setShowTaskForm}
             taskForm={taskForm}

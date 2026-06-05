@@ -9,7 +9,6 @@ type UseTaskFiltersParams = {
 };
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
-const STATUS_ORDER: Record<string, number> = { todo: 0, "in-progress": 1, review: 2, done: 3 };
 
 export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, scopedProjectList }: UseTaskFiltersParams) {
   const [search, setSearch] = useState("");
@@ -43,9 +42,15 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
     });
 
     return list.sort((a, b) => {
-      const statusA = STATUS_ORDER[a.status] ?? 1;
-      const statusB = STATUS_ORDER[b.status] ?? 1;
-      if (statusA !== statusB) return statusA - statusB;
+      // 1) Completate sempre in fondo.
+      const doneA = a.status === "done" ? 1 : 0;
+      const doneB = b.status === "done" ? 1 : 0;
+      if (doneA !== doneB) return doneA - doneB;
+      // 2) Ordine cronologico per scadenza (più vicina prima; senza data in fondo).
+      const dateA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+      const dateB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+      if (dateA !== dateB) return dateA - dateB;
+      // 3) Poi per urgenza.
       const prioA = PRIORITY_ORDER[a.priority] ?? 2;
       const prioB = PRIORITY_ORDER[b.priority] ?? 2;
       return prioA - prioB;

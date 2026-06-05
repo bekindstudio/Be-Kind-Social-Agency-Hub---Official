@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { portalFetch } from "@workspace/api-client-react";
 import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
+import { useClientContext } from "@/context/ClientContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
 import {
@@ -33,6 +34,9 @@ function startOfToday(): Date {
 function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+// Ordine urgenza (per il sort secondario delle task: prima cronologico, poi urgenza).
+const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 function useApi<T>(key: (string | number)[], path: string, staleSec = 60): { data: T | null; loading: boolean } {
   const q = useQuery({
@@ -143,6 +147,7 @@ function SectionCard({ title, icon: Icon, action, children, empty }: { title: st
 export default function TodayPage() {
   const [, navigate] = useLocation();
   const { user } = useSupabaseAuth();
+  const { clients: contextClients, setActiveClient } = useClientContext();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -217,13 +222,20 @@ export default function TodayPage() {
     [tasks, clientNameById, projectClientById],
   );
 
-  // Click su task → cliente proprietario, tab "Progetti & Task", task evidenziata.
-  // Fallback: progetto (se senza cliente) o lista task globale (task generale).
-  const taskHref = (t: AnyObj): string => {
+  // Click su task → pagina /tasks (lista task) filtrata sul cliente proprietario.
+  // /tasks filtra in base al cliente attivo del context, quindi prima imposto
+  // quel cliente come attivo (così barra in alto + filtro mostrano lui) e poi
+  // navigo. Fallback: progetto, o /tasks globale per task senza cliente.
+  const goToTask = (t: AnyObj): void => {
     const { clientId } = resolveClient(t);
-    if (clientId) return `/clients/${clientId}?tab=progetti&task=${t.id}`;
-    if (t?.projectId) return `/projects/${t.projectId}`;
-    return `/tasks?id=${t?.id ?? ""}`;
+    if (clientId != null) {
+      const match = contextClients.find((c) => String(c.id) === String(clientId));
+      if (match) setActiveClient(match);
+      navigate("/tasks");
+      return;
+    }
+    if (t?.projectId) { navigate(`/projects/${t.projectId}`); return; }
+    navigate(`/tasks?id=${t?.id ?? ""}`);
   };
 
   // Brief per ciascun cliente — uso react-query per ogni cliente
@@ -387,7 +399,13 @@ export default function TodayPage() {
                 const all = [
                   ...aggregates.tasksOverdue.map((t) => ({ t, overdue: true })),
                   ...aggregates.tasksToday.map((t) => ({ t, overdue: false })),
-                ];
+                ].sort((a, b) => {
+                  // Ordine cronologico (scadenza più vecchia prima), poi urgenza.
+                  const da = a.t.dueDate ? new Date(a.t.dueDate).getTime() : Infinity;
+                  const db = b.t.dueDate ? new Date(b.t.dueDate).getTime() : Infinity;
+                  if (da !== db) return da - db;
+                  return (PRIORITY_ORDER[a.t.priority] ?? 2) - (PRIORITY_ORDER[b.t.priority] ?? 2);
+                });
                 const limit = 10;
                 const visible = showAllTasks ? all : all.slice(0, limit);
                 const hidden = all.length - visible.length;
@@ -398,7 +416,7 @@ export default function TodayPage() {
                         key={t.id}
                         task={t}
                         overdue={overdue}
-                        onClick={() => navigate(taskHref(t))}
+                        onClick={() => goToTask(t)}
                         onToggleDone={() => toggleTaskDone(t)}
                       />
                     ))}
@@ -519,7 +537,7 @@ export default function TodayPage() {
           tasksToday={aggregates.tasksToday}
           tasksDoneToday={aggregates.tasksDoneToday}
           onClose={() => setPopupOpen(false)}
-          onClick={(t) => { setPopupOpen(false); navigate(taskHref(t)); }}
+          onClick={(t) => { setPopupOpen(false); goToTask(t); }}
           onToggleDone={toggleTaskDone}
         />
       )}

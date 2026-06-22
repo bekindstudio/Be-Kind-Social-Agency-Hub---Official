@@ -6,12 +6,11 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { InstallBanner } from "@/components/InstallBanner";
 import { DailyFocusPopup } from "@/components/DailyFocusPopup";
 import { DailyFocusWidget } from "@/components/DailyFocusWidget";
-import { Bell, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { AutoSaveIndicator } from "./AutoSaveIndicator";
 import { OfflineBanner } from "./OfflineBanner";
 import { ClientSelector } from "@/components/ClientSelector";
 import { ClientHeader } from "@/components/ClientHeader";
-import { useWebDeadlineNotifications } from "@/hooks/useWebDeadlineNotifications";
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,7 +19,6 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
-  const webNotifications = useWebDeadlineNotifications();
 
   useEffect(() => {
     let mounted = true;
@@ -57,15 +55,6 @@ export function Layout({ children }: LayoutProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const isWebNotifyActive =
-    webNotifications.enabled && webNotifications.permission === "granted";
-  const webNotifyLabel =
-    webNotifications.permission === "denied"
-      ? "Notifiche bloccate"
-      : isWebNotifyActive
-        ? "Notifiche web attive"
-        : "Attiva notifiche web";
-
   return (
     <div className="flex h-screen overflow-hidden">
       <div className="hidden md:flex">
@@ -83,9 +72,8 @@ export function Layout({ children }: LayoutProps) {
 
       <main className="flex-1 overflow-y-auto bg-background min-w-0">
         {/* Topbar mobile-first: niente titolo "Be Kind Social Agency HUB" ridondante
-            (il logo è già in sidebar / nella PWA), bottone notifiche icon-only sotto
-            sm: per evitare che il label "Attiva notifiche web" mandi a capo tutto.
-            Su >= sm: torna il layout pieno con label e gap maggiori. */}
+            (il logo è già in sidebar / nella PWA). Su >= sm: layout pieno con gap
+            maggiori. Le notifiche push browser sono state rimosse (Wave BN). */}
         <div className="sticky top-0 z-40 bg-background border-b border-border px-2 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button onClick={() => setSidebarOpen(true)} className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors md:hidden" aria-label="Apri menu">
             <Menu size={20} />
@@ -94,24 +82,6 @@ export function Layout({ children }: LayoutProps) {
             <ClientSelector />
           </div>
           <div className="ml-auto flex items-center gap-1 sm:gap-2 shrink-0">
-            {webNotifications.isSupported && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (isWebNotifyActive) {
-                    webNotifications.setEnabled(false);
-                    return;
-                  }
-                  void webNotifications.requestPermission();
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background p-1.5 sm:px-2.5 sm:py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-                title={isWebNotifyActive ? "Disattiva notifiche web" : "Attiva notifiche web"}
-                aria-label={webNotifyLabel}
-              >
-                <Bell size={14} />
-                <span className="hidden sm:inline">{webNotifyLabel}</span>
-              </button>
-            )}
             <AutoSaveIndicator />
             <DailyFocusWidget onClick={() => setFocusOpen(true)} />
             <GlobalSearch />

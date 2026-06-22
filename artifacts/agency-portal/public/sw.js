@@ -6,9 +6,9 @@
 //      * navigate (HTML) → network-first, fallback alla pagina cached
 //      * statici Vite (/assets/*.{js,css}) → cache-first stale-while-revalidate
 //      * resto → solo network (no cache)
-//  - notificationclick: navigazione al target
+// (Le notifiche push browser sono state rimosse: niente handler notificationclick.)
 
-const CACHE_VERSION = "bekind-v2";
+const CACHE_VERSION = "bekind-v3";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const PRECACHE_URLS = ["/", "/favicon.png", "/favicon.svg", "/logo-bekind.png"];
@@ -78,20 +78,4 @@ self.addEventListener("fetch", (event) => {
       }),
     );
   }
-});
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const targetUrl = event.notification?.data?.url || new URL("dashboard", self.registration.scope).toString();
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.navigate(targetUrl);
-          return client.focus();
-        }
-      }
-      return self.clients.openWindow(targetUrl);
-    }),
-  );
 });

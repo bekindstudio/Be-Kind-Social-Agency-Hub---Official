@@ -219,23 +219,15 @@ export default function EventsPage() {
 
         <div className="grid gap-4 xl:grid-cols-3">
           <div className="rounded-xl border border-card-border bg-card p-4 xl:col-span-2">
-            <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-              <div className="rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs">
-                <p className="text-muted-foreground">Eventi mese</p>
-                <p className="text-sm font-semibold">{monthSpanCount}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs">
-                <p className="text-muted-foreground">Multi-giorno</p>
-                <p className="text-sm font-semibold">{multiDayCount}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs">
-                <p className="text-muted-foreground">Alta priorita</p>
-                <p className="text-sm font-semibold">{clientEvents.filter((event) => event.priority === "high").length}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-xs">
-                <p className="text-muted-foreground">Totale archivio</p>
-                <p className="text-sm font-semibold">{clientEvents.length}</p>
-              </div>
+            {/* Riepilogo compatto (Wave BR): una riga invece di 4 stat-card. */}
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span><span className="font-semibold text-foreground tabular-nums">{monthSpanCount}</span> eventi mese</span>
+              <span aria-hidden className="text-muted-foreground/40">·</span>
+              <span><span className="font-semibold text-foreground tabular-nums">{multiDayCount}</span> multi-giorno</span>
+              <span aria-hidden className="text-muted-foreground/40">·</span>
+              <span><span className="font-semibold text-foreground tabular-nums">{clientEvents.filter((event) => event.priority === "high").length}</span> alta priorità</span>
+              <span aria-hidden className="text-muted-foreground/40">·</span>
+              <span><span className="font-semibold text-foreground tabular-nums">{clientEvents.length}</span> in archivio</span>
             </div>
             <div className="mb-3 flex items-center justify-between">
               <button

@@ -301,11 +301,16 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-          <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">Post questo mese</p><p className="text-xl font-bold">{stats.monthTotal}</p></div>
-          <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">In approvazione</p><p className="text-xl font-bold">{stats.pending}</p></div>
-          <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">Approvati pronti</p><p className="text-xl font-bold">{stats.approved}</p></div>
-          <div className="rounded-xl border border-border bg-card p-3"><p className="text-xs text-muted-foreground">Pubblicati questo mese</p><p className="text-xl font-bold">{stats.publishedMonth}</p></div>
+        {/* Riepilogo compatto (Wave BR): una riga invece di 4 stat-card sopra il
+            calendario — il calendario è il contenuto, i numeri fanno da contorno. */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span><span className="font-semibold text-foreground tabular-nums">{stats.monthTotal}</span> post questo mese</span>
+          <span aria-hidden className="text-muted-foreground/40">·</span>
+          <span><span className="font-semibold text-foreground tabular-nums">{stats.pending}</span> in approvazione</span>
+          <span aria-hidden className="text-muted-foreground/40">·</span>
+          <span><span className="font-semibold text-foreground tabular-nums">{stats.approved}</span> approvati pronti</span>
+          <span aria-hidden className="text-muted-foreground/40">·</span>
+          <span><span className="font-semibold text-foreground tabular-nums">{stats.publishedMonth}</span> pubblicati</span>
         </div>
 
         {activeTemplate && (

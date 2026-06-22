@@ -69,7 +69,7 @@ export function MetricCards({
       <div className="rounded-xl border border-card-border bg-card p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Follower Totali</p>
-          <Users size={14} className="text-primary" />
+          <Users size={14} className="text-muted-foreground/60" />
         </div>
         <p className="text-2xl font-bold mt-2">{followers.toLocaleString("it-IT")}</p>
         <p className="mt-1"><TrendValue value={followersDelta} /></p>
@@ -78,7 +78,7 @@ export function MetricCards({
       <div className="rounded-xl border border-card-border bg-card p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Reach Totale</p>
-          <Radio size={14} className="text-blue-500" />
+          <Radio size={14} className="text-muted-foreground/60" />
         </div>
         <p className="text-2xl font-bold mt-2">{reach.toLocaleString("it-IT")}</p>
         <p className="mt-1"><TrendValue value={reachDeltaPct} /> <span className="text-xs text-muted-foreground">vs periodo precedente</span></p>
@@ -87,7 +87,7 @@ export function MetricCards({
       <div className="rounded-xl border border-card-border bg-card p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Engagement Rate</p>
-          <Heart size={14} className="text-emerald-500" />
+          <Heart size={14} className="text-muted-foreground/60" />
         </div>
         <p className="text-2xl font-bold mt-2">{engagementRate.toFixed(2)}%</p>
         <p className="mt-1"><TrendValue value={engagementDelta} /> <span className="text-xs text-muted-foreground">benchmark {benchmark.toFixed(1)}%</span></p>
@@ -96,7 +96,7 @@ export function MetricCards({
       <div className="rounded-xl border border-card-border bg-card p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Post Pubblicati</p>
-          <FileText size={14} className="text-violet-500" />
+          <FileText size={14} className="text-muted-foreground/60" />
         </div>
         <p className="text-2xl font-bold mt-2">{postsPublished}</p>
         <p className="mt-1"><TrendValue value={postsDelta} /> <span className="text-xs text-muted-foreground">vs periodo precedente</span></p>

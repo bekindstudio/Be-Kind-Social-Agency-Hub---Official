@@ -262,7 +262,8 @@ export function ReportList(props: ReportListProps) {
               </button>
             </div>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left py-3 px-4 w-10">
@@ -330,6 +331,7 @@ export function ReportList(props: ReportListProps) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

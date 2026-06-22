@@ -353,7 +353,7 @@ export default function Team() {
           <div className="bg-card border border-card-border rounded-xl p-6 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-sm font-semibold">{editId ? "Modifica Membro" : "Nuovo Membro"}</h2>
-              <button onClick={handleCancel} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted">
+              <button onClick={handleCancel} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted">
                 <X size={16} />
               </button>
             </div>
@@ -624,16 +624,16 @@ export default function Team() {
                         <button
                           onClick={(e) => sendSupabaseInvite(e, m.id)}
                           disabled={invitingId === m.id}
-                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+                          className="p-2 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
                           title="Invia invito email (accesso HUB)"
                         >
                           <Send size={14} />
                         </button>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); handleEdit(m); }} className="p-1.5 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors" title="Modifica">
+                      <button onClick={(e) => { e.stopPropagation(); handleEdit(m); }} className="p-2 text-muted-foreground hover:text-primary rounded-lg hover:bg-muted transition-colors" title="Modifica">
                         <Pencil size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} className="p-1.5 text-muted-foreground hover:text-destructive rounded-lg hover:bg-muted transition-colors" title="Elimina">
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-muted transition-colors" title="Elimina">
                         <Trash2 size={14} />
                       </button>
                       {isExpanded ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}

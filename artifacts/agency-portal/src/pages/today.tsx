@@ -95,13 +95,13 @@ function TaskTodayRow({
         aria-label={isDone ? "Segna come da fare" : "Segna come fatta"}
         title={isDone ? "Segna come da fare" : "Segna come fatta"}
         className={cn(
-          "shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors",
+          "shrink-0 mt-px w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors",
           isDone
             ? "bg-emerald-600 border-emerald-600 text-white"
             : "border-muted-foreground/40 hover:border-primary hover:bg-primary/5"
         )}
       >
-        {isDone && <Check size={12} strokeWidth={3} />}
+        {isDone && <Check size={14} strokeWidth={3} />}
       </button>
 
       <button

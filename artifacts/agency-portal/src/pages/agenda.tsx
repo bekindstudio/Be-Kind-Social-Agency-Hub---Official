@@ -584,24 +584,26 @@ function EventCard({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+        {/* Su mobile le azioni sono sempre visibili (niente hover al tatto);
+            su desktop restano nascoste e compaiono all'hover della riga. */}
+        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
           <button
             type="button"
             onClick={() => onEdit(event)}
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted"
+            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted"
             aria-label="Modifica"
             title="Modifica"
           >
-            <Pencil size={13} />
+            <Pencil size={15} />
           </button>
           <button
             type="button"
             onClick={() => onDelete(event.id)}
-            className="p-1.5 text-muted-foreground hover:text-destructive rounded hover:bg-muted"
+            className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-muted"
             aria-label="Elimina"
             title="Elimina"
           >
-            <Trash2 size={13} />
+            <Trash2 size={15} />
           </button>
         </div>
       </div>

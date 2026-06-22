@@ -809,7 +809,8 @@ export default function Quotes() {
                 </div>
                 {expandedId === q.id && (
                   <div className="border-t border-border px-4 pb-4 pt-3 bg-muted/30">
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[480px]">
                       <thead>
                         <tr className="text-xs font-medium text-muted-foreground border-b border-border">
                           <th className="text-left pb-2">Descrizione</th>
@@ -829,6 +830,7 @@ export default function Quotes() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                     <div className="mt-3 flex justify-end gap-6 text-sm">
                       <span className="text-muted-foreground">Subtotale: <span className="font-medium text-foreground">{formatCurrency(q.subtotal)}</span></span>
                       <span className="text-muted-foreground">IVA {q.taxRate}%: <span className="font-medium text-foreground">{formatCurrency(q.total - q.subtotal)}</span></span>

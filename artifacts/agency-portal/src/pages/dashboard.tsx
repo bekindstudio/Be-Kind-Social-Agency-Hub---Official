@@ -147,6 +147,42 @@ const DEFAULT_WIDGETS = [
 
 type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
+/* ─── Cruscotto visivo (Wave BT) ─────────────────────────────────────────
+   Anello di completamento + riquadro grafico icona/numero. Poco testo. */
+function Ring({ value, total, size = 54 }: { value: number; total: number; size?: number }) {
+  const pct = total > 0 ? Math.min(1, value / total) : 0;
+  const r = (size - 7) / 2;
+  const circ = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={6} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke="hsl(var(--primary))" strokeWidth={6} strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle" className="fill-foreground font-bold" fontSize={size * 0.26}>
+        {total > 0 ? `${Math.round(pct * 100)}%` : "—"}
+      </text>
+    </svg>
+  );
+}
+
+function StatTile({ icon: Icon, value, label, accent, onClick }: { icon: any; value: number | string; label: string; accent: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-card-border bg-card p-4 transition-colors hover:bg-muted/40"
+    >
+      <Icon size={22} className={accent} />
+      <span className="text-2xl md:text-3xl font-bold tabular-nums leading-none">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+    </button>
+  );
+}
+
 function usePortalJsonQuery<T>(path: string, staleTime: number) {
   return useQuery({
     queryKey: [path],
@@ -541,6 +577,98 @@ export default function Dashboard() {
             </div>
           );
         })()}
+
+        {/* ───────── Cruscotto visivo (Wave BT) ─────────
+            Numeri chiave a colpo d'occhio, pochissimo testo. Tutti i dettagli
+            (KPI, code, calendari, widget, insights) sono sotto "Mostra tutti i
+            dettagli": nessun dato eliminato, solo nascosto di default. */}
+        {(() => {
+          const todayStart = startOfDay(new Date());
+          const eventsThisWeekCount = allClientEvents.filter((e: AnyObj) => {
+            const d = new Date(e.date);
+            return d >= todayStart && d <= weekEnd;
+          }).length;
+          const healthProjects = (riskProjects.length ? riskProjects : activeProjects).slice(0, 5);
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatTile icon={Users} value={clients.length} label="Clienti" accent="text-sky-500" onClick={() => navigate("/clients")} />
+                <StatTile icon={FolderKanban} value={activeProjects.length} label="Progetti attivi" accent="text-primary" onClick={() => navigate("/projects")} />
+                <button
+                  type="button"
+                  onClick={() => navigate("/today")}
+                  className="flex items-center justify-center gap-3 rounded-2xl border border-card-border bg-card p-4 transition-colors hover:bg-muted/40"
+                >
+                  <Ring value={tasksTodayDone} total={tasksTodayTotal} />
+                  <div className="text-left leading-tight">
+                    <p className="text-sm font-semibold">Task oggi</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">{tasksTodayDone}/{tasksTodayTotal} fatte</p>
+                    {tasksOverdue.length > 0 && <p className="text-xs text-amber-600">{tasksOverdue.length} in ritardo</p>}
+                  </div>
+                </button>
+                <StatTile icon={CalendarDays} value={eventsThisWeekCount} label="Eventi 7gg" accent="text-rose-500" onClick={() => navigate("/tools/events")} />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {healthProjects.length > 0 && (
+                  <div className="rounded-2xl border border-card-border bg-card p-4">
+                    <p className="text-sm font-semibold mb-3">Salute progetti</p>
+                    <div className="space-y-2.5">
+                      {healthProjects.map((p: AnyObj) => {
+                        const prog = Math.max(0, Math.min(100, Number(p.progress ?? 0)));
+                        const bar = p.healthStatus === "delayed" ? "bg-rose-500" : p.healthStatus === "at-risk" ? "bg-amber-500" : "bg-emerald-500";
+                        return (
+                          <button key={p.id} type="button" onClick={() => navigate(`/projects/${p.id}`)} className="w-full text-left">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="font-medium truncate">{p.name}</span>
+                              <span className="text-muted-foreground tabular-nums shrink-0 ml-2">{prog}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                              <div className={cn("h-full rounded-full", bar)} style={{ width: `${prog}%` }} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-card-border bg-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold">Settimana editoriale</p>
+                    <button type="button" onClick={() => navigate("/tools/calendar")} className="text-xs text-primary hover:underline">Apri →</button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {editorialWeek.map((d) => (
+                      <div key={d.day} className="text-center">
+                        <p className="text-[10px] text-muted-foreground">{d.day}</p>
+                        <div className="mt-1.5 flex min-h-[20px] flex-col items-center justify-start gap-0.5">
+                          {d.pending > 0 && <span className="w-2 h-2 rounded-full bg-amber-500" title="in approvazione" />}
+                          {d.approved > 0 && <span className="w-2 h-2 rounded-full bg-sky-500" title="approvati" />}
+                          {d.published > 0 && <span className="w-2 h-2 rounded-full bg-emerald-500" title="pubblicati" />}
+                          {d.draft > 0 && <span className="w-2 h-2 rounded-full bg-slate-400" title="bozze" />}
+                          {d.post === 0 && <span className="w-1 h-1 rounded-full bg-muted-foreground/20" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    {editorialWeekTotals.weekTotal} contenuti · <span className="text-amber-600">{editorialWeekTotals.pendingTotal} da approvare</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Dettagli completi (Wave BT): tutto il resto della dashboard
+            collassato di default per "vedere meno". Nessun dato eliminato. */}
+        <details className="group rounded-xl border border-card-border bg-card/30">
+          <summary className="cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden px-4 py-3 flex items-center justify-between text-sm font-medium">
+            <span className="inline-flex items-center gap-2"><Inbox size={15} className="text-muted-foreground" /> Mostra tutti i dettagli</span>
+            <ChevronDown size={16} className="text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="px-4 pb-4 space-y-6">
 
         {/* KPI Agenzia (mese corrente + funnel Quote→Project)
             Wave BI: scende DOPO "In attesa di te" — è informativo, non
@@ -1093,6 +1221,8 @@ export default function Dashboard() {
             <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Report inviati</p><p className="font-semibold">{reportsInviatiCount != null ? reportsInviatiCount : "—"}</p></div>
           </div>
         </div>
+          </div>
+        </details>
 
         {/* FAB */}
         <div className="fixed right-5 bottom-5 z-40">

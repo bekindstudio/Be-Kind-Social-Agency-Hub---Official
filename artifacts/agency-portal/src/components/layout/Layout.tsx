@@ -11,6 +11,8 @@ import { AutoSaveIndicator } from "./AutoSaveIndicator";
 import { OfflineBanner } from "./OfflineBanner";
 import { ClientSelector } from "@/components/ClientSelector";
 import { ClientHeader } from "@/components/ClientHeader";
+import { NotificationBell } from "./NotificationBell";
+import { QuickCreate } from "./QuickCreate";
 
 interface LayoutProps {
   children: ReactNode;
@@ -85,6 +87,12 @@ export function Layout({ children }: LayoutProps) {
             <AutoSaveIndicator />
             <DailyFocusWidget onClick={() => setFocusOpen(true)} />
             <GlobalSearch />
+            <NotificationBell
+              buttonClassName="border border-input bg-background hover:bg-muted"
+              iconClassName="text-foreground"
+              panelClassName="right-0 left-auto top-full mt-2"
+            />
+            <QuickCreate />
           </div>
         </div>
         <ClientHeader />

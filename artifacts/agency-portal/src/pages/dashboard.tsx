@@ -13,14 +13,11 @@ import {
   getGetRecentActivityQueryKey,
   getGetDashboardSummaryQueryKey,
 } from "@workspace/api-client-react";
-import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { Layout } from "@/components/layout/Layout";
-import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useClientContext } from "@/context/ClientContext";
 import { useSmartReminders } from "@/hooks/useSmartReminders";
 import { cn, formatDate, PRIORITY_COLORS } from "@/lib/utils";
 import {
-  Search,
   Plus,
   ChevronDown,
   ChevronLeft,
@@ -32,7 +29,6 @@ import {
   CalendarDays,
   MessageCircle,
   Settings,
-  LogOut,
   GripVertical,
   Inbox,
   ArrowRight,
@@ -59,22 +55,6 @@ function arr<T = AnyObj>(v: any): T[] {
   if (Array.isArray(v)) return v as T[];
   if (Array.isArray(v?.items)) return v.items as T[];
   return [v as T].filter(Boolean);
-}
-
-function greeting(name: string) {
-  const h = new Date().getHours();
-  if (h < 12) return `Buongiorno, ${name} ☀️`;
-  if (h <= 17) return `Buon pomeriggio, ${name} 👋`;
-  return `Buonasera, ${name} 🌙`;
-}
-
-function italianDate() {
-  return new Intl.DateTimeFormat("it-IT", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date());
 }
 
 function buildMonthDays(current: Date): Date[] {
@@ -185,7 +165,6 @@ type RevenuePayload = { totalQuotes?: number; totalRevenue?: number; approvedQuo
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { signOut, authDisabled } = useSupabaseAuth();
   const { activeClient, posts } = useClientContext();
   const smartReminders = useSmartReminders();
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
@@ -260,9 +239,6 @@ export default function Dashboard() {
   });
   const allClientEvents = useMemo(() => (Array.isArray(allEventsRaw) ? allEventsRaw : []), [allEventsRaw]);
 
-  const [showQuick, setShowQuick] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [search, setSearch] = useState("");
   const [showAlertsAll, setShowAlertsAll] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [tasksTab, setTasksTab] = useState<"oggi" | "settimana" | "scadute">("oggi");
@@ -506,12 +482,6 @@ export default function Dashboard() {
     }
   };
 
-  const filteredGlobal = [
-    ...projects.filter((p: AnyObj) => p.name?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.name, href: `/projects/${x.id}`, type: "progetto" })),
-    ...clients.filter((c: AnyObj) => c.name?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.name, href: `/clients/${x.id}`, type: "cliente" })),
-    ...tasks.filter((t: AnyObj) => t.title?.toLowerCase?.().includes(search.toLowerCase())).map((x: AnyObj) => ({ label: x.title, href: `/tasks`, type: "task" })),
-  ].slice(0, 6);
-
   const taskListByTab = tasksTab === "oggi" ? [...tasksOverdue, ...tasksDueToday] : tasksTab === "settimana" ? tasksDueWeek : tasksOverdue;
   const riskProjects = projects.filter((p: AnyObj) => p.healthStatus === "at-risk" || p.healthStatus === "delayed").slice(0, 5);
   const eventDays = useMemo(() => buildMonthDays(eventsMonthCursor), [eventsMonthCursor]);
@@ -538,66 +508,21 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6">
-        {/* Top Header Bar */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold">{greeting("Team")}</h1>
-            <p className="text-xs md:text-sm text-muted-foreground capitalize">{italianDate()}</p>
-          </div>
-          <div className="flex items-center gap-2 relative w-full lg:w-auto">
-            <div className="relative flex-1 lg:flex-none lg:w-72">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-input rounded-lg bg-background" placeholder="Cerca progetti, clienti, task..." />
-              {search.trim() && (
-                <div className="absolute z-20 mt-1 w-full bg-card border border-card-border rounded-lg shadow-lg p-1">
-                  {filteredGlobal.length === 0 ? <p className="px-2 py-2 text-xs text-muted-foreground">Nessun risultato</p> : filteredGlobal.map((r, i) => (
-                    <button key={i} onClick={() => { setSearch(""); navigate(r.href); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">
-                      <span className="font-medium">{r.label}</span> <span className="text-xs text-muted-foreground">({r.type})</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <NotificationBell
-              buttonClassName="border border-input bg-background hover:bg-muted"
-              iconClassName="text-foreground"
-              panelClassName="right-0 left-auto ml-0 bottom-auto top-full mt-2"
-            />
-            <div className="relative">
-              <button onClick={() => setShowQuick((s) => !s)} className="px-2 sm:px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg inline-flex items-center gap-1" aria-label="Nuovo">
-                <Plus size={14} /> <span className="hidden sm:inline">Nuovo</span> <ChevronDown size={14} />
-              </button>
-              {showQuick && (
-                <div className="absolute right-0 mt-1 w-48 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
-                  {[["Nuovo progetto", "/projects"], ["Nuova task", "/tasks"], ["Nuovo cliente", "/clients"], ["Nuovo preventivo", "/quotes"], ["Nuovo messaggio", "/chat"]].map(([l, h]) => (
-                    <button key={l} onClick={() => { setShowQuick(false); navigate(h); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">{l}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="relative">
-              <button onClick={() => setShowProfile((s) => !s)} className="w-9 h-9 rounded-full bg-primary/10 text-primary font-semibold">U</button>
-              {showProfile && (
-                <div className="absolute right-0 mt-1 w-44 bg-card border border-card-border rounded-lg shadow-lg p-1 z-20">
-                  <button className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm">Profile</button>
-                  <button onClick={() => navigate("/settings")} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><Settings size={13} /> Settings</button>
-                  {!authDisabled ? (
-                    <button type="button" onClick={() => void signOut()} className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm inline-flex items-center gap-1"><LogOut size={13} /> Logout</button>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Hero (Wave BI): "cosa richiede la mia attenzione adesso?" invece di
-            4 KpiCard equipotenti. Headline = sintesi actionable, sub-line =
-            contesto numerico. Stesso pattern applicato a Today/Agenda. */}
+        {/* Hero (Wave BP): unica headline actionable + sotto-riga di contesto.
+            L'header doppione (saluto/ricerca/profilo) è stato rimosso: campanella
+            e "Nuovo" sono nella topbar globale, profilo/logout nella sidebar.
+            Il blocco è cliccabile → porta a /today (la lista del giorno). */}
         {(() => {
           const pendingTotal = pendingApprovals?.counts?.total ?? 0;
           const actionable = pendingTotal + tasksOverdue.length;
           return (
-            <div>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/today")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/today"); } }}
+              className="cursor-pointer rounded-xl -mx-2 px-2 py-1 transition-colors hover:bg-muted/40"
+            >
               {actionable === 0 ? (
                 <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
                   Tutto sotto controllo. <span className="text-emerald-600">Nessuna azione urgente ✓</span>

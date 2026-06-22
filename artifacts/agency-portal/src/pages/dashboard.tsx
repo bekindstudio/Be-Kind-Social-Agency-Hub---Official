@@ -201,11 +201,11 @@ type RevenuePayload = { totalQuotes?: number; totalRevenue?: number; approvedQuo
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { activeClient, posts } = useClientContext();
+  const { posts } = useClientContext();
   const smartReminders = useSmartReminders();
-  const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
-  const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
-  const tasksQueryParams = apiClientId != null ? { clientId: apiClientId } : {};
+  // La Dashboard è SEMPRE generale (tutta l'agenzia), indipendente dal cliente
+  // selezionato nella barra in alto: nessun filtro per cliente attivo.
+  const tasksQueryParams = {} as Record<string, never>;
   const { data: summary } = useGetDashboardSummary();
   type PendingApprovalsRes = {
     items: Array<{ id: string; kind: string; title: string; clientId: number; clientName: string; clientColor: string; dueAt: string | null; href: string; badge: string }>;
@@ -260,7 +260,7 @@ export default function Dashboard() {
   });
   const { data: activityRaw } = useGetRecentActivity();
   const { data: statusRaw } = useGetProjectStatusBreakdown();
-  const { data: projectsRaw } = useListProjects(apiClientId != null ? { clientId: apiClientId } : {});
+  const { data: projectsRaw } = useListProjects({});
   const { data: tasksRaw } = useListTasks(tasksQueryParams as any);
   const { data: clientsRaw } = useListClients();
   // Calendario eventi UNIFICATO: tutti i clienti, indipendente dal cliente attivo.
@@ -316,11 +316,7 @@ export default function Dashboard() {
 
   const projects = arr(projectsRaw);
   const tasks = arr(tasksRaw);
-  const clients = arr(clientsRaw).filter((client: AnyObj) => {
-    if (!activeClient) return true;
-    if (apiClientId != null) return Number(client?.id) === apiClientId;
-    return String(client?.name ?? "").trim().toLowerCase() === String(activeClient.name ?? "").trim().toLowerCase();
-  });
+  const clients = arr(clientsRaw);
   const activity = arr(activityRaw);
   const statusBreakdown = arr(statusRaw);
 
@@ -593,7 +589,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatTile icon={Users} value={clients.length} label="Clienti" accent="text-sky-500" onClick={() => navigate("/clients")} />
-                <StatTile icon={FolderKanban} value={activeProjects.length} label="Progetti attivi" accent="text-primary" onClick={() => navigate("/projects")} />
+                <StatTile icon={FolderKanban} value={projects.length} label="Progetti" accent="text-primary" onClick={() => navigate("/projects")} />
                 <button
                   type="button"
                   onClick={() => navigate("/today")}
@@ -609,7 +605,7 @@ export default function Dashboard() {
                 <StatTile icon={CalendarDays} value={eventsThisWeekCount} label="Eventi 7gg" accent="text-rose-500" onClick={() => navigate("/tools/events")} />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div>
                 {healthProjects.length > 0 && (
                   <div className="rounded-2xl border border-card-border bg-card p-4">
                     <p className="text-sm font-semibold mb-3">Salute progetti</p>
@@ -632,30 +628,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
-
-                <div className="rounded-2xl border border-card-border bg-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold">Settimana editoriale</p>
-                    <button type="button" onClick={() => navigate("/tools/calendar")} className="text-xs text-primary hover:underline">Apri →</button>
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {editorialWeek.map((d) => (
-                      <div key={d.day} className="text-center">
-                        <p className="text-[10px] text-muted-foreground">{d.day}</p>
-                        <div className="mt-1.5 flex min-h-[20px] flex-col items-center justify-start gap-0.5">
-                          {d.pending > 0 && <span className="w-2 h-2 rounded-full bg-amber-500" title="in approvazione" />}
-                          {d.approved > 0 && <span className="w-2 h-2 rounded-full bg-sky-500" title="approvati" />}
-                          {d.published > 0 && <span className="w-2 h-2 rounded-full bg-emerald-500" title="pubblicati" />}
-                          {d.draft > 0 && <span className="w-2 h-2 rounded-full bg-slate-400" title="bozze" />}
-                          {d.post === 0 && <span className="w-1 h-1 rounded-full bg-muted-foreground/20" />}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">
-                    {editorialWeekTotals.weekTotal} contenuti · <span className="text-amber-600">{editorialWeekTotals.pendingTotal} da approvare</span>
-                  </p>
-                </div>
               </div>
             </div>
           );

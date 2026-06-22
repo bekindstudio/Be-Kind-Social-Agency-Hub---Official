@@ -1,8 +1,6 @@
-import { useMemo } from "react";
 import { useLocation } from "wouter";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useClientContext } from "@/context/ClientContext";
-import { getBriefCompletion } from "@/components/tools/brief/briefCompletion";
 
 function statusLabel(status: "active" | "paused" | "archived"): string {
   if (status === "active") return "Attivo";
@@ -10,10 +8,11 @@ function statusLabel(status: "active" | "paused" | "archived"): string {
   return "Archiviato";
 }
 
+// Palette semantica soft, coerente con lib/utils (Wave BO).
 function statusClass(status: "active" | "paused" | "archived"): string {
-  if (status === "active") return "bg-emerald-100 text-emerald-700";
-  if (status === "paused") return "bg-amber-100 text-amber-700";
-  return "bg-slate-200 text-slate-700";
+  if (status === "active") return "bg-emerald-50 text-emerald-700";
+  if (status === "paused") return "bg-amber-50 text-amber-700";
+  return "bg-muted text-muted-foreground";
 }
 
 function initials(name: string): string {
@@ -26,8 +25,8 @@ function initials(name: string): string {
 function ClientAvatar({ name, color, logo }: { name: string; color?: string; logo?: string }) {
   return (
     <span
-      className="relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white"
-      style={{ backgroundColor: color ?? "#4F46E5" }}
+      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white"
+      style={{ backgroundColor: color ?? "hsl(var(--primary))" }}
     >
       <span>{initials(name)}</span>
       {logo && (
@@ -44,18 +43,12 @@ function ClientAvatar({ name, color, logo }: { name: string; color?: string; log
   );
 }
 
+// Barra cliente compatta (Wave BO): avatar + nome + stato + 1 CTA, su una sola
+// riga anche su mobile. Le metriche brief/post sono state tolte (rumore) — il
+// dettaglio sta nella pagina Brief, raggiungibile dal pulsante.
 export function ClientHeader() {
   const [, navigate] = useLocation();
-  const { activeClient, brief, posts } = useClientContext();
-
-  const postsThisMonth = useMemo(() => {
-    const now = new Date();
-    return posts.filter((post) => {
-      const d = new Date(post.scheduledDate);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length;
-  }, [posts]);
-  const briefCompletion = useMemo(() => getBriefCompletion(brief), [brief]);
+  const { activeClient } = useClientContext();
 
   if (!activeClient) {
     return (
@@ -67,24 +60,19 @@ export function ClientHeader() {
 
   return (
     <div className="border-b border-border bg-card/40 px-4 py-2.5">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-3">
         <ClientAvatar name={activeClient.name} color={activeClient.color} logo={activeClient.logo} />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{activeClient.name}</p>
           <p className="truncate text-xs text-muted-foreground">{activeClient.industry}</p>
         </div>
-        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", statusClass(activeClient.status))}>
+        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", statusClass(activeClient.status))}>
           {statusLabel(activeClient.status)}
         </span>
-        <span className="text-xs text-muted-foreground">
-          Brief aggiornato: {brief?.updatedAt ? formatDate(brief.updatedAt) : "mai"}
-        </span>
-        <span className="text-xs text-muted-foreground">Brief: {briefCompletion}% completo</span>
-        <span className="text-xs text-muted-foreground">Post questo mese: {postsThisMonth}</span>
         <button
           type="button"
           onClick={() => navigate("/tools/brief")}
-          className="ml-auto rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+          className="ml-auto shrink-0 rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted"
         >
           Vai al brief
         </button>

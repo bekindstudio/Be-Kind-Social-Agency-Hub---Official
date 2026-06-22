@@ -29,12 +29,14 @@ export const STATUS_LABELS: Record<string, string> = {
   "on-hold": "In pausa",
 };
 
+// Palette semantica ristretta e soft (riduce il rumore cromatico, Wave BO):
+// muted = neutro/idle · sky = in corso/info · amber = attenzione · emerald = ok/fatto · rose = urgente.
 export const STATUS_COLORS: Record<string, string> = {
-  planning: "bg-blue-100 text-blue-700",
-  active: "bg-emerald-100 text-emerald-700",
-  review: "bg-amber-100 text-amber-700",
-  completed: "bg-gray-100 text-gray-600",
-  "on-hold": "bg-red-100 text-red-600",
+  planning: "bg-muted text-muted-foreground",
+  active: "bg-sky-50 text-sky-700",
+  review: "bg-amber-50 text-amber-700",
+  completed: "bg-emerald-50 text-emerald-700",
+  "on-hold": "bg-muted text-muted-foreground",
 };
 
 export const TASK_STATUS_LABELS: Record<string, string> = {
@@ -45,10 +47,10 @@ export const TASK_STATUS_LABELS: Record<string, string> = {
 };
 
 export const TASK_STATUS_COLORS: Record<string, string> = {
-  todo: "bg-gray-100 text-gray-600",
-  "in-progress": "bg-blue-100 text-blue-700",
-  review: "bg-amber-100 text-amber-700",
-  done: "bg-emerald-100 text-emerald-700",
+  todo: "bg-muted text-muted-foreground",
+  "in-progress": "bg-sky-50 text-sky-700",
+  review: "bg-amber-50 text-amber-700",
+  done: "bg-emerald-50 text-emerald-700",
 };
 
 export const PRIORITY_LABELS: Record<string, string> = {
@@ -59,10 +61,10 @@ export const PRIORITY_LABELS: Record<string, string> = {
 };
 
 export const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-gray-100 text-gray-500",
-  medium: "bg-sky-100 text-sky-700",
-  high: "bg-orange-100 text-orange-700",
-  urgent: "bg-red-100 text-red-700",
+  low: "bg-muted text-muted-foreground",
+  medium: "bg-sky-50 text-sky-700",
+  high: "bg-amber-50 text-amber-700",
+  urgent: "bg-rose-50 text-rose-700",
 };
 
 export const PROJECT_CATEGORIES: { value: string; label: string; icon: string }[] = [

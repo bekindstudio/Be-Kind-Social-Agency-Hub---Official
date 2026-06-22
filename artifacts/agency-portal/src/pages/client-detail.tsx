@@ -172,7 +172,7 @@ function CockpitTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKe
   const activeInSecondary = secondaryTabs.find((t) => t.key === active);
 
   return (
-    <div className="sticky top-0 z-30 -mx-8 px-8 pt-1 pb-0 bg-background/95 backdrop-blur border-b border-card-border mb-6">
+    <div className="sticky top-0 z-30 -mx-4 px-4 md:-mx-8 md:px-8 pt-1 pb-0 bg-background/95 backdrop-blur border-b border-card-border mb-6">
       {/* Mobile: scroll orizzontale di TUTTE le tab (più diretto su schermo stretto) */}
       <div className="md:hidden flex gap-1 overflow-x-auto">
         {TABS.map((t) => {
@@ -1416,6 +1416,43 @@ export default function ClientDetail({ id }: Props) {
           }}
           onStartEdit={startEditing}
         />
+
+        {/* Hero focalizzato del cockpit (Wave BS): apre sul "cosa serve adesso"
+            per QUESTO cliente invece che sul muro di dati anagrafici. Cliccabile
+            → tab Progetti & Task. */}
+        {(() => {
+          const startToday = new Date();
+          startToday.setHours(0, 0, 0, 0);
+          const openTasks = clientTasks.filter((t: any) => t.status !== "done");
+          const overdue = openTasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < startToday);
+          const activeProjects = clientProjects.filter((p: any) => p.status === "active");
+          return (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveTab("progetti")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveTab("progetti"); } }}
+              className="w-full text-left rounded-xl border border-card-border bg-card/40 px-4 py-3 mb-4 cursor-pointer transition-colors hover:bg-muted/40"
+            >
+              <p className="text-lg md:text-xl font-bold tracking-tight leading-tight">
+                {openTasks.length === 0 ? (
+                  <>Nessuna task aperta <span className="text-emerald-600">✓</span></>
+                ) : (
+                  <>
+                    <span className="text-primary tabular-nums">{openTasks.length}</span>{" "}
+                    {openTasks.length === 1 ? "task aperta" : "task aperte"}
+                    {overdue.length > 0 && (
+                      <span className="text-amber-600">, {overdue.length} in ritardo</span>
+                    )}
+                  </>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {activeProjects.length} {activeProjects.length === 1 ? "progetto attivo" : "progetti attivi"} · apri Progetti &amp; Task →
+              </p>
+            </div>
+          );
+        })()}
 
         <CockpitTabs active={activeTab} onChange={setActiveTab} />
 

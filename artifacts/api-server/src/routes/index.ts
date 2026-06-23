@@ -38,6 +38,7 @@ import cronRouter from "./cron";
 import googleDriveRouter from "./google-drive";
 import personalAgendaRouter from "./personal-agenda";
 import timeTrackerRouter from "./time-tracker";
+import clientCommunicationsRouter from "./client-communications";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,6 @@ router.use(cronRouter);
 router.use(googleDriveRouter);
 router.use(personalAgendaRouter);
 router.use(timeTrackerRouter);
+router.use(clientCommunicationsRouter);
 
 export default router;

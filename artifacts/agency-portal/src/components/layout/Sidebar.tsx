@@ -25,6 +25,7 @@ import {
   Target,
   Sun,
   Clock,
+  Send,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -59,6 +60,7 @@ const navGroups = [
     items: [
       { href: "/team", label: "Team", icon: UserCog },
       { href: "/chat", label: "Chat", icon: MessageCircle },
+      { href: "/communications", label: "Comunicazioni", icon: Send },
       { href: "/files", label: "File", icon: Files },
     ],
   },

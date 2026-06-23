@@ -42,6 +42,7 @@ const AnalyticsPage = lazy(() => import("@/pages/tools/AnalyticsPage"));
 const ReportsPage = lazy(() => import("@/pages/tools/ReportsPage"));
 const CaptionAiPage = lazy(() => import("@/pages/tools/CaptionAiPage"));
 const ContentIdeasPage = lazy(() => import("@/pages/tools/ContentIdeasPage"));
+const TimeTrackerPage = lazy(() => import("@/pages/tools/TimeTrackerPage"));
 const Trash = lazy(() => import("@/pages/trash"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
@@ -314,7 +315,7 @@ function Router() {
         </Route>
         <Route path="/tools/time-tracker">
           <RouteBoundary routeKey="/tools/time-tracker">
-            <RequireAuth><Redirect to="/dashboard" /></RequireAuth>
+            <RequireAuth><TimeTrackerPage /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/tools/calendar">

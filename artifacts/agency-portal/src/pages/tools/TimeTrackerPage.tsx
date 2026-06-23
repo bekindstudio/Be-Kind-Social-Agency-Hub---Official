@@ -133,7 +133,12 @@ export default function TimeTrackerPage() {
           durationMinutes,
         }),
       });
-      if (!r.ok) { toast({ variant: "destructive", title: "Salvataggio non riuscito" }); return; }
+      if (!r.ok) {
+        let msg = "Salvataggio non riuscito";
+        try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* ignore */ }
+        toast({ variant: "destructive", title: msg });
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["tt", "entries"] });
       resetForm();
       toast({ title: `✓ Registrato ${fmtHm(durationMinutes)}` });
@@ -241,7 +246,7 @@ export default function TimeTrackerPage() {
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs font-medium text-muted-foreground">
                 Ore
-                <input type="number" min={0} max={24} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="0" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground" />
+                <input type="number" min={0} max={999} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="0" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground" />
               </label>
               <label className="text-xs font-medium text-muted-foreground">
                 Minuti

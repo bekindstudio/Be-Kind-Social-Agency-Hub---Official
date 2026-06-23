@@ -25,7 +25,9 @@ const createSchema = z.object({
   // Data del lavoro (YYYY-MM-DD). L'ora non conta per una voce manuale: la
   // fissiamo a mezzogiorno per evitare slittamenti di giorno per timezone.
   date: z.string().min(1),
-  durationMinutes: z.number().int().min(1).max(24 * 60),
+  // Cap generoso (1000h): una voce può rappresentare anche un totale mensile su
+  // un progetto, non solo una singola sessione.
+  durationMinutes: z.number().int().min(1).max(1000 * 60),
   isBillable: z.boolean().optional(),
 }).passthrough();
 

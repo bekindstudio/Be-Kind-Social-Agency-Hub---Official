@@ -79,7 +79,7 @@ export default function TimeTrackerPage() {
   // ── Form di registrazione ──────────────────────────────────────────────
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [taskId, setTaskId] = useState("");
+  const [taskText, setTaskText] = useState("");
   const [date, setDate] = useState(() => isoDate(new Date()));
   const [hours, setHours] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -103,10 +103,21 @@ export default function TimeTrackerPage() {
 
   const durationMinutes = (parseInt(hours || "0", 10) || 0) * 60 + (parseInt(minutes || "0", 10) || 0);
 
-  const resetForm = () => { setProjectId(""); setTaskId(""); setHours(""); setMinutes(""); setNote(""); };
+  const resetForm = () => { setProjectId(""); setTaskText(""); setHours(""); setMinutes(""); setNote(""); };
 
   const addEntry = async () => {
     if (durationMinutes <= 0) { toast({ variant: "destructive", title: "Inserisci una durata (ore o minuti)" }); return; }
+    // Campo Task libero: se il testo coincide con una task esistente la collego
+    // (taskId); altrimenti resta testo libero salvato nella descrizione, così
+    // puoi registrare anche task non presenti nella to-do.
+    const typed = taskText.trim();
+    const matched = typed
+      ? tasksForScope.find((t) => String(t.title ?? "").trim().toLowerCase() === typed.toLowerCase())
+      : undefined;
+    const noteTrim = note.trim();
+    const description = matched
+      ? (noteTrim || null)
+      : (typed ? (noteTrim ? `${typed} — ${noteTrim}` : typed) : (noteTrim || null));
     setSaving(true);
     try {
       const r = await portalFetch("/api/time-entries", {
@@ -115,9 +126,9 @@ export default function TimeTrackerPage() {
         body: JSON.stringify({
           clientId: clientId ? Number(clientId) : null,
           projectId: projectId ? Number(projectId) : null,
-          taskId: taskId ? Number(taskId) : null,
+          taskId: matched ? Number(matched.id) : null,
           activityType: category,
-          description: note.trim() || null,
+          description,
           date,
           durationMinutes,
         }),
@@ -192,24 +203,30 @@ export default function TimeTrackerPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="text-xs font-medium text-muted-foreground">
               Cliente
-              <select value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId(""); setTaskId(""); }} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground">
+              <select value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId(""); setTaskText(""); }} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground">
                 <option value="">— Nessun cliente (interno) —</option>
                 {clients.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
               </select>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Progetto <span className="opacity-60">(opzionale)</span>
-              <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setTaskId(""); }} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground">
+              <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setTaskText(""); }} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground">
                 <option value="">— Nessuno —</option>
                 {projectsForClient.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
               </select>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
-              Task <span className="opacity-60">(opzionale)</span>
-              <select value={taskId} onChange={(e) => setTaskId(e.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground">
-                <option value="">— Nessuna —</option>
-                {tasksForScope.slice(0, 200).map((t) => <option key={t.id} value={String(t.id)}>{t.title}</option>)}
-              </select>
+              Task <span className="opacity-60">(scegli o scrivi)</span>
+              <input
+                list="tt-tasklist"
+                value={taskText}
+                onChange={(e) => setTaskText(e.target.value)}
+                placeholder="Scegli dall'elenco o scrivi una task…"
+                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+              <datalist id="tt-tasklist">
+                {tasksForScope.slice(0, 200).map((t) => <option key={t.id} value={t.title} />)}
+              </datalist>
             </label>
             <label className="text-xs font-medium text-muted-foreground">
               Categoria
@@ -253,9 +270,9 @@ export default function TimeTrackerPage() {
                   <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", CAT_COLOR(e.activityType))} title={CAT_LABEL(e.activityType)} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">
-                      {e.clientName ?? "Interno"}{e.projectName ? ` · ${e.projectName}` : ""}{e.taskTitle ? ` · ${e.taskTitle}` : ""}
+                      {e.clientName ?? "Interno"}{e.projectName ? ` · ${e.projectName}` : ""}{e.taskTitle ? ` · ${e.taskTitle}` : (e.description ? ` · ${e.description}` : "")}
                     </p>
-                    {e.description && <p className="text-xs text-muted-foreground truncate">{e.description}</p>}
+                    {e.taskTitle && e.description && <p className="text-xs text-muted-foreground truncate">{e.description}</p>}
                   </div>
                   <span className="text-sm font-semibold tabular-nums shrink-0">{fmtHm(e.durationMinutes ?? 0)}</span>
                   <button type="button" onClick={() => deleteEntry(e.id)} className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-muted shrink-0" aria-label="Elimina" title="Elimina">

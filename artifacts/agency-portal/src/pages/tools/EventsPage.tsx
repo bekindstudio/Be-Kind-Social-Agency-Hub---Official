@@ -50,7 +50,9 @@ function buildMonthDays(current: Date): Date[] {
 type EventForm = {
   title: string;
   date: string;
+  time: string;
   endDate: string;
+  endTime: string;
   type: ClientEvent["type"];
   priority: ClientEvent["priority"];
   note: string;
@@ -68,7 +70,9 @@ export default function EventsPage() {
   const [form, setForm] = useState<EventForm>({
     title: "",
     date: new Date().toISOString().slice(0, 10),
+    time: "09:00",
     endDate: new Date().toISOString().slice(0, 10),
+    endTime: "18:00",
     type: "deadline",
     priority: "medium",
     note: "",
@@ -98,23 +102,13 @@ export default function EventsPage() {
     return map;
   }, [clientEvents]);
 
-  const upcoming = useMemo(
-    () =>
-      [...clientEvents]
-        .filter((event) => {
-          const end = event.endDate ? startOfDay(event.endDate) : startOfDay(event.date);
-          return end.getTime() >= Date.now() - 24 * 60 * 60 * 1000;
-        })
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .slice(0, 6),
-    [clientEvents],
-  );
-
   const resetForm = () => {
     setForm({
       title: "",
       date: new Date().toISOString().slice(0, 10),
+      time: "09:00",
       endDate: new Date().toISOString().slice(0, 10),
+      endTime: "18:00",
       type: "deadline",
       priority: "medium",
       note: "",
@@ -135,8 +129,8 @@ export default function EventsPage() {
     }
     const payload = {
       title,
-      date: new Date(`${form.date}T09:00:00`).toISOString(),
-      endDate: new Date(`${form.endDate}T18:00:00`).toISOString(),
+      date: new Date(`${form.date}T${form.time || "09:00"}:00`).toISOString(),
+      endDate: new Date(`${form.endDate}T${form.endTime || form.time || "18:00"}:00`).toISOString(),
       type: form.type,
       priority: form.priority,
       note: form.note.trim() || undefined,
@@ -167,11 +161,17 @@ export default function EventsPage() {
   const beginEdit = (eventId: string) => {
     const event = clientEvents.find((item) => item.id === eventId);
     if (!event) return;
+    const toTime = (iso: string) => {
+      const d = new Date(iso);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
     setEditingEventId(event.id);
     setForm({
       title: event.title,
       date: toDateInputValue(event.date),
+      time: toTime(event.date),
       endDate: toDateInputValue(event.endDate ?? event.date),
+      endTime: toTime(event.endDate ?? event.date),
       type: event.type,
       priority: event.priority,
       note: event.note ?? "",
@@ -318,27 +318,52 @@ export default function EventsPage() {
                   placeholder="Titolo evento"
                   className="w-full rounded-lg border border-input px-3 py-2 text-sm"
                 />
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) =>
-                    setForm((prev) => {
-                      const nextDate = e.target.value;
-                      const nextEndDate = prev.endDate < nextDate ? nextDate : prev.endDate;
-                      return { ...prev, date: nextDate, endDate: nextEndDate };
-                    })
-                  }
-                  className="w-full rounded-lg border border-input px-3 py-2 text-sm"
-                />
-                <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-muted-foreground">Data fine (per intervallo multi-giorno)</label>
-                  <input
-                    type="date"
-                    min={form.date}
-                    value={form.endDate}
-                    onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
-                    className="w-full rounded-lg border border-input px-3 py-2 text-sm"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Data inizio</label>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) =>
+                        setForm((prev) => {
+                          const nextDate = e.target.value;
+                          const nextEndDate = prev.endDate < nextDate ? nextDate : prev.endDate;
+                          return { ...prev, date: nextDate, endDate: nextEndDate };
+                        })
+                      }
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Ora inizio</label>
+                    <input
+                      type="time"
+                      value={form.time}
+                      onChange={(e) => setForm((prev) => ({ ...prev, time: e.target.value }))}
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Data fine</label>
+                    <input
+                      type="date"
+                      min={form.date}
+                      value={form.endDate}
+                      onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Ora fine</label>
+                    <input
+                      type="time"
+                      value={form.endTime}
+                      onChange={(e) => setForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm"
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <select
@@ -392,10 +417,10 @@ export default function EventsPage() {
             </div>
 
             <div className="rounded-xl border border-card-border bg-card p-4">
-              <h2 className="mb-3 text-sm font-semibold">Prossimi eventi</h2>
-              <div className="space-y-2">
-                {upcoming.length === 0 && <p className="text-sm text-muted-foreground">Nessun evento pianificato.</p>}
-                {upcoming.map((event) => (
+              <h2 className="mb-3 text-sm font-semibold">Tutti gli eventi ({clientEvents.length})</h2>
+              <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                {clientEvents.length === 0 && <p className="text-sm text-muted-foreground">Nessun evento pianificato.</p>}
+                {[...clientEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((event) => (
                   <div key={event.id} className="rounded-lg border border-border p-2 text-sm">
                     <div className="flex items-start justify-between gap-2">
                       <div>

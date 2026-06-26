@@ -135,7 +135,15 @@ export default function AgendaPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   // Wave BH: vista lista (default) vs calendario mensile tipo Google Calendar.
-  const [view, setView] = useState<"list" | "calendar">("list");
+  // Vista iniziale: di default Lista, ma ?view=calendar (o mese/calendario) la
+  // apre direttamente sul calendario — usato dal link "Eventi" della Dashboard.
+  const [view, setView] = useState<"list" | "calendar">(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get("view");
+      if (v === "calendar" || v === "mese" || v === "calendario") return "calendar";
+    } catch { /* ignore */ }
+    return "list";
+  });
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -754,6 +762,7 @@ function CalendarMonth({
                         borderLeftColor: e.clientColor || "#7a8f5c",
                       }}
                     >
+                      <span className="font-semibold tabular-nums">{formatTime(e.date)}</span>{" "}
                       {e.title}
                     </button>
                   );

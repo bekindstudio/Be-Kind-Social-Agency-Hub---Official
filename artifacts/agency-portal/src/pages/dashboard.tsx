@@ -602,7 +602,7 @@ export default function Dashboard() {
                     {tasksOverdue.length > 0 && <p className="text-xs text-amber-600">{tasksOverdue.length} in ritardo</p>}
                   </div>
                 </button>
-                <StatTile icon={CalendarDays} value={eventsThisWeekCount} label="Eventi 7gg" accent="text-rose-500" onClick={() => navigate("/tools/events")} />
+                <StatTile icon={CalendarDays} value={eventsThisWeekCount} label="Eventi 7gg" accent="text-rose-500" onClick={() => navigate("/agenda?view=calendar")} />
               </div>
 
               <div>

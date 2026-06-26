@@ -492,6 +492,35 @@ export default function AgendaPage() {
                 </div>
               </details>
             )}
+
+            {/* Eventi clienti aggregati (di TUTTI i clienti). Sono già nel
+                Calendario; li mostriamo anche qui in Lista così li vedi sempre.
+                Read-only: click → scheda cliente. Niente doppioni nel DB. */}
+            {clientEvents.length > 0 && (
+              <details className="rounded-xl border border-card-border bg-card p-4" open>
+                <summary className="cursor-pointer text-sm font-semibold">
+                  Eventi clienti ({clientEvents.length})
+                </summary>
+                <div className="mt-3 space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+                  {[...clientEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => navigate(`/clients/${e.clientId}`)}
+                      className="w-full text-left rounded-lg border border-card-border p-3 hover:bg-muted/40 flex items-center gap-3"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: e.clientColor || "#7a8f5c" }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{e.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {e.clientName ?? "Cliente"} · {new Date(e.date).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" })} · {formatTime(e.date)}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
       </div>

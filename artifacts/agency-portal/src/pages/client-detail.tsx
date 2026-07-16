@@ -8,6 +8,7 @@ import { ClientDetailHeader } from "@/components/client/ClientDetailHeader";
 import { ClientMetaSection } from "@/components/client/ClientMetaSection";
 import { ClientReportsSection } from "@/components/client/ClientReportsSection";
 import { ClientProjectsSection } from "@/components/client/ClientProjectsSection";
+import { ContentIdeasBank } from "@/components/client/ContentIdeasBank";
 import { useClientDetail } from "@/hooks/useClientDetail";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -136,7 +137,7 @@ const PRIORITY_OPTIONS = [
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 /* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
-type TabKey = "panoramica" | "progetti" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "meta";
+type TabKey = "panoramica" | "progetti" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "panoramica", label: "Panoramica", icon: Layers },
   { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
@@ -145,7 +146,11 @@ const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "eventi", label: "Eventi", icon: CalendarDays },
   { key: "report", label: "Report", icon: BarChart3 },
   { key: "file", label: "File", icon: FolderOpen },
-  { key: "idee", label: "Idee", icon: Lightbulb },
+  // "idee" = note testuali libere (client_notes): rinominata "Note rapide" per
+  // non confonderla con la Banca Idee (link salvati, condivisa col cliente).
+  // La key resta "idee" così i deep link ?tab=idee esistenti continuano a valere.
+  { key: "idee", label: "Note rapide", icon: StickyNote },
+  { key: "banca", label: "Banca Idee", icon: Lightbulb },
   { key: "meta", label: "Meta", icon: Share2 },
 ];
 
@@ -962,7 +967,7 @@ export default function ClientDetail({ id }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      const valid: TabKey[] = ["panoramica", "progetti", "brief", "editoriale", "eventi", "report", "file", "idee", "meta"];
+      const valid: TabKey[] = ["panoramica", "progetti", "brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
       if (t && (valid as string[]).includes(t)) return t as TabKey;
     } catch { /* ignore */ }
     return "panoramica";
@@ -1767,9 +1772,14 @@ export default function ClientDetail({ id }: Props) {
           />
         )}
 
-        {/* ─── TAB: Idee/Note ─── */}
+        {/* ─── TAB: Note rapide ─── */}
         {activeTab === "idee" && (
           <ClientNotesTab clientId={clientId} />
+        )}
+
+        {/* ─── TAB: Banca Idee ─── */}
+        {activeTab === "banca" && (
+          <ContentIdeasBank clientId={clientId} />
         )}
 
         {/* ─── TAB: Meta ─── */}

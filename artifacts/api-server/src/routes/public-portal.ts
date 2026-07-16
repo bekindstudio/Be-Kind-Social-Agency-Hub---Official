@@ -11,13 +11,16 @@ import {
   clientReportsTable,
   filesTable,
   projectsTable,
+  clientContentIdeasTable,
 } from "@workspace/db";
+import { derivePlatform, normalizeExternalUrl } from "../lib/social-url";
 
 /**
  * Area cliente condivisa SENZA login.
  * Accesso tramite token (clients.share_token) nell'URL: /api/public/portal/:token/...
  * Espone SOLO i dati del cliente del token e SOLO le sezioni consentite:
  *  - brief: lettura + scrittura (il cliente lo compila)
+ *  - idee: lettura + inserimento (il cliente propone link di ispirazione)
  *  - eventi / editoriale / report / file: sola lettura
  * Montato sotto /api/public/* → fuori dal gate di login (il token è la chiave).
  */
@@ -102,7 +105,7 @@ router.get("/public/portal/:token", async (req, res): Promise<void> => {
       color: client.brandColor ?? client.color ?? "#7a8f5c",
       driveUrl: client.driveUrl ?? null,
     },
-    sections: ["brief", "events", "editorial", "reports", "files"],
+    sections: ["brief", "ideas", "events", "editorial", "reports", "files"],
   });
 });
 
@@ -241,6 +244,85 @@ router.get("/public/portal/:token/files", async (req, res): Promise<void> => {
       createdAt: f.createdAt ? new Date(f.createdAt as any).toISOString() : null,
     })),
   });
+});
+
+/* ── BANCA IDEE (lettura + inserimento) ──────────────────────── */
+// Seconda scrittura consentita al cliente dopo il brief: incolla un link e un
+// titolo. `source` è forzato a 'client' e `clientId` viene dal token, mai dal
+// body → un cliente non può scrivere sulla banca di un altro.
+// Il cliente vede tutta la banca (anche le idee dell'agenzia), non solo le sue:
+// è una bacheca condivisa, non una casella di posta a senso unico.
+// Lo stato resta gestito dall'agenzia: qui è solo un'etichetta di lettura.
+router.get("/public/portal/:token/ideas", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+  const rows = await db
+    .select()
+    .from(clientContentIdeasTable)
+    .where(eq(clientContentIdeasTable.clientId, client.id))
+    .orderBy(desc(clientContentIdeasTable.createdAt));
+  res.json(
+    rows.map((i) => ({
+      id: i.id,
+      title: i.title,
+      url: i.url,
+      platform: i.platform,
+      source: i.source,
+      status: i.status,
+      notes: i.notes ?? null,
+      createdAt: i.createdAt ? i.createdAt.toISOString() : null,
+    })),
+  );
+});
+
+router.post("/public/portal/:token/ideas", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  const body = (req.body ?? {}) as { title?: unknown; url?: unknown; notes?: unknown };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+  const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 2000) : "";
+
+  if (!title || title.length > 300) { res.status(400).json({ error: "Serve un titolo (max 300 caratteri)." }); return; }
+  const url = normalizeExternalUrl(rawUrl);
+  if (!url) { res.status(400).json({ error: "Link non valido. Incolla il link completo del post." }); return; }
+
+  try {
+    // Cap anti-flood per cliente: il rate limit di publicPortalLimiter è per IP.
+    const existing = await db
+      .select({ id: clientContentIdeasTable.id })
+      .from(clientContentIdeasTable)
+      .where(eq(clientContentIdeasTable.clientId, client.id));
+    if (existing.length >= 1000) {
+      res.status(429).json({ error: "Hai raggiunto il numero massimo di idee. Scrivi all'agenzia." });
+      return;
+    }
+
+    const [created] = await db.insert(clientContentIdeasTable).values({
+      clientId: client.id,
+      title,
+      url,
+      platform: derivePlatform(url),
+      source: "client",
+      status: "da_valutare",
+      notes: notes || null,
+      createdBy: null,
+    }).returning();
+
+    res.status(201).json({
+      id: created.id,
+      title: created.title,
+      url: created.url,
+      platform: created.platform,
+      source: created.source,
+      status: created.status,
+      notes: created.notes ?? null,
+      createdAt: created.createdAt ? created.createdAt.toISOString() : null,
+    });
+  } catch {
+    res.status(500).json({ error: "Errore nel salvataggio dell'idea" });
+  }
 });
 
 export default router;

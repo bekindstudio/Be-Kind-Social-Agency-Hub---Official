@@ -6,6 +6,7 @@ import {
   briefSectionFilled,
   type BriefData,
 } from "@/lib/briefSchema";
+import { platformMeta, statusMeta, type ContentIdeaRow } from "@/lib/ideasSchema";
 import {
   Loader2,
   Cloud,
@@ -18,18 +19,21 @@ import {
   BarChart3,
   FolderOpen,
   ExternalLink,
+  Lightbulb,
+  Plus,
 } from "lucide-react";
 
 /* Area cliente pubblica (accesso via link, senza login). */
 
 type ClientInfo = { name: string; logo: string | null; color: string; driveUrl: string | null };
-type TabKey = "brief" | "events" | "editorial" | "reports" | "files";
+type TabKey = "brief" | "ideas" | "events" | "editorial" | "reports" | "files";
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 const API = (token: string, path = "") => `/api/public/portal/${encodeURIComponent(token)}${path}`;
 
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
   { key: "brief", label: "Brief", icon: FileText },
+  { key: "ideas", label: "Idee", icon: Lightbulb },
   { key: "events", label: "Eventi", icon: CalendarDays },
   { key: "editorial", label: "Editoriale", icon: CalendarRange },
   { key: "reports", label: "Report", icon: BarChart3 },
@@ -128,6 +132,7 @@ export default function ClientPortalPage({ token }: { token: string }) {
 
       <main className="max-w-4xl mx-auto px-5 py-6">
         {tab === "brief" && <PortalBrief token={token} />}
+        {tab === "ideas" && <PortalIdeas token={token} />}
         {tab === "events" && <PortalEvents token={token} />}
         {tab === "editorial" && <PortalEditorial token={token} />}
         {tab === "reports" && <PortalReports token={token} />}
@@ -303,6 +308,132 @@ function SaveBadge({ state }: { state: SaveState }) {
   if (state === "error")
     return <span className="inline-flex items-center gap-1.5 text-xs text-red-600"><CloudOff size={13} /> Errore</span>;
   return null;
+}
+
+/* ── BANCA IDEE (il cliente incolla i suoi link) ─────────────── */
+// Nota: fetch NUDO, senza portalFetch — il cliente non ha login, il token
+// nell'URL è la chiave. Qui NON c'è autosave come nel brief: un'idea è un
+// inserimento discreto, quindi il bottone esplicito è più chiaro.
+// Il cliente vede tutta la banca (anche le idee dell'agenzia) ma può solo
+// aggiungere: lo stato lo muove l'agenzia.
+function PortalIdeas({ token }: { token: string }) {
+  const [items, setItems] = useState<ContentIdeaRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(API(token, "/ideas"));
+      setItems(r.ok ? await r.json() : []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const submit = async () => {
+    if (!url.trim() || !title.trim() || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const r = await fetch(API(token, "/ideas"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), url: url.trim() }),
+      });
+      if (!r.ok) {
+        let msg = "Non siamo riusciti a salvare l'idea.";
+        try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* ignore */ }
+        setError(msg);
+        return;
+      }
+      setUrl("");
+      setTitle("");
+      await load();
+    } catch {
+      setError("Errore di rete. Riprova.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const list = items ?? [];
+
+  return (
+    <div>
+      <div className="mb-4 rounded-xl border border-card-border bg-card p-4">
+        <h2 className="font-semibold">Le tue idee</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Hai visto un reel o un post che ti piace? Incolla qui il link: lo teniamo da parte per i contenuti futuri.
+        </p>
+        <div className="mt-3 space-y-2">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Incolla il link (es. https://www.instagram.com/reel/…)"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
+          />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Perché ti piace? (es. mi piace il montaggio veloce)"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving || !url.trim() || !title.trim()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#7a8f5c] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Aggiungi idea
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <Spinner />
+      ) : list.length === 0 ? (
+        <Empty text="Nessuna idea salvata per ora. Aggiungi il primo link qui sopra." />
+      ) : (
+        <div className="space-y-2">
+          {list.map((i) => {
+            const meta = platformMeta(i.platform);
+            const Icon = meta.icon;
+            return (
+              <div key={i.id} className="rounded-xl border border-card-border bg-card p-3 flex items-start gap-3">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${meta.color}`}>
+                  <Icon size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <a
+                    href={i.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="font-medium text-sm hover:underline inline-flex items-center gap-1 max-w-full"
+                  >
+                    <span className="truncate">{i.title}</span>
+                    <ExternalLink size={12} className="shrink-0 text-muted-foreground" />
+                  </a>
+                  <p className="text-xs text-muted-foreground">
+                    {fmtDate(i.createdAt)} · {i.source === "client" ? "Aggiunta da te" : "Aggiunta dall'agenzia"}
+                  </p>
+                </div>
+                <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{statusMeta(i.status).label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ── Sezioni in sola lettura ─────────────────────────────────── */

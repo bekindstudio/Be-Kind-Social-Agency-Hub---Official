@@ -26,6 +26,7 @@ import {
   Sun,
   Clock,
   Send,
+  Lightbulb,
 } from "lucide-react";
 import logoImg from "/logo-bekind.png";
 import { usePortalUser } from "@/hooks/usePortalUser";
@@ -75,6 +76,7 @@ const navGroups = [
   {
     label: "Strumenti",
     items: [
+      { href: "/banca-idee", label: "Banca Idee", icon: Lightbulb },
       { href: "/tools/brief", label: "Brief", icon: FileText },
       { href: "/tools/calendar", label: "Calendario", icon: CalendarDays },
       { href: "/tools/events", label: "Eventi Clienti", icon: Calendar },

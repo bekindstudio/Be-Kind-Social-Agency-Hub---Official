@@ -44,6 +44,7 @@ const CaptionAiPage = lazy(() => import("@/pages/tools/CaptionAiPage"));
 const ContentIdeasPage = lazy(() => import("@/pages/tools/ContentIdeasPage"));
 const TimeTrackerPage = lazy(() => import("@/pages/tools/TimeTrackerPage"));
 const CommunicationsPage = lazy(() => import("@/pages/CommunicationsPage"));
+const ContentIdeasBankPage = lazy(() => import("@/pages/ContentIdeasBankPage"));
 const Trash = lazy(() => import("@/pages/trash"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
@@ -322,6 +323,11 @@ function Router() {
         <Route path="/communications">
           <RouteBoundary routeKey="/communications">
             <RequireAuth><CommunicationsPage /></RequireAuth>
+          </RouteBoundary>
+        </Route>
+        <Route path="/banca-idee">
+          <RouteBoundary routeKey="/banca-idee">
+            <RequireAuth><ContentIdeasBankPage /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/tools/calendar">

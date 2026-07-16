@@ -101,8 +101,9 @@ export function ShareClientDialog({
         </div>
 
         <p className="text-xs text-muted-foreground mb-4">
-          Genera un link da inviare al cliente. Potrà <strong>compilare il Brief</strong> e consultare Eventi,
-          Editoriale, Report e File — <strong>senza login</strong>. Chiunque abbia il link può accedere: trattalo come riservato.
+          Genera un link da inviare al cliente. Potrà <strong>compilare il Brief</strong>, <strong>proporre idee
+          di contenuto</strong> e consultare Eventi, Editoriale, Report e File — <strong>senza login</strong>.
+          Chiunque abbia il link può accedere: trattalo come riservato.
         </p>
 
         {loading ? (

@@ -18,6 +18,7 @@ const prefetchers: Record<string, () => Promise<unknown>> = {
   "/settings": () => import("@/pages/settings"),
   "/trash": () => import("@/pages/trash"),
   "/ai-assistant": () => import("@/pages/ai-assistant"),
+  "/banca-idee": () => import("@/pages/ContentIdeasBankPage"),
   "/tools/brief": () => import("@/pages/tools/BriefPage"),
   "/tools/calendar": () => import("@/pages/tools/CalendarPage"),
   "/tools/events": () => import("@/pages/tools/EventsPage"),

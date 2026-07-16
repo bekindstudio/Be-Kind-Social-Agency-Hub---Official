@@ -27,6 +27,10 @@ export const clientContentIdeasTable = pgTable("client_content_ideas", {
   platform: text("platform").notNull().default("web"),
   source: text("source").notNull().default("agency"),
   status: text("status").notNull().default("da_valutare"),
+  // Tipo di contenuto (educativo/informativo/divertente/vendita/…): serve a
+  // ripescare le idee per pilastro quando si costruisce il piano editoriale.
+  // Facoltativa: chi inserisce può lasciarla 'da_classificare' e decidere dopo.
+  category: text("category").notNull().default("da_classificare"),
   notes: text("notes"),
   tags: text("tags").array().notNull().default([]),
   createdBy: text("created_by"),

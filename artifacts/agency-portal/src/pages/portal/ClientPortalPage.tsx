@@ -6,7 +6,14 @@ import {
   briefSectionFilled,
   type BriefData,
 } from "@/lib/briefSchema";
-import { platformMeta, statusMeta, type ContentIdeaRow } from "@/lib/ideasSchema";
+import {
+  platformMeta,
+  statusMeta,
+  categoryMeta,
+  CATEGORY_META,
+  type ContentIdeaRow,
+  type IdeaCategory,
+} from "@/lib/ideasSchema";
 import {
   Loader2,
   Cloud,
@@ -321,6 +328,7 @@ function PortalIdeas({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<IdeaCategory>("da_classificare");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -345,7 +353,7 @@ function PortalIdeas({ token }: { token: string }) {
       const r = await fetch(API(token, "/ideas"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), url: url.trim() }),
+        body: JSON.stringify({ title: title.trim(), url: url.trim(), category }),
       });
       if (!r.ok) {
         let msg = "Non siamo riusciti a salvare l'idea.";
@@ -355,6 +363,7 @@ function PortalIdeas({ token }: { token: string }) {
       }
       setUrl("");
       setTitle("");
+      setCategory("da_classificare");
       await load();
     } catch {
       setError("Errore di rete. Riprova.");
@@ -386,6 +395,23 @@ function PortalIdeas({ token }: { token: string }) {
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
           />
+          {/* Facoltativa: se il cliente non sa che tipo sia, lo decidiamo noi.
+              L'etichetta del segnaposto è diversa da quella interna
+              ("Da classificare"): al cliente non si chiede di classificare. */}
+          <label className="block text-xs text-muted-foreground">
+            Che tipo di contenuto è? <span className="text-muted-foreground/70">(facoltativo)</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as IdeaCategory)}
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
+            >
+              {CATEGORY_META.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.value === "da_classificare" ? "Non saprei — decidete voi" : `${c.label} — ${c.descr}`}
+                </option>
+              ))}
+            </select>
+          </label>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button
             type="button"
@@ -425,6 +451,12 @@ function PortalIdeas({ token }: { token: string }) {
                   <p className="text-xs text-muted-foreground">
                     {fmtDate(i.createdAt)} · {i.source === "client" ? "Aggiunta da te" : "Aggiunta dall'agenzia"}
                   </p>
+                  {i.category !== "da_classificare" && (
+                    <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className={`w-2 h-2 rounded-full ${categoryMeta(i.category).color}`} />
+                      {categoryMeta(i.category).label}
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{statusMeta(i.status).label}</span>
               </div>

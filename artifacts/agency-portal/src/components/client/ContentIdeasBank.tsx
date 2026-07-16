@@ -4,7 +4,16 @@ import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
 import { Lightbulb, Link2, Search, Plus, ExternalLink, Trash2 } from "lucide-react";
-import { type ContentIdeaRow, type IdeaStatus, platformMeta, statusMeta, STATUS_META } from "@/lib/ideasSchema";
+import {
+  type ContentIdeaRow,
+  type IdeaStatus,
+  type IdeaCategory,
+  platformMeta,
+  statusMeta,
+  categoryMeta,
+  STATUS_META,
+  CATEGORY_META,
+} from "@/lib/ideasSchema";
 
 /**
  * Banca Idee — archivio dei link di ispirazione, riusato in due posti:
@@ -66,11 +75,16 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [formClient, setFormClient] = useState("");
+  const [formCategory, setFormCategory] = useState<IdeaCategory>("da_classificare");
   const [saving, setSaving] = useState(false);
+  // Idea con un PATCH in corso: i suoi controlli restano bloccati fino alla
+  // risposta, così un doppio clic non spara due richieste.
+  const [busyId, setBusyId] = useState<number | null>(null);
   const [q, setQ] = useState("");
   const [fPlatform, setFPlatform] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fClient, setFClient] = useState("");
+  const [fCategory, setFCategory] = useState("");
 
   const targetClientId = scoped ? clientId : Number(formClient) || null;
 
@@ -85,7 +99,7 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
       const r = await portalFetch(`/api/clients/${targetClientId}/content-ideas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), url: url.trim() }),
+        body: JSON.stringify({ title: title.trim(), url: url.trim(), category: formCategory }),
       });
       if (!r.ok) {
         let msg = "Salvataggio non riuscito";
@@ -95,6 +109,8 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
       }
       setUrl("");
       setTitle("");
+      // La categoria NON si azzera: chi archivia più idee dello stesso tipo di
+      // fila non deve riselezionarla ogni volta.
       refresh();
     } catch {
       toast({ variant: "destructive", title: "Errore di rete" });
@@ -103,17 +119,40 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
     }
   };
 
-  const setStatus = async (i: ContentIdeaRow, status: IdeaStatus) => {
-    const r = await portalFetch(`/api/clients/${i.clientId ?? clientId}/content-ideas/${i.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    if (r.ok) refresh();
-    else {
-      let msg = "Operazione non riuscita";
-      try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* ignore */ }
-      toast({ variant: "destructive", title: msg });
+  // Un solo PATCH per stato e categoria: cambia solo il campo passato.
+  //
+  // Aggiorna PRIMA la cache e poi salva (come TaskDetail e il builder del piano
+  // editoriale). Senza, la tendina della categoria tornerebbe visibilmente al
+  // valore vecchio per tutta la durata della richiesta: React riscrive nel DOM
+  // il `value` che gli passiamo, e quel value resta quello vecchio finché non
+  // torna il refetch. Sembra che il clic non abbia funzionato → si riclicca →
+  // seconda richiesta inutile.
+  // In caso di errore non serve un rollback a mano: refresh() rilegge dal
+  // server e sovrascrive il valore ottimistico con la verità.
+  const patchIdea = async (i: ContentIdeaRow, patch: { status?: IdeaStatus; category?: IdeaCategory }) => {
+    const cid = i.clientId ?? clientId;
+    const apply = (rows?: ContentIdeaRow[]) =>
+      Array.isArray(rows) ? rows.map((r) => (r.id === i.id ? { ...r, ...patch } : r)) : rows;
+    queryClient.setQueryData(["client-content-ideas", cid], apply);
+    queryClient.setQueryData(["content-ideas", "all"], apply);
+
+    setBusyId(i.id);
+    try {
+      const r = await portalFetch(`/api/clients/${cid}/content-ideas/${i.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        let msg = "Operazione non riuscita";
+        try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* ignore */ }
+        toast({ variant: "destructive", title: msg });
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Errore di rete" });
+    } finally {
+      setBusyId(null);
+      refresh();
     }
   };
 
@@ -133,6 +172,7 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
   const filtered = list.filter((i) => {
     if (fPlatform && i.platform !== fPlatform) return false;
     if (fStatus && i.status !== fStatus) return false;
+    if (fCategory && i.category !== fCategory) return false;
     if (fClient && String(i.clientId) !== fClient) return false;
     if (q.trim()) {
       const hay = `${i.title} ${i.url} ${i.notes ?? ""} ${i.clientName ?? ""}`.toLowerCase();
@@ -206,7 +246,22 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
             />
           </label>
         </div>
-        <div className="mt-3 flex justify-end">
+        {/* Tipo di contenuto: facoltativo, si può classificare dopo dalla card. */}
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <label className="text-xs font-medium text-muted-foreground">
+            Tipo di contenuto
+            <select
+              value={formCategory}
+              onChange={(e) => setFormCategory(e.target.value as IdeaCategory)}
+              className="mt-1 block w-full min-w-[200px] rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+            >
+              {CATEGORY_META.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.value === "da_classificare" ? c.label : `${c.label} — ${c.descr}`}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => void handleAdd()}
@@ -248,6 +303,19 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
               ))}
             </select>
           )}
+          {/* Tendina e non chip: 7 categorie + piattaforme + stati diventerebbero
+              un muro di bottoni. La lista è fissa, quindi il filtro non può
+              restare bloccato su un valore sparito. */}
+          <select
+            value={fCategory}
+            onChange={(e) => setFCategory(e.target.value)}
+            className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-foreground"
+          >
+            <option value="">Tutti i tipi</option>
+            {CATEGORY_META.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
           {platformsInUse.map((p) => {
             const meta = platformMeta(p);
             const on = fPlatform === p;
@@ -301,6 +369,7 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
             const meta = platformMeta(i.platform);
             const Icon = meta.icon;
             const st = statusMeta(i.status);
+            const cat = categoryMeta(i.category);
             return (
               <div key={i.id} className="rounded-xl border border-card-border bg-card p-3 flex items-start gap-3">
                 <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white", meta.color)}>
@@ -323,12 +392,38 @@ export function ContentIdeasBank({ clientId }: { clientId?: number }) {
                     {i.notes ? ` · ${i.notes}` : ""}
                   </p>
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    {/* Il pallino colorato è il segnale per scorrere la griglia
+                        a colpo d'occhio; la tendina è il controllo. Insieme si
+                        leggono come una chip sola, senza badge doppio a destra.
+                        Modificabile sul posto: un'idea mal classificata dal
+                        cliente si sistema qui in un clic. */}
+                    <span
+                      className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2 py-1",
+                        i.category === "da_classificare" ? "border-dashed border-input" : "border-input")}
+                    >
+                      <span className={cn("w-2 h-2 rounded-full shrink-0", cat.color)} />
+                      <select
+                        value={i.category}
+                        onChange={(e) => void patchIdea(i, { category: e.target.value as IdeaCategory })}
+                        disabled={busyId === i.id}
+                        title="Tipo di contenuto"
+                        className={cn(
+                          "bg-transparent text-xs font-medium focus:outline-none disabled:opacity-60",
+                          i.category === "da_classificare" ? "text-muted-foreground" : "text-foreground",
+                        )}
+                      >
+                        {CATEGORY_META.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </span>
                     {STATUS_META.filter((s) => s.value !== i.status).map((s) => (
                       <button
                         key={s.value}
                         type="button"
-                        onClick={() => void setStatus(i, s.value)}
-                        className="rounded-lg border border-input px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
+                        onClick={() => void patchIdea(i, { status: s.value })}
+                        disabled={busyId === i.id}
+                        className="rounded-lg border border-input px-2.5 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-60"
                       >
                         {s.label}
                       </button>

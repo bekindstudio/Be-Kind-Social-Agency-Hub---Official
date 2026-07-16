@@ -5,6 +5,7 @@ import { db, clientContentIdeasTable, clientsTable } from "@workspace/db";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
 import { validate } from "../middlewares/validate";
 import { derivePlatform, normalizeExternalUrl } from "../lib/social-url";
+import { IDEA_STATUSES, IDEA_CATEGORIES } from "../lib/ideas";
 
 /**
  * Banca Idee: archivio di link "ispirazione" per cliente (reel/post visti in
@@ -17,12 +18,11 @@ import { derivePlatform, normalizeExternalUrl } from "../lib/social-url";
  */
 const router: IRouter = Router();
 
-const IDEA_STATUSES = ["da_valutare", "approvata", "realizzata"] as const;
-
 const createIdeaSchema = z.object({
   title: z.string().trim().min(1, "Il titolo è obbligatorio").max(300),
   url: z.string().trim().min(1, "Il link è obbligatorio").max(2000),
   status: z.enum(IDEA_STATUSES).default("da_valutare"),
+  category: z.enum(IDEA_CATEGORIES).default("da_classificare"),
   notes: z.string().trim().max(5_000).optional().nullable(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
 }).passthrough();
@@ -104,6 +104,7 @@ router.post("/clients/:clientId/content-ideas", validate(createIdeaSchema), asyn
     platform: derivePlatform(url),
     source: "agency",
     status: body.status,
+    category: body.category,
     notes: body.notes?.trim() || null,
     tags: body.tags ?? [],
     createdBy: ctx.userId,
@@ -127,6 +128,7 @@ router.patch("/clients/:clientId/content-ideas/:ideaId", validate(updateIdeaSche
     updates.platform = derivePlatform(url);
   }
   if (typeof body.status === "string") updates.status = body.status;
+  if (typeof body.category === "string") updates.category = body.category;
   if (body.notes !== undefined) updates.notes = body.notes?.trim() || null;
   if (Array.isArray(body.tags)) updates.tags = body.tags;
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nessun campo da aggiornare" }); return; }

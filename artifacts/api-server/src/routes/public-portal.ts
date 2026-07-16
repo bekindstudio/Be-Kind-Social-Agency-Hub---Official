@@ -14,6 +14,7 @@ import {
   clientContentIdeasTable,
 } from "@workspace/db";
 import { derivePlatform, normalizeExternalUrl } from "../lib/social-url";
+import { normalizeCategory } from "../lib/ideas";
 
 /**
  * Area cliente condivisa SENZA login.
@@ -269,6 +270,7 @@ router.get("/public/portal/:token/ideas", async (req, res): Promise<void> => {
       platform: i.platform,
       source: i.source,
       status: i.status,
+      category: i.category,
       notes: i.notes ?? null,
       createdAt: i.createdAt ? i.createdAt.toISOString() : null,
     })),
@@ -279,10 +281,13 @@ router.post("/public/portal/:token/ideas", async (req, res): Promise<void> => {
   const client = await withClient(req, res);
   if (!client) return;
 
-  const body = (req.body ?? {}) as { title?: unknown; url?: unknown; notes?: unknown };
+  const body = (req.body ?? {}) as { title?: unknown; url?: unknown; notes?: unknown; category?: unknown };
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
   const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 2000) : "";
+  // Il cliente sceglie la categoria da una tendina, ma qui non c'è login:
+  // qualunque valore fuori lista ricade su 'da_classificare' (vedi lib/ideas.ts).
+  const category = normalizeCategory(body.category);
 
   if (!title || title.length > 300) { res.status(400).json({ error: "Serve un titolo (max 300 caratteri)." }); return; }
   const url = normalizeExternalUrl(rawUrl);
@@ -306,6 +311,7 @@ router.post("/public/portal/:token/ideas", async (req, res): Promise<void> => {
       platform: derivePlatform(url),
       source: "client",
       status: "da_valutare",
+      category,
       notes: notes || null,
       createdBy: null,
     }).returning();
@@ -317,6 +323,7 @@ router.post("/public/portal/:token/ideas", async (req, res): Promise<void> => {
       platform: created.platform,
       source: created.source,
       status: created.status,
+      category: created.category,
       notes: created.notes ?? null,
       createdAt: created.createdAt ? created.createdAt.toISOString() : null,
     });

@@ -13,6 +13,15 @@ import { Instagram, Music2, Youtube, Facebook, Linkedin, Globe, type LucideIcon 
 
 export type IdeaStatus = "da_valutare" | "approvata" | "realizzata";
 
+export type IdeaCategory =
+  | "da_classificare"
+  | "educativo"
+  | "informativo"
+  | "divertente"
+  | "vendita"
+  | "ispirazionale"
+  | "dietro_le_quinte";
+
 export type ContentIdeaRow = {
   id: number;
   clientId?: number;
@@ -22,6 +31,7 @@ export type ContentIdeaRow = {
   platform: string;
   source: "agency" | "client";
   status: IdeaStatus;
+  category: IdeaCategory;
   notes: string | null;
   tags?: string[];
   createdBy?: string | null;
@@ -54,3 +64,24 @@ export const STATUS_META: { value: IdeaStatus; label: string; color: string }[] 
 ];
 
 export const statusMeta = (v: string) => STATUS_META.find((s) => s.value === v) ?? STATUS_META[0];
+
+/**
+ * Tipo di contenuto ("pilastro"). Sei categorie + "Da classificare" per le idee
+ * buttate dentro al volo: la categoria è facoltativa, si può decidere dopo.
+ * `descr` compare solo nella tendina di scelta, non sulle card: serve a chi
+ * inserisce, non a chi consulta.
+ */
+export const CATEGORY_META: { value: IdeaCategory; label: string; descr: string; color: string }[] = [
+  { value: "da_classificare", label: "Da classificare", descr: "decidi dopo", color: "bg-muted-foreground/40" },
+  { value: "educativo", label: "Educativo", descr: "insegna qualcosa", color: "bg-indigo-500" },
+  { value: "informativo", label: "Informativo", descr: "news, aggiornamenti", color: "bg-sky-500" },
+  { value: "divertente", label: "Divertente", descr: "intrattiene, fa ridere", color: "bg-amber-500" },
+  { value: "vendita", label: "Vendita", descr: "promuove un prodotto o servizio", color: "bg-emerald-600" },
+  { value: "ispirazionale", label: "Ispirazionale", descr: "motiva, emoziona", color: "bg-violet-500" },
+  { value: "dietro_le_quinte", label: "Dietro le quinte", descr: "mostra il lavoro", color: "bg-rose-500" },
+];
+
+export const categoryMeta = (v: string) => CATEGORY_META.find((c) => c.value === v) ?? CATEGORY_META[0];
+
+/** Le categorie vere, senza il segnaposto "Da classificare". */
+export const REAL_CATEGORIES = CATEGORY_META.filter((c) => c.value !== "da_classificare");

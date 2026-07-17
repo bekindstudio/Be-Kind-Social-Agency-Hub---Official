@@ -1396,7 +1396,7 @@ export default function ClientDetail({ id }: Props) {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8 max-w-5xl">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         <Link href="/clients">
           <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer mb-6 transition-colors">
             <ChevronLeft size={16} /> Clienti

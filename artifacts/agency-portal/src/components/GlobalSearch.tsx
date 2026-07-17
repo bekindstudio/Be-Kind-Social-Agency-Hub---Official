@@ -44,7 +44,9 @@ export function GlobalSearch() {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }
+      // Cmd/Ctrl-K è della sola Command Palette (vedi CommandPalette.tsx):
+      // gestirlo anche qui apriva due ricerche sovrapposte che si contendevano
+      // il focus. Qui resta solo Escape per chiudere.
       if (e.key === "Escape") setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
@@ -66,13 +68,12 @@ export function GlobalSearch() {
       <button
         type="button"
         aria-label="Apri ricerca globale"
-        title="Cerca clienti, progetti, task (Ctrl+K)"
+        title="Cerca clienti, progetti, task"
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
         className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/50 border border-input rounded-lg hover:bg-muted transition-colors"
       >
         <Search size={13} />
         <span className="hidden sm:inline">Cerca...</span>
-        <kbd className="hidden sm:inline ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-background border border-input rounded">Ctrl+K</kbd>
       </button>
     );
   }

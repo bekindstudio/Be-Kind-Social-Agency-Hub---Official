@@ -906,7 +906,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-semibold">Alert & Urgenze</p>
               <div className="flex items-center gap-3">
-                <button onClick={() => setDismissed(alerts.map((a) => a.id))} className="text-xs text-muted-foreground hover:underline">Dismiss all</button>
+                <button onClick={() => setDismissed(alerts.map((a) => a.id))} className="text-xs text-muted-foreground hover:underline">Ignora tutti</button>
                 <button onClick={() => setShowAlertsAll((s) => !s)} className="text-xs text-primary hover:underline">{showAlertsAll ? "Mostra meno" : "Vedi tutti"}</button>
               </div>
             </div>
@@ -1137,7 +1137,7 @@ export default function Dashboard() {
         {/* Insights */}
         <div className="bg-card border border-card-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="font-semibold text-sm">Monthly Performance Overview</p>
+            <p className="font-semibold text-sm">Andamento del mese</p>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="h-64">

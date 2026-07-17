@@ -135,7 +135,9 @@ export function CommandPalette() {
     navigate(href);
   };
 
-  const navItems = useMemo(() => [...NAV_ACTIONS, ...CREATE_ACTIONS], []);
+  // Solo le voci di navigazione: le azioni di creazione hanno già il loro
+  // gruppo "Azioni rapide" più sotto. Prima erano incluse qui e comparivano due volte.
+  const navItems = useMemo(() => NAV_ACTIONS, []);
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

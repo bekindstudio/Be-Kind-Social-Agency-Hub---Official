@@ -178,7 +178,6 @@ export default function TodayPage() {
 
   const todayKey = isoDate(startOfToday());
   const sevenDaysFromNow = new Date(startOfToday().getTime() + 7 * 86400000);
-  const sevenKey = isoDate(sevenDaysFromNow);
 
   // Dati
   const tasks = useApi<AnyObj[]>(["today", "tasks"], "/api/tasks", 60).data ?? [];
@@ -525,7 +524,7 @@ export default function TodayPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Dati aggiornati automaticamente. Vista per oggi · {sevenKey}
+          Dati aggiornati automaticamente · include i prossimi 7 giorni
         </p>
       </div>
 

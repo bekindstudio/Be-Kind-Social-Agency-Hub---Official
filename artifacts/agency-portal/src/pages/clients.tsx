@@ -218,8 +218,13 @@ export default function Clients() {
 
   const deleteClientById = async (id: number, showToast = true) => {
     const res = await portalFetch(`/api/clients/${id}`, { method: "DELETE", credentials: "include" });
-    const data = (await res.json().catch(() => ({}))) as { trashLogId?: string };
-    if (!res.ok) return { ok: false, trashLogId: null as string | null };
+    const data = (await res.json().catch(() => ({}))) as { trashLogId?: string; error?: string };
+    if (!res.ok) {
+      // Prima il fallimento era muto: il bottone sembrava non fare niente.
+      const msg = data?.error ?? `HTTP ${res.status}`;
+      if (showToast) toast({ variant: "destructive", title: "Eliminazione non riuscita", description: msg });
+      return { ok: false, trashLogId: null as string | null, error: msg };
+    }
     setClients((prev) => prev.filter((c) => c.id !== id));
     void refetchClients(); // mantieni fresca la cache react-query della lista
     const trashLogId = typeof data.trashLogId === "string" ? data.trashLogId : null;
@@ -292,10 +297,10 @@ export default function Clients() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Client Management</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Clienti</h1>
             <p className="text-muted-foreground text-sm mt-1">{clients.length} clienti totali</p>
           </div>
           <div className="flex items-center gap-2">

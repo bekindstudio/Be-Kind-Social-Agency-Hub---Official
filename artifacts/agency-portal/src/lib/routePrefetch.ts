@@ -6,6 +6,9 @@
  */
 const prefetchers: Record<string, () => Promise<unknown>> = {
   "/today": () => import("@/pages/today"),
+  "/agenda": () => import("@/pages/agenda"),
+  "/tools/time-tracker": () => import("@/pages/tools/TimeTrackerPage"),
+  "/communications": () => import("@/pages/CommunicationsPage"),
   "/dashboard": () => import("@/pages/dashboard"),
   "/clients": () => import("@/pages/clients"),
   "/projects": () => import("@/pages/projects"),

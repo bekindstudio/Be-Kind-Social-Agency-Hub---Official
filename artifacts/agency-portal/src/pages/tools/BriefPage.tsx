@@ -6,6 +6,15 @@ import { useToast } from "@/hooks/use-toast";
 import { generateBriefPDF } from "@/lib/brief-pdf";
 import { ShareClientDialog } from "@/components/ShareClientDialog";
 import {
+  BRIEF_SECTIONS,
+  emptyBriefData,
+  normalizeBriefData,
+  briefEssentialStats,
+  sectionHasEssential,
+  visibleFields,
+  type BriefData,
+} from "@/lib/briefSchema";
+import {
   ChevronDown,
   CheckCircle2,
   Loader2,
@@ -14,217 +23,17 @@ import {
   FileText,
   FileDown,
   Share2,
-  Users,
-  Sparkles,
-  Activity,
-  Compass,
-  MessageSquareQuote,
-  Swords,
-  HeartHandshake,
-  ThumbsUp,
-  Megaphone,
-  Target,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────────────
-   Brief cliente — form MANUALE, chiaro, con salvataggio automatico.
-   I dati vengono salvati in client_briefs.parsedJson (oggetto sezione→campo).
-   Nessuna dipendenza dall'AI.
+   Brief cliente — form manuale con salvataggio automatico. Lo schema (sezioni,
+   campi, testi di aiuto, campi essenziali) vive in un solo posto,
+   lib/briefSchema.ts, condiviso con l'area cliente pubblica: prima questa
+   pagina aveva una copia separata che era divergita.
+   I dati vanno in client_briefs.parsedJson (oggetto sezione→campo).
    ──────────────────────────────────────────────────────────────────────── */
 
-type Field = { key: string; label: string; placeholder?: string; long?: boolean };
-type Section = {
-  key: string;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  hint?: string;
-  fields: Field[];
-};
-
-const SECTIONS: Section[] = [
-  {
-    key: "materiale_iniziale",
-    label: "Materiale iniziale",
-    icon: FileText,
-    hint: "Accessi, link e materiali di partenza",
-    fields: [
-      { key: "nome_referenti", label: "Nome referenti" },
-      { key: "descrizione_prodotto", label: "Descrizione prodotto / servizio", long: true },
-      { key: "sito_web", label: "Sito web", placeholder: "https://" },
-      { key: "link_instagram", label: "Link Instagram", placeholder: "https://instagram.com/" },
-      { key: "link_facebook", label: "Link Facebook", placeholder: "https://facebook.com/" },
-      { key: "link_tiktok", label: "Link TikTok", placeholder: "https://tiktok.com/@" },
-      { key: "business_manager", label: "Business Manager Meta" },
-      { key: "canva_kit", label: "Kit aziendale Canva" },
-      { key: "canva_progetti", label: "Progetti Canva" },
-      { key: "logo", label: "Logo (note/link)" },
-    ],
-  },
-  {
-    key: "target_personas",
-    label: "Target & personas",
-    icon: Users,
-    hint: "A chi parliamo",
-    fields: [
-      { key: "clienti_attuali", label: "Clienti attuali", long: true },
-      { key: "tipo_persone", label: "Tipo di persone", long: true },
-      { key: "fasce_eta", label: "Fasce di età" },
-      { key: "professione_disponibilita", label: "Professione e disponibilità economica" },
-      { key: "locali_o_fuori_zona", label: "Locali o fuori zona" },
-      { key: "mercato", label: "Mercato di riferimento" },
-      { key: "servizio_piu_richiesto", label: "Servizio più richiesto" },
-      { key: "servizio_da_spingere", label: "Servizio da spingere" },
-    ],
-  },
-  {
-    key: "servizi_chiave",
-    label: "Servizi chiave & USP",
-    icon: Sparkles,
-    hint: "Cosa rende unico il brand",
-    fields: [
-      { key: "servizi_da_comunicare", label: "Servizi da comunicare", long: true },
-      { key: "plus_esclusivi", label: "Plus esclusivi", long: true },
-      { key: "usp_1", label: "USP 1" },
-      { key: "usp_2", label: "USP 2" },
-      { key: "usp_3", label: "USP 3" },
-      { key: "novita_progetti", label: "Novità e progetti futuri", long: true },
-    ],
-  },
-  {
-    key: "comportamento_cliente",
-    label: "Comportamento cliente",
-    icon: Activity,
-    hint: "Come si comportano e decidono",
-    fields: [
-      { key: "cosa_cercano", label: "Cosa cercano", long: true },
-      { key: "perche_scelgono", label: "Perché scelgono il brand", long: true },
-      { key: "feedback_comuni", label: "Feedback comuni", long: true },
-      { key: "come_scoprono", label: "Come scoprono il brand" },
-      { key: "canali_funzionanti", label: "Canali che funzionano" },
-      { key: "primo_contatto", label: "Primo contatto" },
-      { key: "riscontri_social", label: "Riscontri dai social" },
-      { key: "ostacoli", label: "Ostacoli", long: true },
-      { key: "richieste_confuse", label: "Richieste confuse / dubbi ricorrenti", long: true },
-    ],
-  },
-  {
-    key: "posizionamento",
-    label: "Posizionamento & visione",
-    icon: Compass,
-    fields: [
-      { key: "visione_2_anni", label: "Visione a 2 anni", long: true },
-      { key: "sogno_crescita", label: "Sogno di crescita", long: true },
-    ],
-  },
-  {
-    key: "tone_of_voice",
-    label: "Tone of voice",
-    icon: MessageSquareQuote,
-    hint: "Come comunichiamo",
-    fields: [
-      { key: "valori_fondamentali", label: "Valori fondamentali", long: true },
-      { key: "value_proposition", label: "Value proposition", long: true },
-      { key: "percezione_desiderata", label: "Percezione desiderata" },
-      { key: "brand_persona", label: "Personalità del brand" },
-      { key: "stile_comunicazione", label: "Stile di comunicazione" },
-      { key: "tono_umano_vs_tecnico", label: "Tono umano vs tecnico" },
-      { key: "sensazioni", label: "Sensazioni da trasmettere" },
-      { key: "esempi_comunicazione", label: "Esempi di comunicazione", long: true },
-    ],
-  },
-  {
-    key: "competitor",
-    label: "Competitor",
-    icon: Swords,
-    hint: "Riferimenti positivi e negativi",
-    fields: [
-      { key: "competitor_1", label: "Competitor 1 (ispirazione)" },
-      { key: "competitor_2", label: "Competitor 2 (ispirazione)" },
-      { key: "competitor_3", label: "Competitor 3 (ispirazione)" },
-      { key: "competitor_4_negativo", label: "Competitor 4 (da NON imitare)" },
-    ],
-  },
-  {
-    key: "pain_points_desideri",
-    label: "Pain points, desideri & offerte",
-    icon: HeartHandshake,
-    fields: [
-      { key: "pain_points", label: "Pain points e frustrazioni", long: true },
-      { key: "desideri_obiettivi", label: "Desideri e obiettivi", long: true },
-      { key: "benefici", label: "Benefici", long: true },
-      { key: "offerta_principale", label: "Offerta principale", long: true },
-      { key: "lista_offerte", label: "Lista offerte", long: true },
-      { key: "garanzie", label: "Garanzie" },
-      { key: "obiezioni", label: "Obiezioni e barriere", long: true },
-      { key: "risposte_obiezioni", label: "Risposte alle obiezioni", long: true },
-      { key: "faq", label: "FAQ / domande frequenti", long: true },
-      { key: "trigger_events", label: "Trigger events", long: true },
-    ],
-  },
-  {
-    key: "social_preference",
-    label: "Preferenze social",
-    icon: ThumbsUp,
-    fields: [
-      { key: "come_apparire", label: "Come apparire sui social", long: true },
-      { key: "come_non_apparire", label: "Come NON apparire", long: true },
-    ],
-  },
-  {
-    key: "budget_adv",
-    label: "Budget pubblicitario",
-    icon: Megaphone,
-    hint: "Investimenti per anno",
-    fields: [
-      { key: "meta_2024", label: "META 2024" },
-      { key: "meta_2025", label: "META 2025" },
-      { key: "meta_2026", label: "META 2026" },
-      { key: "google_2024", label: "Google 2024" },
-      { key: "google_2025", label: "Google 2025" },
-      { key: "google_2026", label: "Google 2026" },
-    ],
-  },
-  {
-    key: "obiettivi",
-    label: "Obiettivi 2026",
-    icon: Target,
-    fields: [
-      { key: "comunicazione_social_2026", label: "Obiettivo comunicazione social 2026", long: true },
-      { key: "adv_social_2026", label: "Obiettivo ADV social 2026", long: true },
-    ],
-  },
-];
-
-type BriefData = Record<string, Record<string, string>>;
 type SaveState = "idle" | "saving" | "saved" | "error";
-
-function emptyData(): BriefData {
-  const d: BriefData = {};
-  for (const s of SECTIONS) {
-    d[s.key] = {};
-    for (const f of s.fields) d[s.key][f.key] = "";
-  }
-  return d;
-}
-
-function normalize(parsed: unknown): BriefData {
-  const base = emptyData();
-  if (!parsed || typeof parsed !== "object") return base;
-  for (const s of SECTIONS) {
-    const sec = (parsed as Record<string, unknown>)[s.key];
-    if (sec && typeof sec === "object") {
-      for (const f of s.fields) {
-        const v = (sec as Record<string, unknown>)[f.key];
-        if (typeof v === "string") base[s.key][f.key] = v;
-      }
-    }
-  }
-  return base;
-}
-
-function sectionFilled(data: BriefData, s: Section): number {
-  return s.fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length;
-}
 
 function cnChevron(open: boolean): string {
   return `shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`;
@@ -268,24 +77,34 @@ export default function BriefPage() {
   const clientId =
     activeClient?.id && Number.isFinite(Number(activeClient.id)) ? Number(activeClient.id) : null;
 
-  const [data, setData] = useState<BriefData>(emptyData);
+  const [data, setData] = useState<BriefData>(emptyBriefData);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [SECTIONS[0].key]: true });
+  // Percorso essenziale acceso di default: prima si vedono solo le domande da
+  // cui dipende la strategia (~poche), il resto è a un clic.
+  const [essentialOnly, setEssentialOnly] = useState(true);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ [BRIEF_SECTIONS[0].key]: true });
 
   const loadedRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<{ data: BriefData; notes: string }>({ data, notes });
   latest.current = { data, notes };
 
+  // Le sezioni da mostrare: nel percorso essenziale solo quelle con almeno un
+  // campo essenziale.
+  const shownSections = useMemo(
+    () => (essentialOnly ? BRIEF_SECTIONS.filter(sectionHasEssential) : BRIEF_SECTIONS),
+    [essentialOnly],
+  );
+
   // Carica il brief del cliente attivo.
   useEffect(() => {
     loadedRef.current = false;
     if (!clientId) {
-      setData(emptyData());
+      setData(emptyBriefData());
       setNotes("");
       return;
     }
@@ -304,21 +123,20 @@ export default function BriefPage() {
           } catch {
             parsed = {};
           }
-          setData(normalize(parsed));
+          setData(normalizeBriefData(parsed));
           setNotes(typeof row?.rawText === "string" ? row.rawText : "");
         } else {
-          setData(emptyData());
+          setData(emptyBriefData());
           setNotes("");
         }
       } catch {
         if (alive) {
-          setData(emptyData());
+          setData(emptyBriefData());
           setNotes("");
         }
       } finally {
         if (alive) {
           setLoading(false);
-          // Abilita l'autosave solo DOPO che il caricamento è terminato.
           setTimeout(() => {
             loadedRef.current = true;
           }, 0);
@@ -340,19 +158,21 @@ export default function BriefPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parsedJson: latest.current.data, rawText: latest.current.notes }),
       });
-      if (!res.ok) throw new Error(`http_${res.status}`);
+      if (!res.ok) {
+        // Mostra il vero errore dell'API invece di un generico.
+        let detail = `HTTP ${res.status}`;
+        try { const b = await res.json(); if (b?.error) detail = String(b.error); } catch { /* non-JSON */ }
+        setSaveState("error");
+        toast({ variant: "destructive", title: "Salvataggio non riuscito", description: `${detail} · il testo digitato resta nei campi.` });
+        return;
+      }
       setSaveState("saved");
     } catch {
       setSaveState("error");
-      toast({
-        variant: "destructive",
-        title: "Salvataggio non riuscito",
-        description: "Riprova tra poco: il testo digitato resta nei campi.",
-      });
+      toast({ variant: "destructive", title: "Salvataggio non riuscito", description: "Connessione assente: il testo digitato resta nei campi." });
     }
   }, [clientId, toast]);
 
-  // Autosave con debounce quando l'utente modifica qualcosa.
   const scheduleSave = useCallback(() => {
     if (!loadedRef.current) return;
     setSaveState("saving");
@@ -382,7 +202,8 @@ export default function BriefPage() {
         clientName: activeClient?.name ?? "Cliente",
         clientLogoUrl: activeClient?.logo ?? null,
         brandColor: activeClient?.color ?? null,
-        sections: SECTIONS.map((s) => ({
+        // Il PDF contiene sempre TUTTE le sezioni compilate, non solo le essenziali.
+        sections: BRIEF_SECTIONS.map((s) => ({
           key: s.key,
           label: s.label,
           fields: s.fields.map((f) => ({ key: f.key, label: f.label, value: data[s.key]?.[f.key] ?? "" })),
@@ -395,16 +216,18 @@ export default function BriefPage() {
     }
   };
 
-  const totals = useMemo(() => {
-    const total = SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
-    const filled = SECTIONS.reduce((acc, s) => acc + sectionFilled(data, s), 0);
-    return { total, filled, pct: total ? Math.round((filled / total) * 100) : 0 };
-  }, [data]);
+  // La barra guida i campi essenziali; il totale complessivo resta come nota.
+  const essential = useMemo(() => briefEssentialStats(data), [data]);
+  const totalFilled = useMemo(
+    () => BRIEF_SECTIONS.reduce((acc, s) => acc + s.fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length, 0),
+    [data],
+  );
+  const totalFields = useMemo(() => BRIEF_SECTIONS.reduce((acc, s) => acc + s.fields.length, 0), []);
 
-  const allOpen = SECTIONS.every((s) => openSections[s.key]);
+  const allOpen = shownSections.every((s) => openSections[s.key]);
   const toggleAll = () => {
-    const next: Record<string, boolean> = {};
-    for (const s of SECTIONS) next[s.key] = !allOpen;
+    const next: Record<string, boolean> = { ...openSections };
+    for (const s of shownSections) next[s.key] = !allOpen;
     setOpenSections(next);
   };
 
@@ -451,35 +274,65 @@ export default function BriefPage() {
               </button>
               <button
                 onClick={() => void handleExportPdf()}
-                disabled={pdfBusy || totals.filled === 0}
+                disabled={pdfBusy || totalFilled === 0}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:brightness-105 transition disabled:opacity-50"
-                title={totals.filled === 0 ? "Compila almeno un campo per esportare" : "Genera il PDF del brief"}
+                title={totalFilled === 0 ? "Compila almeno un campo per esportare" : "Genera il PDF del brief"}
               >
                 {pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
                 {pdfBusy ? "Genero…" : "Genera PDF"}
               </button>
             </div>
           </div>
-          {/* Progress */}
+
+          {/* Toggle percorso essenziale / tutte le domande */}
+          <div className="mt-4 inline-flex items-center rounded-lg border border-input bg-background p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setEssentialOnly(true)}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${essentialOnly ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Essenziali
+            </button>
+            <button
+              type="button"
+              onClick={() => setEssentialOnly(false)}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${!essentialOnly ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Tutte le domande
+            </button>
+          </div>
+
+          {/* Progress: guida i campi essenziali */}
           <div className="mt-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>Completamento brief</span>
-              <span className="font-semibold text-foreground">
-                {totals.pct}% · {totals.filled}/{totals.total} campi
+              <span>{essentialOnly ? "Percorso essenziale" : "Completamento"}</span>
+              <span className="font-semibold text-foreground tabular-nums">
+                {essential.pct}% essenziali · {essential.filled}/{essential.total}
+                <span className="font-normal text-muted-foreground"> · {totalFilled}/{totalFields} in tutto</span>
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary transition-all duration-500" style={{ width: `${totals.pct}%` }} />
+              <div className="h-full bg-primary transition-all duration-500" style={{ width: `${essential.pct}%` }} />
             </div>
+            {essentialOnly && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Bastano queste domande per partire. Vuoi entrare nel dettaglio?{" "}
+                <button type="button" onClick={() => setEssentialOnly(false)} className="text-primary hover:underline font-medium">
+                  Mostra tutte le domande
+                </button>
+              </p>
+            )}
           </div>
         </div>
 
         {/* Sezioni */}
         <div className="space-y-3">
-          {SECTIONS.map((s) => {
+          {shownSections.map((s) => {
             const open = !!openSections[s.key];
-            const filled = sectionFilled(data, s);
             const Icon = s.icon;
+            const fields = visibleFields(s, essentialOnly);
+            const filled = fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length;
+            const optional = !sectionHasEssential(s);
             return (
               <section key={s.key} className="rounded-xl border border-card-border bg-card overflow-hidden">
                 <button
@@ -493,26 +346,30 @@ export default function BriefPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="font-semibold text-sm">{s.label}</span>
-                      {filled === s.fields.length && filled > 0 && (
+                      {filled === fields.length && filled > 0 && (
                         <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                      )}
+                      {optional && !essentialOnly && (
+                        <span className="text-[10px] rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground shrink-0">facoltativa</span>
                       )}
                     </span>
                     {s.hint && <span className="block text-[11px] text-muted-foreground truncate">{s.hint}</span>}
                   </span>
                   <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
-                    {filled}/{s.fields.length}
+                    {filled}/{fields.length}
                   </span>
                   <ChevronDown size={16} className={cnChevron(open)} />
                 </button>
                 {open && (
-                  <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                    {s.fields.map((f) => (
+                  <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                    {fields.map((f) => (
                       <div key={f.key} className={f.long ? "md:col-span-2" : undefined}>
-                        <label className="block text-xs font-medium text-muted-foreground mb-1">{f.label}</label>
+                        <label className="block text-xs font-semibold text-foreground mb-0.5">{f.label}</label>
+                        {f.help && <p className="text-[11px] text-muted-foreground mb-1.5 leading-snug">{f.help}</p>}
                         <textarea
                           value={data[s.key]?.[f.key] ?? ""}
                           onChange={(e) => setField(s.key, f.key, e.target.value)}
-                          placeholder={f.placeholder ?? "—"}
+                          placeholder={f.placeholder ?? "Scrivi qui…"}
                           rows={f.long ? 3 : 2}
                           className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                         />

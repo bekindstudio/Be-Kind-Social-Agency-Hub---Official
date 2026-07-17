@@ -3,7 +3,9 @@ import {
   BRIEF_SECTIONS,
   emptyBriefData,
   normalizeBriefData,
-  briefSectionFilled,
+  briefEssentialStats,
+  sectionHasEssential,
+  visibleFields,
   type BriefData,
 } from "@/lib/briefSchema";
 import {
@@ -156,6 +158,9 @@ function PortalBrief({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [open, setOpen] = useState<Record<string, boolean>>({ [BRIEF_SECTIONS[0].key]: true });
+  // Percorso essenziale acceso di default: il cliente vede poche domande chiare,
+  // non un muro di 70 campi. Il resto è a un tocco.
+  const [essentialOnly, setEssentialOnly] = useState(true);
   const loadedRef = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<BriefData>(data);
@@ -221,11 +226,11 @@ function PortalBrief({ token }: { token: string }) {
     schedule();
   };
 
-  const totals = useMemo(() => {
-    const total = BRIEF_SECTIONS.reduce((a, s) => a + s.fields.length, 0);
-    const filled = BRIEF_SECTIONS.reduce((a, s) => a + briefSectionFilled(data, s), 0);
-    return { total, filled, pct: total ? Math.round((filled / total) * 100) : 0 };
-  }, [data]);
+  const essential = useMemo(() => briefEssentialStats(data), [data]);
+  const shownSections = useMemo(
+    () => (essentialOnly ? BRIEF_SECTIONS.filter(sectionHasEssential) : BRIEF_SECTIONS),
+    [essentialOnly],
+  );
 
   if (loading) {
     return (
@@ -240,29 +245,58 @@ function PortalBrief({ token }: { token: string }) {
       <div className="mb-4 rounded-xl border border-card-border bg-card p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Compila il tuo brief</h2>
+            <h2 className="font-semibold">Raccontaci di te</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Più informazioni ci dai, migliore sarà il lavoro. Le risposte si salvano da sole.
+              Sotto ogni domanda trovi un aiuto con un esempio. Le risposte si salvano da sole.
             </p>
           </div>
           <SaveBadge state={saveState} />
         </div>
+
+        {/* Toggle: prima l'essenziale, poi (se vuole) il resto. */}
+        <div className="mt-3 inline-flex items-center rounded-lg border border-input bg-background p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setEssentialOnly(true)}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${essentialOnly ? "bg-[#7a8f5c] text-white" : "text-muted-foreground"}`}
+          >
+            L'essenziale
+          </button>
+          <button
+            type="button"
+            onClick={() => setEssentialOnly(false)}
+            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${!essentialOnly ? "bg-[#7a8f5c] text-white" : "text-muted-foreground"}`}
+          >
+            Tutte le domande
+          </button>
+        </div>
+
         <div className="mt-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span>Completamento</span>
-            <span className="font-semibold text-foreground">{totals.pct}%</span>
+            <span>{essentialOnly ? "Le domande essenziali" : "Completamento"}</span>
+            <span className="font-semibold text-foreground tabular-nums">{essential.filled}/{essential.total}</span>
           </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-[#7a8f5c] transition-all duration-500" style={{ width: `${totals.pct}%` }} />
+            <div className="h-full bg-[#7a8f5c] transition-all duration-500" style={{ width: `${essential.pct}%` }} />
           </div>
+          {essentialOnly && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Bastano queste per iniziare.{" "}
+              <button type="button" onClick={() => setEssentialOnly(false)} className="text-[#7a8f5c] font-medium hover:underline">
+                Vuoi aggiungere altri dettagli?
+              </button>
+            </p>
+          )}
         </div>
       </div>
 
       <div className="space-y-3">
-        {BRIEF_SECTIONS.map((s) => {
+        {shownSections.map((s) => {
           const isOpen = !!open[s.key];
-          const filled = briefSectionFilled(data, s);
           const Icon = s.icon;
+          const fields = visibleFields(s, essentialOnly);
+          const filled = fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length;
+          const optional = !sectionHasEssential(s);
           return (
             <section key={s.key} className="rounded-xl border border-card-border bg-card overflow-hidden">
               <button
@@ -276,22 +310,26 @@ function PortalBrief({ token }: { token: string }) {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="font-semibold text-sm">{s.label}</span>
-                    {filled === s.fields.length && filled > 0 && <CheckCircle2 size={14} className="text-emerald-500" />}
+                    {filled === fields.length && filled > 0 && <CheckCircle2 size={14} className="text-emerald-500" />}
+                    {optional && !essentialOnly && (
+                      <span className="text-[10px] rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground shrink-0">facoltativa</span>
+                    )}
                   </span>
                   {s.hint && <span className="block text-[11px] text-muted-foreground truncate">{s.hint}</span>}
                 </span>
-                <span className="text-[11px] text-muted-foreground shrink-0">{filled}/{s.fields.length}</span>
+                <span className="text-[11px] text-muted-foreground shrink-0">{filled}/{fields.length}</span>
                 <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
               </button>
               {isOpen && (
-                <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                  {s.fields.map((f) => (
+                <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                  {fields.map((f) => (
                     <div key={f.key} className={f.long ? "md:col-span-2" : undefined}>
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">{f.label}</label>
+                      <label className="block text-xs font-semibold text-foreground mb-0.5">{f.label}</label>
+                      {f.help && <p className="text-[11px] text-muted-foreground mb-1.5 leading-snug">{f.help}</p>}
                       <textarea
                         value={data[s.key]?.[f.key] ?? ""}
                         onChange={(e) => setField(s.key, f.key, e.target.value)}
-                        placeholder={f.placeholder ?? "—"}
+                        placeholder={f.placeholder ?? "Scrivi qui…"}
                         rows={f.long ? 3 : 2}
                         className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
                       />

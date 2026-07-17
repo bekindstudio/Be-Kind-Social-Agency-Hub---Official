@@ -9,7 +9,7 @@ type SearchResults = {
   projects: Array<{ id: number; name: string; status: string }>;
   tasks: Array<{ id: number; title: string; status: string }>;
   quotes: Array<{ id: number; name: string; status: string }>;
-  contracts: Array<{ id: number; numero: string; oggetto: string }>;
+  contracts: Array<{ id: number; numero: string; oggetto: string; clientId: number | null }>;
 };
 
 const EMPTY: SearchResults = { clients: [], projects: [], tasks: [], quotes: [], contracts: [] };
@@ -120,21 +120,28 @@ export function GlobalSearch() {
           {results.tasks.length > 0 && (
             <ResultGroup icon={CheckSquare} label="Task">
               {results.tasks.map((t) => (
-                <ResultItem key={t.id} onClick={() => go("/tasks")} title={t.title} subtitle={statusLabel(t.status)} />
+                <ResultItem key={t.id} onClick={() => go(`/tasks?id=${t.id}`)} title={t.title} subtitle={statusLabel(t.status)} />
               ))}
             </ResultGroup>
           )}
           {results.quotes.length > 0 && (
             <ResultGroup icon={FileText} label="Preventivi">
               {results.quotes.map((q) => (
-                <ResultItem key={q.id} onClick={() => go("/quotes")} title={q.name} subtitle={statusLabel(q.status)} />
+                <ResultItem key={q.id} onClick={() => go(`/quotes?id=${q.id}`)} title={q.name} subtitle={statusLabel(q.status)} />
               ))}
             </ResultGroup>
           )}
           {results.contracts.length > 0 && (
             <ResultGroup icon={ScrollText} label="Contratti">
               {results.contracts.map((c) => (
-                <ResultItem key={c.id} onClick={() => go("/contracts")} title={c.numero} subtitle={c.oggetto} />
+                // Non esiste una pagina "contratti" dedicata: porto alla scheda
+                // del cliente proprietario (meglio della pagina Template di prima).
+                <ResultItem
+                  key={c.id}
+                  onClick={() => go(c.clientId ? `/clients/${c.clientId}` : "/contracts/templates")}
+                  title={c.numero}
+                  subtitle={c.oggetto}
+                />
               ))}
             </ResultGroup>
           )}

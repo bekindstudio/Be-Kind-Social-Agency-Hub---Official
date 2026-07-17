@@ -20,6 +20,11 @@ import {
   CheckSquare,
   Calendar,
   CalendarDays,
+  CalendarClock,
+  Clock,
+  Send,
+  Files,
+  Lightbulb,
   FileSignature,
   Receipt,
   Settings,
@@ -43,14 +48,21 @@ type ClientLite = { id: number; name: string };
 type ProjectLite = { id: number; name: string; clientName?: string };
 type TaskLite = { id: number; title: string; status: string };
 
+// Deve restare allineato alle voci della Sidebar: prima mancavano Agenda, Ore,
+// Comunicazioni, File e Banca Idee (raggiungibili dal menu ma non da Cmd-K).
 const NAV_ACTIONS = [
   { label: "Oggi", icon: Sun, href: "/today", keywords: "today daily focus" },
+  { label: "Agenda", icon: CalendarClock, href: "/agenda", keywords: "agenda appuntamenti calendario personale" },
+  { label: "Ore", icon: Clock, href: "/tools/time-tracker", keywords: "ore time tracking tempo" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard", keywords: "home" },
   { label: "Clienti", icon: Users, href: "/clients", keywords: "clients" },
   { label: "Progetti", icon: FolderKanban, href: "/projects", keywords: "projects" },
   { label: "Task", icon: CheckSquare, href: "/tasks", keywords: "todo todos" },
   { label: "Team", icon: UserCog, href: "/team", keywords: "team members" },
   { label: "Chat", icon: MessageCircle, href: "/chat", keywords: "messages" },
+  { label: "Comunicazioni", icon: Send, href: "/communications", keywords: "comunicazioni email clienti" },
+  { label: "File", icon: Files, href: "/files", keywords: "file files documenti" },
+  { label: "Banca Idee", icon: Lightbulb, href: "/banca-idee", keywords: "idee banca ispirazione contenuti" },
   { label: "Calendario editoriale", icon: Calendar, href: "/tools/calendar", keywords: "editorial calendar posts" },
   { label: "Eventi clienti", icon: CalendarDays, href: "/tools/events", keywords: "events" },
   { label: "Brief", icon: FileText, href: "/tools/brief", keywords: "brief" },
@@ -58,7 +70,7 @@ const NAV_ACTIONS = [
   { label: "Analytics", icon: BarChart2, href: "/tools/analytics", keywords: "analytics stats" },
   { label: "Report", icon: FileText, href: "/tools/reports", keywords: "reports" },
   { label: "Preventivi", icon: Receipt, href: "/quotes", keywords: "quotes preventivi" },
-  { label: "Contratti", icon: FileSignature, href: "/contracts/templates", keywords: "contracts contratti" },
+  { label: "Modelli contratti", icon: FileSignature, href: "/contracts/templates", keywords: "contracts contratti template modelli" },
   { label: "Drive", icon: HardDrive, href: "/settings#drive", keywords: "google drive settings" },
   { label: "Impostazioni", icon: Settings, href: "/settings", keywords: "settings configurazione" },
   { label: "Cestino", icon: Trash2, href: "/trash", keywords: "trash cestino deleted" },

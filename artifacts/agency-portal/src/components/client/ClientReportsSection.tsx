@@ -1,3 +1,4 @@
+import { useLocation } from "wouter";
 import { AlertTriangle, CheckCircle2, FileText, RefreshCw, Send, ThumbsUp, Trash2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,13 +27,14 @@ export function ClientReportsSection({
   sendingReportId: number | null;
   handleDeleteReport: (id: number) => void;
 }) {
+  const [, navigate] = useLocation();
   return (
     <Section
       title={`Report Mensili (${reports.length})`}
       icon={<FileText size={15} className="text-primary" />}
       action={
         <button
-          onClick={() => window.location.href = `/reports?client=${clientId}`}
+          onClick={() => navigate("/tools/reports")}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90"
         >
           <Zap size={11} /> Genera Report AI
@@ -99,7 +101,9 @@ export function ClientReportsSection({
                     </button>
                   </>
                 )}
-                {(report.status === "approvato" || report.status === "bozza") && (
+                {/* "Invia" solo per report approvati: sulla bozza l'API lo
+                    rifiutava sempre (va prima portato in revisione e approvato). */}
+                {report.status === "approvato" && (
                   <button
                     onClick={() => handleSendReport(report)}
                     disabled={sendingReportId === report.id}

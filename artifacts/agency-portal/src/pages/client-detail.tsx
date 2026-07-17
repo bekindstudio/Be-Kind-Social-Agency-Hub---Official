@@ -1170,12 +1170,14 @@ export default function ClientDetail({ id }: Props) {
     bozza: "Bozza",
     in_revisione: "In revisione",
     approvato: "Approvato",
+    confermato_cliente: "Confermato dal cliente",
     inviato: "Inviato",
   };
   const REPORT_STATUS_COLORS: Record<string, string> = {
     bozza: "bg-muted text-muted-foreground",
     in_revisione: "bg-amber-100 text-amber-700",
     approvato: "bg-emerald-100 text-emerald-700",
+    confermato_cliente: "bg-teal-100 text-teal-700",
     inviato: "bg-blue-100 text-blue-700",
   };
 

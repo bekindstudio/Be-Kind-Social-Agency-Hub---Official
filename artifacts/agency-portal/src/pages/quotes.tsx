@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useListQuoteTemplates,
   useCreateQuoteTemplate,
@@ -430,6 +430,22 @@ export default function Quotes() {
     setEditingId(q.id);
     setShowForm(true);
   };
+
+  // Deep-link ?id=<quoteId> dalla ricerca globale: apre il preventivo in
+  // modifica appena la lista è caricata.
+  const openedQuoteIdRef = useRef(false);
+  useEffect(() => {
+    if (openedQuoteIdRef.current) return;
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
+    const q = quoteList.find((x: any) => String(x?.id) === id);
+    if (q) {
+      openEdit(q);
+      openedQuoteIdRef.current = true;
+      window.history.replaceState({}, "", "/quotes");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteList]);
 
   const handleSubmit = () => {
     const trimmedName = form.name.trim();

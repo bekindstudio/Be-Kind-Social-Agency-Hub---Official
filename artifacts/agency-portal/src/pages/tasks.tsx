@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, Columns3, List } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
@@ -40,6 +40,23 @@ export default function Tasks() {
       window.history.replaceState({}, "", `/tasks${newSearch ? `?${newSearch}` : ""}`);
     }
   }, []);
+
+  // Deep-link ?id=<taskId> dalla ricerca globale / Command Palette: apre il
+  // dettaglio della task appena la lista è caricata (prima il click sul
+  // risultato portava solo alla lista, senza aprire nulla).
+  const openedIdRef = useRef(false);
+  useEffect(() => {
+    if (openedIdRef.current) return;
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
+    const list = (vm.taskList as any[]) ?? [];
+    const t = list.find((x) => String(x.id) === id);
+    if (t) {
+      vm.setDetailTask(t);
+      openedIdRef.current = true;
+      window.history.replaceState({}, "", "/tasks");
+    }
+  }, [vm.taskList]);
 
   const todayISO = () => {
     const d = new Date();

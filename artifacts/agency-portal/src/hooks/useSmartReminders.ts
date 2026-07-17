@@ -121,6 +121,10 @@ export function useSmartReminders() {
 
     if (preferences.briefEnabled) {
       clients.forEach((client) => {
+        // `briefsByClient` contiene solo i brief effettivamente caricati (di fatto
+        // il cliente attivo). Per gli altri il brief NON è stato letto: prima si
+        // calcolava 0% e usciva un falso "Brief incompleto (0%)" per tutti.
+        if (!Object.prototype.hasOwnProperty.call(briefsByClient, client.id)) return;
         const completion = getBriefCompletion(briefsByClient[client.id] ?? null);
         if (completion < preferences.briefCompletionThreshold) {
           output.push({

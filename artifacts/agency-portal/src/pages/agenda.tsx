@@ -21,6 +21,7 @@ import {
   List as ListIcon,
   LayoutGrid,
   Repeat,
+  Loader2,
 } from "lucide-react";
 
 /* Agenda unificata — i tuoi appuntamenti (call, meeting, in-sede) PIÙ gli eventi
@@ -61,6 +62,7 @@ type ClientEventRow = {
   endDate?: string | null;
   type: string | null;
   priority?: string | null;
+  note?: string | null;
 };
 
 // Unione canonica usata dalla vista calendario mensile.
@@ -153,6 +155,9 @@ export default function AgendaPage() {
   const [, navigate] = useLocation();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  // Evento cliente aperto in modifica dall'agenda (prima si finiva sulla scheda
+  // cliente senza poterlo toccare).
+  const [editClientEvent, setEditClientEvent] = useState<ClientEventRow | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   // Wave BH: vista lista (default) vs calendario mensile tipo Google Calendar.
   // Vista iniziale: di default Lista, ma ?view=calendar (o mese/calendario) la
@@ -559,13 +564,13 @@ export default function AgendaPage() {
                 Il riquadro separato "Eventi clienti" che stava qui in fondo non
                 serve più: erano fuori dalla linea temporale e non si vedevano. */}
             {grouped.todayItems.length > 0 && (
-              <AgendaSection label="Oggi" items={grouped.todayItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} />
+              <AgendaSection label="Oggi" items={grouped.todayItems} onEdit={openEdit} onDelete={handleDelete} onEditClientEvent={setEditClientEvent} />
             )}
             {grouped.tomorrowItems.length > 0 && (
-              <AgendaSection label="Domani" items={grouped.tomorrowItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} />
+              <AgendaSection label="Domani" items={grouped.tomorrowItems} onEdit={openEdit} onDelete={handleDelete} onEditClientEvent={setEditClientEvent} />
             )}
             {grouped.upcomingItems.length > 0 && (
-              <AgendaSection label="Prossimi giorni" items={grouped.upcomingItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} groupByDay />
+              <AgendaSection label="Prossimi giorni" items={grouped.upcomingItems} onEdit={openEdit} onDelete={handleDelete} onEditClientEvent={setEditClientEvent} groupByDay />
             )}
             {grouped.pastItems.length > 0 && (
               <details className="rounded-xl border border-card-border bg-card p-4">
@@ -573,7 +578,7 @@ export default function AgendaPage() {
                   Passati ({grouped.pastItems.length})
                 </summary>
                 <div className="mt-3 opacity-70">
-                  <AgendaSection label="" items={grouped.pastItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} groupByDay />
+                  <AgendaSection label="" items={grouped.pastItems} onEdit={openEdit} onDelete={handleDelete} onEditClientEvent={setEditClientEvent} groupByDay />
                 </div>
               </details>
             )}
@@ -590,25 +595,38 @@ export default function AgendaPage() {
           onSave={handleSave}
         />
       )}
+
+      {editClientEvent && (
+        <ClientEventEditModal
+          event={editClientEvent}
+          onClose={() => setEditClientEvent(null)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ["dashboard-events"] });
+            setEditClientEvent(null);
+          }}
+          onOpenClient={(id) => { setEditClientEvent(null); navigate(`/clients/${id}`); }}
+          toastFn={toast}
+        />
+      )}
     </Layout>
   );
 }
 
 function AgendaSection({
-  label, items, onEdit, onDelete, onOpenClient, groupByDay,
+  label, items, onEdit, onDelete, onEditClientEvent, groupByDay,
 }: {
   label: string;
   items: AgendaItem[];
   onEdit: (e: AgendaEvent) => void;
   onDelete: (e: AgendaEvent) => void;
-  onOpenClient: (clientId: number) => void;
+  onEditClientEvent: (e: ClientEventRow) => void;
   groupByDay?: boolean;
 }) {
   const renderItem = (it: AgendaItem) =>
     it.kind === "personal" ? (
       <EventCard key={it.key} event={it.ev} onEdit={onEdit} onDelete={onDelete} />
     ) : (
-      <ClientEventCard key={it.key} event={it.ev} onOpen={onOpenClient} />
+      <ClientEventCard key={it.key} event={it.ev} onEdit={onEditClientEvent} />
     );
 
   if (!groupByDay) {
@@ -642,15 +660,19 @@ function AgendaSection({
   );
 }
 
-/* Evento di un cliente dentro la tua agenda: sola lettura (si modifica dalla
-   scheda cliente, che è la sua casa), pallino col colore del brand per
-   distinguerlo a colpo d'occhio dai tuoi appuntamenti. */
-function ClientEventCard({ event, onOpen }: { event: ClientEventRow; onOpen: (clientId: number) => void }) {
+/* Evento di un cliente dentro la tua agenda: pallino col colore del brand per
+   distinguerlo dai tuoi appuntamenti. Click → editor (si modifica direttamente
+   da qui; la fonte è la stessa di /tools/events, quindi la modifica vale
+   ovunque). L'icona matita rende esplicito che è modificabile. */
+function ClientEventCard({ event, onEdit }: { event: ClientEventRow; onEdit: (e: ClientEventRow) => void }) {
+  const CLIENT_TYPE_LABEL: Record<string, string> = {
+    campaign: "Campagna", launch: "Lancio", deadline: "Scadenza", meeting: "Riunione", other: "Evento",
+  };
   return (
     <button
       type="button"
-      onClick={() => onOpen(event.clientId)}
-      className="w-full text-left rounded-xl border border-card-border bg-card p-4 hover:shadow-sm transition-shadow"
+      onClick={() => onEdit(event)}
+      className="w-full text-left rounded-xl border border-card-border bg-card p-4 hover:shadow-sm transition-shadow group"
     >
       <div className="flex items-start gap-3">
         <span
@@ -667,12 +689,184 @@ function ClientEventCard({ event, onOpen }: { event: ClientEventRow; onOpen: (cl
           <div className="mt-1 text-xs text-muted-foreground inline-flex items-center gap-1">
             <Clock size={11} />
             {formatTime(event.date)}
-            {event.type ? ` · ${event.type}` : ""}
+            {event.type ? ` · ${CLIENT_TYPE_LABEL[event.type] ?? event.type}` : ""}
           </div>
         </div>
-        <ChevronRight size={15} className="text-muted-foreground shrink-0 mt-0.5" />
+        <Pencil size={14} className="text-muted-foreground shrink-0 mt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" />
       </div>
     </button>
+  );
+}
+
+/* Editor di un evento cliente aperto dall'agenda. La modifica va sulla stessa
+   riga di client_events usata ovunque (PATCH /api/clients/:clientId/events/:id),
+   quindi il cambiamento si riflette anche nella scheda cliente e nel calendario. */
+const CLIENT_EVENT_TYPES = [
+  { value: "campaign", label: "Campagna" },
+  { value: "launch", label: "Lancio" },
+  { value: "deadline", label: "Scadenza" },
+  { value: "meeting", label: "Riunione" },
+  { value: "other", label: "Altro" },
+];
+const CLIENT_EVENT_PRIORITIES = [
+  { value: "low", label: "Bassa" },
+  { value: "medium", label: "Media" },
+  { value: "high", label: "Alta" },
+];
+
+function ClientEventEditModal({
+  event, onClose, onSaved, onOpenClient, toastFn,
+}: {
+  event: ClientEventRow;
+  onClose: () => void;
+  onSaved: () => void;
+  onOpenClient: (clientId: number) => void;
+  toastFn: (t: { variant?: "destructive"; title: string; description?: string }) => void;
+}) {
+  const start = new Date(event.date);
+  const end = event.endDate ? new Date(event.endDate) : null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const [title, setTitle] = useState(event.title);
+  const [date, setDate] = useState(`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`);
+  const [time, setTime] = useState(`${pad(start.getHours())}:${pad(start.getMinutes())}`);
+  const [endTime, setEndTime] = useState(end ? `${pad(end.getHours())}:${pad(end.getMinutes())}` : "");
+  const [type, setType] = useState(event.type ?? "other");
+  const [priority, setPriority] = useState(event.priority ?? "medium");
+  const [note, setNote] = useState(event.note ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!title.trim()) { toastFn({ variant: "destructive", title: "Il titolo è obbligatorio" }); return; }
+    if (!date || !time) { toastFn({ variant: "destructive", title: "Data e ora obbligatorie" }); return; }
+    setSaving(true);
+    try {
+      const body = {
+        title: title.trim(),
+        date: isoFromDateTime(date, time),
+        endDate: endTime ? isoFromDateTime(date, endTime) : null,
+        type,
+        priority,
+        note: note.trim(),
+      };
+      const r = await portalFetch(`/api/clients/${event.clientId}/events/${event.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b?.error) detail = String(b.error); } catch { /* non-JSON */ }
+        toastFn({ variant: "destructive", title: "Modifica non riuscita", description: detail });
+        return;
+      }
+      toastFn({ title: "Evento aggiornato" });
+      onSaved();
+    } catch {
+      toastFn({ variant: "destructive", title: "Errore di rete" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Eliminare questo evento del cliente?")) return;
+    setSaving(true);
+    try {
+      const r = await portalFetch(`/api/clients/${event.clientId}/events/${event.id}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok && r.status !== 204) {
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b?.error) detail = String(b.error); } catch { /* non-JSON */ }
+        toastFn({ variant: "destructive", title: "Eliminazione non riuscita", description: detail });
+        return;
+      }
+      toastFn({ title: "Evento eliminato" });
+      onSaved();
+    } catch {
+      toastFn({ variant: "destructive", title: "Errore di rete" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-card-border">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm">Modifica evento</p>
+            <p className="text-xs text-muted-foreground truncate">
+              <span className="w-2 h-2 rounded-full inline-block mr-1.5 align-middle" style={{ backgroundColor: event.clientColor || "#7a8f5c" }} />
+              {event.clientName ?? "Cliente"}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={16} /></button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Titolo</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Data</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Ora</label>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Fine (opz.)</label>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Tipo</label>
+              <select value={type} onChange={(e) => setType(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm">
+                {CLIENT_EVENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Priorità</label>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm">
+                {CLIENT_EVENT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Note (opz.)</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 p-4 border-t border-card-border">
+          <button type="button" onClick={() => void remove()} disabled={saving}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded-lg disabled:opacity-50">
+            <Trash2 size={14} /> Elimina
+          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => onOpenClient(event.clientId)}
+              className="px-3 py-2 text-xs font-medium rounded-lg border border-input hover:bg-muted">
+              Apri scheda cliente
+            </button>
+            <button type="button" onClick={() => void save()} disabled={saving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:brightness-105 disabled:opacity-50">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : null} Salva
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

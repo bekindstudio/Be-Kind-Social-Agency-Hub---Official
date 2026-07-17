@@ -11,6 +11,14 @@ import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
  *   - "call"    → telefonata / videocall
  *   - "meeting" → riunione interna
  *   - "in_sede" → appuntamento in sede (cliente o ufficio)
+ *
+ * RICORRENZA: una serie che si ripete resta UNA riga sola. Le occorrenze non
+ * sono materializzate: le calcola l'API al volo (routes/personal-agenda.ts,
+ * lib/recurrence.ts). Così spostare o rinominare la serie è un UPDATE solo e
+ * cancellarla non lascia centinaia di righe orfane.
+ *   - recurrence: NULL = evento singolo | "weekly" = ogni settimana
+ *   - recurrenceUntil: fine facoltativa (NULL = per sempre)
+ *   - recurrenceExceptions: occorrenze saltate ("elimina solo questa")
  */
 export const personalAgendaEventsTable = pgTable("personal_agenda_events", {
   id: serial("id").primaryKey(),
@@ -22,6 +30,9 @@ export const personalAgendaEventsTable = pgTable("personal_agenda_events", {
   location: text("location"),
   notes: text("notes"),
   attendees: text("attendees"),
+  recurrence: text("recurrence"),
+  recurrenceUntil: timestamp("recurrence_until", { withTimezone: true }),
+  recurrenceExceptions: timestamp("recurrence_exceptions", { withTimezone: true }).array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

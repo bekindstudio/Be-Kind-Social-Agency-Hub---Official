@@ -20,11 +20,17 @@ import {
   ChevronRight,
   List as ListIcon,
   LayoutGrid,
+  Repeat,
 } from "lucide-react";
 
-/* Agenda personale — appuntamenti privati dell'utente (call, meeting, in-sede).
-   Distinta da /tools/events (eventi cliente condivisi col team). Vista a hero
-   "Hai N appuntamenti questa settimana" + sezioni temporali (oggi/domani/dopo). */
+/* Agenda unificata — i tuoi appuntamenti (call, meeting, in-sede) PIÙ gli eventi
+   di tutti i clienti, mescolati nella stessa linea temporale (oggi/domani/dopo).
+   Gli eventi cliente NON sono copiati qui: restano in /tools/events e vengono
+   solo letti dalla stessa fonte (/api/dashboard/events), così non si disallineano.
+   Sono in sola lettura: click → scheda cliente.
+
+   Appuntamenti ricorrenti: l'API restituisce una riga per ogni occorrenza, tutte
+   con lo STESSO id e startAt diversi → la chiave di lista è `id + startAt`. */
 
 type AgendaEvent = {
   id: number;
@@ -36,6 +42,10 @@ type AgendaEvent = {
   location: string | null;
   notes: string | null;
   attendees: string | null;
+  recurrence: "weekly" | null;
+  recurrenceUntil: string | null;
+  /** Inizio della serie: se != startAt, questa è una ripetizione, non l'originale. */
+  seriesStartAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -74,6 +84,12 @@ type CalEvent =
       clientEventType: string | null;
     };
 
+/* Elemento della lista: un tuo appuntamento oppure un evento cliente. Servono
+   entrambi nello stesso array per poterli raggruppare per giorno insieme. */
+type AgendaItem =
+  | { kind: "personal"; key: string; date: string; ev: AgendaEvent }
+  | { kind: "client"; key: string; date: string; ev: ClientEventRow };
+
 type FormState = {
   title: string;
   type: AgendaEvent["type"];
@@ -83,6 +99,8 @@ type FormState = {
   location: string;
   notes: string;
   attendees: string;
+  recurrence: "" | "weekly";
+  recurrenceUntil: string;
 };
 
 const TYPE_META: Record<AgendaEvent["type"], { label: string; icon: any; color: string }> = {
@@ -105,6 +123,8 @@ function emptyForm(): FormState {
     location: "",
     notes: "",
     attendees: "",
+    recurrence: "",
+    recurrenceUntil: "",
   };
 }
 
@@ -207,28 +227,52 @@ export default function AgendaPage() {
     return [...personal, ...client];
   }, [events, clientEvents]);
 
+  /* Un'unica lista: i tuoi appuntamenti E gli eventi dei clienti. Prima gli
+     eventi cliente stavano in un riquadro a parte in fondo alla pagina, quindi
+     un evento di domani non compariva sotto "Domani" — che è esattamente il
+     motivo per cui l'agenda sembrava incompleta. */
+  const allItems = useMemo<AgendaItem[]>(() => {
+    const personal: AgendaItem[] = events.map((e) => ({
+      kind: "personal",
+      // Le occorrenze di una serie ricorrente condividono l'id: senza startAt
+      // nella chiave React ne renderizzerebbe una sola.
+      key: `personal-${e.id}-${e.startAt}`,
+      date: e.startAt,
+      ev: e,
+    }));
+    const client: AgendaItem[] = clientEvents.map((e) => ({
+      kind: "client",
+      key: `client-${e.id}`,
+      date: e.date,
+      ev: e,
+    }));
+    return [...personal, ...client].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+  }, [events, clientEvents]);
+
   const grouped = useMemo(() => {
     const today = startOfDay(new Date());
     const tomorrow = new Date(today.getTime() + 86400000);
     const dayAfter = new Date(today.getTime() + 2 * 86400000);
-    const oneWeek = new Date(today.getTime() + 8 * 86400000);
 
-    const todayItems: AgendaEvent[] = [];
-    const tomorrowItems: AgendaEvent[] = [];
-    const upcomingItems: AgendaEvent[] = [];
-    const pastItems: AgendaEvent[] = [];
+    const todayItems: AgendaItem[] = [];
+    const tomorrowItems: AgendaItem[] = [];
+    const upcomingItems: AgendaItem[] = [];
+    const pastItems: AgendaItem[] = [];
 
-    for (const e of events) {
-      const start = new Date(e.startAt);
-      if (start < today) pastItems.push(e);
-      else if (start < tomorrow) todayItems.push(e);
-      else if (start < dayAfter) tomorrowItems.push(e);
-      else if (start < oneWeek) upcomingItems.push(e);
-      else upcomingItems.push(e);
+    for (const it of allItems) {
+      const start = new Date(it.date);
+      if (start < today) pastItems.push(it);
+      else if (start < tomorrow) todayItems.push(it);
+      else if (start < dayAfter) tomorrowItems.push(it);
+      else upcomingItems.push(it);
     }
     return { todayItems, tomorrowItems, upcomingItems, pastItems };
-  }, [events]);
+  }, [allItems]);
 
+  // Conta anche gli eventi cliente: prima diceva "Nessun appuntamento in agenda"
+  // pur avendo cinque eventi cliente domani.
   const totalUpcoming = grouped.todayItems.length + grouped.tomorrowItems.length + grouped.upcomingItems.length;
 
   const openCreate = () => {
@@ -238,7 +282,12 @@ export default function AgendaPage() {
   };
 
   const openEdit = (e: AgendaEvent) => {
-    const start = new Date(e.startAt);
+    // Su una serie ricorrente la modifica agisce sull'INTERA serie, quindi il
+    // form va ancorato all'inizio della serie e non all'occorrenza aperta:
+    // altrimenti aprendo la terza occorrenza e salvando si sposterebbe lì
+    // l'inizio, cancellando di fatto le prime due.
+    const anchorIso = e.recurrence ? (e.seriesStartAt ?? e.startAt) : e.startAt;
+    const start = new Date(anchorIso);
     const end = e.endAt ? new Date(e.endAt) : null;
     const yyyy = start.getFullYear();
     const mm = String(start.getMonth() + 1).padStart(2, "0");
@@ -254,6 +303,8 @@ export default function AgendaPage() {
       location: e.location ?? "",
       notes: e.notes ?? "",
       attendees: e.attendees ?? "",
+      recurrence: e.recurrence ?? "",
+      recurrenceUntil: e.recurrenceUntil ? e.recurrenceUntil.slice(0, 10) : "",
     });
     setEditingId(e.id);
     setFormOpen(true);
@@ -278,6 +329,13 @@ export default function AgendaPage() {
       location: form.location.trim() || null,
       notes: form.notes.trim() || null,
       attendees: form.attendees.trim() || null,
+      recurrence: form.recurrence || null,
+      // Fine ripetizione: solo se si ripete. Prendo la fine giornata così
+      // "fino al 30" include il 30.
+      recurrenceUntil:
+        form.recurrence && form.recurrenceUntil
+          ? new Date(`${form.recurrenceUntil}T23:59:59`).toISOString()
+          : null,
     };
     try {
       const url = editingId ? `/api/personal-agenda/${editingId}` : "/api/personal-agenda";
@@ -321,19 +379,45 @@ export default function AgendaPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Eliminare questo appuntamento?")) return;
+  /**
+   * Su un appuntamento che si ripete chiede prima cosa eliminare: solo quella
+   * occorrenza (diventa un'eccezione della serie) o tutta la serie.
+   */
+  const handleDelete = async (e: AgendaEvent) => {
+    let url = `/api/personal-agenda/${e.id}`;
+    let okMsg = "Appuntamento eliminato";
+
+    if (e.recurrence) {
+      // confirm() ha due soli esiti, quindi due domande in fila: la prima decide
+      // "tutta la serie", la seconda conferma la singola occorrenza. Poche righe
+      // e nessun modale nuovo da mantenere.
+      const wholeSeries = confirm(
+        "Questo appuntamento si ripete ogni settimana.\n\n" +
+        "OK = elimina TUTTA la serie\n" +
+        "Annulla = scegli se eliminare solo questa occorrenza",
+      );
+      if (wholeSeries) {
+        okMsg = "Serie eliminata";
+      } else {
+        const onlyThis = confirm("Eliminare solo l'appuntamento di questa data? La serie resta.");
+        if (!onlyThis) return;
+        url += `?occurrence=${encodeURIComponent(e.startAt)}`;
+        okMsg = "Appuntamento di questa data eliminato";
+      }
+    } else if (!confirm("Eliminare questo appuntamento?")) {
+      return;
+    }
+
     try {
-      const r = await portalFetch(`/api/personal-agenda/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const r = await portalFetch(url, { method: "DELETE", credentials: "include" });
       if (!r.ok) {
-        toast({ variant: "destructive", title: "Eliminazione non riuscita" });
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b?.error) detail = String(b.error); } catch { /* non-JSON */ }
+        toast({ variant: "destructive", title: "Eliminazione non riuscita", description: detail });
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["personal-agenda"] });
-      toast({ title: "Appuntamento eliminato" });
+      toast({ title: okMsg });
     } catch {
       toast({ variant: "destructive", title: "Errore di rete" });
     }
@@ -347,9 +431,7 @@ export default function AgendaPage() {
           <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
             <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
               <CalendarClock size={16} className="text-primary" />
-              {view === "calendar"
-                ? "Calendario unificato · tuoi appuntamenti + eventi clienti"
-                : "Agenda personale · solo i tuoi appuntamenti"}
+              Agenda · tuoi appuntamenti + eventi di tutti i clienti
             </p>
             <div className="flex items-center gap-2">
               {/* Wave BH: toggle Lista / Calendario stile segmented control. */}
@@ -473,14 +555,17 @@ export default function AgendaPage() {
           />
         ) : (
           <div className="space-y-6">
+            {/* Tuoi appuntamenti ed eventi cliente insieme, in ordine di orario.
+                Il riquadro separato "Eventi clienti" che stava qui in fondo non
+                serve più: erano fuori dalla linea temporale e non si vedevano. */}
             {grouped.todayItems.length > 0 && (
-              <AgendaSection label="Oggi" items={grouped.todayItems} onEdit={openEdit} onDelete={handleDelete} />
+              <AgendaSection label="Oggi" items={grouped.todayItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} />
             )}
             {grouped.tomorrowItems.length > 0 && (
-              <AgendaSection label="Domani" items={grouped.tomorrowItems} onEdit={openEdit} onDelete={handleDelete} />
+              <AgendaSection label="Domani" items={grouped.tomorrowItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} />
             )}
             {grouped.upcomingItems.length > 0 && (
-              <AgendaSection label="Prossimi giorni" items={grouped.upcomingItems} onEdit={openEdit} onDelete={handleDelete} groupByDay />
+              <AgendaSection label="Prossimi giorni" items={grouped.upcomingItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} groupByDay />
             )}
             {grouped.pastItems.length > 0 && (
               <details className="rounded-xl border border-card-border bg-card p-4">
@@ -488,36 +573,7 @@ export default function AgendaPage() {
                   Passati ({grouped.pastItems.length})
                 </summary>
                 <div className="mt-3 opacity-70">
-                  <AgendaSection label="" items={grouped.pastItems} onEdit={openEdit} onDelete={handleDelete} groupByDay />
-                </div>
-              </details>
-            )}
-
-            {/* Eventi clienti aggregati (di TUTTI i clienti). Sono già nel
-                Calendario; li mostriamo anche qui in Lista così li vedi sempre.
-                Read-only: click → scheda cliente. Niente doppioni nel DB. */}
-            {clientEvents.length > 0 && (
-              <details className="rounded-xl border border-card-border bg-card p-4" open>
-                <summary className="cursor-pointer text-sm font-semibold">
-                  Eventi clienti ({clientEvents.length})
-                </summary>
-                <div className="mt-3 space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-                  {[...clientEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      onClick={() => navigate(`/clients/${e.clientId}`)}
-                      className="w-full text-left rounded-lg border border-card-border p-3 hover:bg-muted/40 flex items-center gap-3"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: e.clientColor || "#7a8f5c" }} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{e.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {e.clientName ?? "Cliente"} · {new Date(e.date).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" })} · {formatTime(e.date)}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+                  <AgendaSection label="" items={grouped.pastItems} onEdit={openEdit} onDelete={handleDelete} onOpenClient={(id) => navigate(`/clients/${id}`)} groupByDay />
                 </div>
               </details>
             )}
@@ -539,31 +595,37 @@ export default function AgendaPage() {
 }
 
 function AgendaSection({
-  label, items, onEdit, onDelete, groupByDay,
+  label, items, onEdit, onDelete, onOpenClient, groupByDay,
 }: {
   label: string;
-  items: AgendaEvent[];
+  items: AgendaItem[];
   onEdit: (e: AgendaEvent) => void;
-  onDelete: (id: number) => void;
+  onDelete: (e: AgendaEvent) => void;
+  onOpenClient: (clientId: number) => void;
   groupByDay?: boolean;
 }) {
+  const renderItem = (it: AgendaItem) =>
+    it.kind === "personal" ? (
+      <EventCard key={it.key} event={it.ev} onEdit={onEdit} onDelete={onDelete} />
+    ) : (
+      <ClientEventCard key={it.key} event={it.ev} onOpen={onOpenClient} />
+    );
+
   if (!groupByDay) {
     return (
       <section>
         {label && <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</h2>}
-        <div className="space-y-2">
-          {items.map((e) => <EventCard key={e.id} event={e} onEdit={onEdit} onDelete={onDelete} />)}
-        </div>
+        <div className="space-y-2">{items.map(renderItem)}</div>
       </section>
     );
   }
   // Raggruppa per giorno
-  const byDay = new Map<string, AgendaEvent[]>();
-  for (const e of items) {
-    const d = new Date(e.startAt);
+  const byDay = new Map<string, AgendaItem[]>();
+  for (const it of items) {
+    const d = new Date(it.date);
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     if (!byDay.has(k)) byDay.set(k, []);
-    byDay.get(k)!.push(e);
+    byDay.get(k)!.push(it);
   }
   return (
     <section>
@@ -572,9 +634,7 @@ function AgendaSection({
         {Array.from(byDay.entries()).map(([k, dayItems]) => (
           <div key={k}>
             <p className="text-xs font-medium text-muted-foreground mb-2 capitalize">{formatDayLabel(new Date(k))}</p>
-            <div className="space-y-2">
-              {dayItems.map((e) => <EventCard key={e.id} event={e} onEdit={onEdit} onDelete={onDelete} />)}
-            </div>
+            <div className="space-y-2">{dayItems.map(renderItem)}</div>
           </div>
         ))}
       </div>
@@ -582,9 +642,43 @@ function AgendaSection({
   );
 }
 
+/* Evento di un cliente dentro la tua agenda: sola lettura (si modifica dalla
+   scheda cliente, che è la sua casa), pallino col colore del brand per
+   distinguerlo a colpo d'occhio dai tuoi appuntamenti. */
+function ClientEventCard({ event, onOpen }: { event: ClientEventRow; onOpen: (clientId: number) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(event.clientId)}
+      className="w-full text-left rounded-xl border border-card-border bg-card p-4 hover:shadow-sm transition-shadow"
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
+          style={{ backgroundColor: event.clientColor || "#7a8f5c" }}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-sm truncate">{event.title}</h3>
+            <span className="text-xs rounded-full px-2 py-0.5 bg-muted shrink-0">
+              {event.clientName ?? "Cliente"}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground inline-flex items-center gap-1">
+            <Clock size={11} />
+            {formatTime(event.date)}
+            {event.type ? ` · ${event.type}` : ""}
+          </div>
+        </div>
+        <ChevronRight size={15} className="text-muted-foreground shrink-0 mt-0.5" />
+      </div>
+    </button>
+  );
+}
+
 function EventCard({
   event, onEdit, onDelete,
-}: { event: AgendaEvent; onEdit: (e: AgendaEvent) => void; onDelete: (id: number) => void }) {
+}: { event: AgendaEvent; onEdit: (e: AgendaEvent) => void; onDelete: (e: AgendaEvent) => void }) {
   const meta = TYPE_META[event.type];
   const Icon = meta.icon;
   return (
@@ -595,6 +689,11 @@ function EventCard({
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-sm">{event.title}</h3>
             <span className={cn("text-xs rounded-full px-2 py-0.5 bg-muted")}>{meta.label}</span>
+            {event.recurrence === "weekly" && (
+              <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-primary/10 text-primary">
+                <Repeat size={11} /> Ogni settimana
+              </span>
+            )}
           </div>
           <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="inline-flex items-center gap-1">
@@ -635,7 +734,7 @@ function EventCard({
           </button>
           <button
             type="button"
-            onClick={() => onDelete(event.id)}
+            onClick={() => onDelete(event)}
             className="p-2 text-muted-foreground hover:text-destructive rounded-lg hover:bg-muted"
             aria-label="Elimina"
             title="Elimina"
@@ -898,6 +997,42 @@ function EventFormModal({
               />
             </div>
           </div>
+
+          {/* Ripetizione: la data di fine compare solo se si ripete, altrimenti
+              sarebbe un campo che non fa niente. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">Si ripete</label>
+              <select
+                value={form.recurrence}
+                onChange={(e) => setForm({ ...form, recurrence: e.target.value as FormState["recurrence"] })}
+                className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+              >
+                <option value="">Una volta sola</option>
+                <option value="weekly">Ogni settimana</option>
+              </select>
+            </div>
+            {form.recurrence === "weekly" && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Fino al (opz.)</label>
+                <input
+                  type="date"
+                  value={form.recurrenceUntil}
+                  min={form.startDate || undefined}
+                  onChange={(e) => setForm({ ...form, recurrenceUntil: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          {form.recurrence === "weekly" && (
+            <p className="-mt-1 text-xs text-muted-foreground inline-flex items-center gap-1.5">
+              <Repeat size={12} className="shrink-0" />
+              {form.startDate
+                ? `Si ripete ogni ${new Date(`${form.startDate}T12:00:00`).toLocaleDateString("it-IT", { weekday: "long" })}${form.recurrenceUntil ? ` fino al ${new Date(`${form.recurrenceUntil}T12:00:00`).toLocaleDateString("it-IT")}` : ", senza scadenza"}.`
+                : "Scegli la data per vedere in che giorno si ripete."}
+            </p>
+          )}
 
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1">

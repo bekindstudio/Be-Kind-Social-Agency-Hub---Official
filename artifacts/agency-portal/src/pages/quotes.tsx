@@ -409,6 +409,14 @@ export default function Quotes() {
     setShowForm(true);
   };
 
+  // Apri il form se si arriva da "Nuovo preventivo" del menu globale (?new=1).
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("new") === "1") openCreate();
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openEdit = (q: any) => {
     setForm({
       name: q.name,

@@ -326,11 +326,31 @@ export default function Dashboard() {
   const in14 = new Date();
   in14.setDate(now.getDate() + 14);
 
-  const tasksDueToday = tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate).toDateString() === now.toDateString());
-  const tasksOverdue = tasks.filter((t: AnyObj) => t.status !== "done" && t.dueDate && new Date(t.dueDate) < now);
-  const tasksDueWeek = tasks.filter((t: AnyObj) => t.dueDate && new Date(t.dueDate) >= now && new Date(t.dueDate) <= weekEnd);
-  const tasksTodayTotal = tasksDueToday.length + tasksOverdue.length;
-  const tasksTodayDone = [...tasksDueToday, ...tasksOverdue].filter((t: AnyObj) => t.status === "done").length;
+  // `dueDate` è una data "YYYY-MM-DD": confrontarla con l'istante corrente la
+  // faceva risultare "scaduta" già dalle 02:00 (mezzanotte UTC in ora italiana).
+  // Confronto sempre per GIORNO locale, come today.tsx e isOverdue().
+  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+  const isSameLocalDay = (ds: string) => {
+    const d = new Date(ds);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  };
+  const isBeforeToday = (ds: string) => { const d = new Date(ds); d.setHours(0, 0, 0, 0); return d < startToday; };
+  const dedupById = (list: AnyObj[]) => {
+    const seen = new Set<unknown>();
+    return list.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+  };
+
+  const tasksDueTodayAll = tasks.filter((t: AnyObj) => t.dueDate && isSameLocalDay(t.dueDate));
+  const tasksDueToday = tasksDueTodayAll.filter((t: AnyObj) => t.status !== "done");
+  const tasksOverdue = tasks.filter((t: AnyObj) => t.status !== "done" && t.dueDate && isBeforeToday(t.dueDate));
+  // "Questa settimana": da oggi (incluso) a +7 giorni, solo non completate.
+  const tasksDueWeek = tasks.filter(
+    (t: AnyObj) => t.status !== "done" && t.dueDate && !isBeforeToday(t.dueDate) && new Date(t.dueDate) <= weekEnd,
+  );
+  // Insieme unico "oggi": scadute + in scadenza oggi, senza contare due volte.
+  const tasksTodayList = dedupById([...tasksOverdue, ...tasksDueTodayAll]);
+  const tasksTodayTotal = tasksTodayList.length;
+  const tasksTodayDone = tasksTodayList.filter((t: AnyObj) => t.status === "done").length;
 
   const activeProjects = projects.filter((p: AnyObj) => p.status === "active");
   const dueWeekProjects = activeProjects.filter((p: AnyObj) => p.deadline && new Date(p.deadline) <= weekEnd);
@@ -514,7 +534,7 @@ export default function Dashboard() {
     }
   };
 
-  const taskListByTab = tasksTab === "oggi" ? [...tasksOverdue, ...tasksDueToday] : tasksTab === "settimana" ? tasksDueWeek : tasksOverdue;
+  const taskListByTab = tasksTab === "oggi" ? tasksTodayList : tasksTab === "settimana" ? tasksDueWeek : tasksOverdue;
   const riskProjects = projects.filter((p: AnyObj) => p.healthStatus === "at-risk" || p.healthStatus === "delayed").slice(0, 5);
   const eventDays = useMemo(() => buildMonthDays(eventsMonthCursor), [eventsMonthCursor]);
   const eventMonth = eventsMonthCursor.getMonth();
@@ -1196,15 +1216,9 @@ export default function Dashboard() {
           </div>
         </details>
 
-        {/* FAB */}
-        <div className="fixed right-5 bottom-5 z-40">
-          <div className="group relative">
-            <button className="w-14 h-14 rounded-full bg-violet-600 text-white shadow-xl inline-flex items-center justify-center"><Plus size={24} /></button>
-            <div className="absolute bottom-16 right-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity bg-card border border-card-border rounded-lg shadow-lg p-2 space-y-1 min-w-44">
-              {[["+ Progetto", "/projects"], ["+ Task", "/tasks"], ["+ Cliente", "/clients"], ["AI Chat", "/chat"]].map(([l, h]) => <button key={l} onClick={() => navigate(h)} className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted">{l}</button>)}
-            </div>
-          </div>
-        </div>
+        {/* FAB rimosso: si apriva solo con l'hover (morto al tocco su PWA) e
+            duplicava il menu "Nuovo" della topbar, con etichette divergenti.
+            La creazione rapida è in topbar su ogni pagina (QuickCreate). */}
 
         {/* Dashboard Settings */}
         <button onClick={() => setShowDashPrefs(true)} className="fixed top-20 right-6 z-30 p-2 rounded-lg border border-input bg-background"><Settings size={16} /></button>

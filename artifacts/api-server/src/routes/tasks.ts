@@ -365,7 +365,12 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (d.description !== undefined) updates.description = d.description;
   if (d.projectId !== undefined) updates.projectId = d.projectId;
   if (d.assigneeId !== undefined) updates.assigneeId = d.assigneeId;
-  if (d.status != null) updates.status = d.status;
+  if (d.status != null) {
+    updates.status = d.status;
+    // Timbra il completamento così "Completate oggi" (today.tsx) e i conteggi
+    // funzionano. Prima solo daily-focus lo scriveva → sezione sempre vuota.
+    updates.completedAt = d.status === "done" ? new Date() : null;
+  }
   if (d.priority != null) updates.priority = d.priority;
   if (d.dueDate !== undefined) updates.dueDate = d.dueDate;
   if (b.tipo != null) updates.tipo = b.tipo;

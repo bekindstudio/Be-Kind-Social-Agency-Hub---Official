@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { portalFetch } from "@workspace/api-client-react";
 import type { AnalyticsPeriod } from "@/types/client";
 import { metaApi, type MetaApiError, type MetaInsightData, type MetaPostData } from "@/services/metaApi";
 
@@ -94,12 +95,14 @@ export function useMetaAnalytics(clientId: string, period: AnalyticsPeriod): Use
         });
 
         // Best effort sync with assigned Meta accounts before loading report/analytics data.
-        await fetch(`/api/meta/sync/${numericClientId}?since=${range.since}&until=${range.until}`, {
+        // portalFetch (non fetch grezza): aggiunge il Bearer token Supabase,
+        // altrimenti il gate risponde 401 e la pagina mostrava "Unknown error".
+        await portalFetch(`/api/meta/sync/${numericClientId}?since=${range.since}&until=${range.until}`, {
           method: "POST",
           credentials: "include",
         }).catch(() => null);
 
-        const response = await fetch(`/api/meta/insights/${numericClientId}?${params.toString()}`, {
+        const response = await portalFetch(`/api/meta/insights/${numericClientId}?${params.toString()}`, {
           credentials: "include",
         });
         const payload = await response.json().catch(() => ({}));

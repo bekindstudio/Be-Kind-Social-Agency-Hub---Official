@@ -1768,7 +1768,7 @@ export default function ClientDetail({ id }: Props) {
             clientName={(viewClient as any).name ?? ""}
             clientEmail={(viewClient as any).email ?? null}
             driveUrl={(viewClient as any).driveUrl ?? null}
-            onRefresh={() => { void queryClient.invalidateQueries({ queryKey: ["client", clientId] }); }}
+            onRefresh={() => { invalidateClient(); }}
           />
         )}
 

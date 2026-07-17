@@ -1,5 +1,6 @@
 import { Globe, Pencil, Save, Sparkles, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/featureFlags";
 
 interface ClientDetailHeaderProps {
   clientId: string | number;
@@ -62,19 +63,23 @@ export function ClientDetailHeader({
           <p className="text-xs text-muted-foreground mt-1">
             Cliente dal {formatDate(viewClient.createdAt)}
           </p>
-          <button
-            onClick={() =>
-              onOpenAi({
-                id: clientId,
-                name: viewClient.name,
-                sector: viewClient.sector,
-                activeProjects: clientProjectsCount,
-              })
-            }
-            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 transition-colors border border-violet-200 mt-2"
-          >
-            <Sparkles size={12} /> Chiedi all'AI su questo cliente
-          </button>
+          {/* Il pannello AI è montato solo con AI_ENABLED (oggi false): senza
+              questo guard il bottone era sempre visibile ma non apriva nulla. */}
+          {AI_ENABLED && (
+            <button
+              onClick={() =>
+                onOpenAi({
+                  id: clientId,
+                  name: viewClient.name,
+                  sector: viewClient.sector,
+                  activeProjects: clientProjectsCount,
+                })
+              }
+              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 transition-colors border border-violet-200 mt-2"
+            >
+              <Sparkles size={12} /> Chiedi all'AI su questo cliente
+            </button>
+          )}
         </div>
       </div>
 

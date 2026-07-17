@@ -4,11 +4,13 @@ import { Plus, ChevronDown } from "lucide-react";
 
 // Menu "Nuovo" globale (Wave BP): spostato dall'header della Dashboard alla
 // topbar, così la creazione rapida è disponibile su ogni pagina.
+// `?new=1` fa aprire il form di creazione all'arrivo sulla pagina (gestito in
+// projects/tasks/clients/quotes). Senza, si atterrava sulla lista senza form.
 const ITEMS: [string, string][] = [
-  ["Nuovo progetto", "/projects"],
-  ["Nuova task", "/tasks"],
-  ["Nuovo cliente", "/clients"],
-  ["Nuovo preventivo", "/quotes"],
+  ["Nuovo progetto", "/projects?new=1"],
+  ["Nuova task", "/tasks?new=1"],
+  ["Nuovo cliente", "/clients?new=1"],
+  ["Nuovo preventivo", "/quotes?new=1"],
   ["Nuovo messaggio", "/chat"],
 ];
 

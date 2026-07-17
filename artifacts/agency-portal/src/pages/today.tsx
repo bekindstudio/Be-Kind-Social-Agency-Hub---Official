@@ -38,17 +38,23 @@ function isoDate(d: Date): string {
 // Ordine urgenza (per il sort secondario delle task: prima cronologico, poi urgenza).
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
-function useApi<T>(key: (string | number)[], path: string, staleSec = 60): { data: T | null; loading: boolean } {
+function useApi<T>(key: (string | number)[], path: string, staleSec = 60): { data: T | null; loading: boolean; error: string | null } {
   const q = useQuery({
     queryKey: key,
     staleTime: staleSec * 1000,
     queryFn: async () => {
       const r = await portalFetch(path, { credentials: "include" });
-      if (!r.ok) return null as any;
+      if (!r.ok) {
+        // Prima si tornava null in silenzio: la pagina mostrava "Tutto in
+        // ordine ✓" anche col backend giù. Ora l'errore emerge (e react-query ritenta).
+        let detail = `HTTP ${r.status}`;
+        try { const b = await r.json(); if (b?.error) detail = String(b.error); else if (b?.message) detail = String(b.message); } catch { /* non-JSON */ }
+        throw new Error(detail);
+      }
       return r.json();
     },
   });
-  return { data: (q.data as T) ?? null, loading: q.isLoading };
+  return { data: (q.data as T) ?? null, loading: q.isLoading, error: q.error instanceof Error ? q.error.message : null };
 }
 
 function StatCard({
@@ -180,7 +186,8 @@ export default function TodayPage() {
   const sevenDaysFromNow = new Date(startOfToday().getTime() + 7 * 86400000);
 
   // Dati
-  const tasks = useApi<AnyObj[]>(["today", "tasks"], "/api/tasks", 60).data ?? [];
+  const tasksApi = useApi<AnyObj[]>(["today", "tasks"], "/api/tasks", 60);
+  const tasks = tasksApi.data ?? [];
   const events = useApi<AnyObj[]>(["today", "events"], "/api/dashboard/events", 60).data ?? [];
   const reports = useApi<AnyObj[]>(["today", "reports"], "/api/reports", 90).data ?? [];
   const expContracts = useApi<AnyObj[]>(["today", "expContracts"], "/api/client-contracts/expiring", 120).data ?? [];
@@ -344,7 +351,18 @@ export default function TodayPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">Vista quotidiana · tutti i clienti</p>
               </div>
-              {todoCount === 0 ? (
+              {tasksApi.loading ? (
+                <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight text-muted-foreground">
+                  Caricamento…
+                </h1>
+              ) : tasksApi.error ? (
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight text-red-600">
+                    Impossibile caricare le task
+                  </h1>
+                  <p className="text-sm text-muted-foreground mt-2">{tasksApi.error}</p>
+                </div>
+              ) : todoCount === 0 ? (
                 <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
                   Nessuna task per oggi. <span className="text-emerald-600">Tutto in ordine ✓</span>
                 </h1>

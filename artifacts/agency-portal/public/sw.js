@@ -8,7 +8,7 @@
 //      * resto → solo network (no cache)
 // (Le notifiche push browser sono state rimosse: niente handler notificationclick.)
 
-const CACHE_VERSION = "bekind-v3";
+const CACHE_VERSION = "bekind-v4";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const PRECACHE_URLS = ["/", "/favicon.png", "/favicon.svg", "/logo-bekind.png"];

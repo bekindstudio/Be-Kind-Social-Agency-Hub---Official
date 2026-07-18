@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RouteErrorFallback } from "@/components/shared/RouteErrorFallback";
@@ -393,6 +394,7 @@ function ShellWithSession() {
                     <Router />
                   </ErrorBoundary>
                   <Toaster />
+                  <UpdateBanner />
                 </TooltipProvider>
                 <AuthenticatedAiWidgets />
               </AiChatProvider>

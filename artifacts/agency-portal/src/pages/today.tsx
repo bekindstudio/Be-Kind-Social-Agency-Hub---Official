@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   CalendarDays,
   CheckSquare,
-  Inbox,
   FileText,
   ChevronRight,
   List,
@@ -462,92 +461,10 @@ export default function TodayPage() {
             </div>
           </SectionCard>
 
-          {/* Altro da sapere (Wave BE): 3 righe compatte che consolidano
-              Eventi/Report/Promemoria. Ogni riga linka alla pagina dedicata
-              per il dettaglio — qui basta il conteggio + il next item. */}
-          {(() => {
-            const nextEvent = [...aggregates.eventsThisWeek]
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
-            const totalReports = aggregates.reportsToApprove.length + aggregates.reportsToSend.length;
-            const totalReminders = aggregates.briefsIncomplete.length + aggregates.contractsExpiring.length;
-            const anything = aggregates.eventsThisWeek.length + totalReports + totalReminders;
-            if (anything === 0) return null;
-            return (
-              <div className="rounded-xl border border-card-border bg-card p-5">
-                <h2 className="font-semibold text-sm flex items-center gap-2 mb-1">
-                  <Inbox size={15} className="text-primary" /> Altro da sapere
-                </h2>
-                <div className="divide-y divide-card-border/50 -mx-5">
-                  {aggregates.eventsThisWeek.length > 0 && (
-                    // /agenda (cross-cliente) e non /tools/events, che è filtrato
-                    // sul cliente attivo o blocca su "Seleziona un cliente".
-                    <Link href="/agenda?view=calendar">
-                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
-                        <CalendarDays size={16} className="text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">
-                            {aggregates.eventsThisWeek.length} {aggregates.eventsThisWeek.length === 1 ? "evento" : "eventi"} nei prossimi 7 giorni
-                          </p>
-                          {nextEvent && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              Prossimo: {nextEvent.title} · {formatDate(nextEvent.date)}{nextEvent.clientName ? ` · ${nextEvent.clientName}` : ""}
-                            </p>
-                          )}
-                        </div>
-                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                      </div>
-                    </Link>
-                  )}
-                  {totalReports > 0 && (
-                    // /dashboard ha la coda report cross-cliente; /tools/reports
-                    // è filtrato sul cliente attivo.
-                    <Link href="/dashboard">
-                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
-                        <FileText size={16} className="text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">
-                            {totalReports} {totalReports === 1 ? "report" : "report"} da gestire
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {aggregates.reportsToApprove.length > 0 && `${aggregates.reportsToApprove.length} in revisione`}
-                            {aggregates.reportsToApprove.length > 0 && aggregates.reportsToSend.length > 0 && " · "}
-                            {aggregates.reportsToSend.length > 0 && `${aggregates.reportsToSend.length} pronti da inviare`}
-                          </p>
-                        </div>
-                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                      </div>
-                    </Link>
-                  )}
-                  {totalReminders > 0 && (
-                    <Link href={aggregates.briefsIncomplete[0]
-                      ? `/clients/${aggregates.briefsIncomplete[0].clientId}`
-                      : aggregates.contractsExpiring[0]
-                        ? `/clients/${aggregates.contractsExpiring[0].clientId}`
-                        : "/clients"}>
-                      <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
-                        <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">
-                            {totalReminders} {totalReminders === 1 ? "promemoria" : "promemoria"}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {aggregates.briefsIncomplete.length > 0 && `${aggregates.briefsIncomplete.length} brief incompleti`}
-                            {aggregates.briefsIncomplete.length > 0 && aggregates.contractsExpiring.length > 0 && " · "}
-                            {aggregates.contractsExpiring.length > 0 && `${aggregates.contractsExpiring.length} contratti in scadenza`}
-                          </p>
-                        </div>
-                        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                      </div>
-                    </Link>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Dati aggiornati automaticamente · include i prossimi 7 giorni
+          Le tue attività di oggi · eventi e report li trovi in Agenda e Dashboard
         </p>
       </div>
 

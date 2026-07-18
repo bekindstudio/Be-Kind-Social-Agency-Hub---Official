@@ -138,15 +138,17 @@ function trendDelta(current: number, previous: number): string {
 // includeva 4 chiavi (scadenze, clienti_attention, attivita_team,
 // messaggi_non_letti) senza corpo → 4 card vuote in colonna, e i toggle delle
 // Preferenze non controllavano i pannelli veri (che vivono nella colonna destra).
+// task_oggi rimosso (ridisegno 3 schermate): la lista task vive tutta su Oggi,
+// la Dashboard è "come va", non un'altra lista operativa.
 const DEFAULT_WIDGETS = [
   "progetti_corso",
-  "task_oggi",
   "editoriale",
   "adv",
 ] as const;
 // Guard: non renderizzare una card se per quella chiave non esiste un corpo
-// (protegge da stati widget salvati in localStorage con le vecchie chiavi).
-const WIDGETS_WITH_BODY = new Set<string>(["progetti_corso", "task_oggi", "editoriale", "adv"]);
+// (protegge da stati widget salvati in localStorage con le vecchie chiavi,
+// task_oggi incluso).
+const WIDGETS_WITH_BODY = new Set<string>(["progetti_corso", "editoriale", "adv"]);
 
 type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
@@ -970,21 +972,6 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {wk === "task_oggi" && (
-                  <div>
-                    <div className="flex gap-1 mb-2">{(["oggi", "settimana", "scadute"] as const).map((t) => <button key={t} onClick={() => setTasksTab(t)} className={cn("px-2 py-1 text-xs rounded", tasksTab === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{t === "oggi" ? "Oggi" : t === "settimana" ? "Questa settimana" : "Scadute"}</button>)}</div>
-                    <div className="space-y-1.5 max-h-72 overflow-y-auto">
-                      {taskListByTab.slice(0, 8).map((t: AnyObj) => (
-                        <label key={t.id} className="flex items-center gap-2 text-sm border border-border rounded-lg px-2 py-1.5">
-                          <input type="checkbox" checked={t.status === "done"} onChange={() => onToggleTaskDone(t)} />
-                          <span className={cn("flex-1", t.status === "done" && "line-through text-muted-foreground")}>{t.title}</span>
-                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", PRIORITY_COLORS[t.priority] ?? "bg-muted")}>{t.priority}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between"><button onClick={() => navigate("/tasks")} className="text-xs text-primary hover:underline">Vedi tutte</button><button onClick={() => navigate("/tasks")} className="text-xs px-2 py-1 border border-input rounded">+ Nuova task</button></div>
-                  </div>
-                )}
 
                 {wk === "editoriale" && (
                   <div>

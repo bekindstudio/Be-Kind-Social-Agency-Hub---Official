@@ -461,6 +461,36 @@ export default function TodayPage() {
             </div>
           </SectionCard>
 
+          {/* Questa settimana: le task dei prossimi giorni (oggi escluso, è già
+              sopra). Prima questa vista stava solo nel widget della Dashboard;
+              ora le task vivono tutte qui su Oggi. */}
+          {(() => {
+            const nextDays = aggregates.tasksThisWeek.filter(
+              (t) => t.dueDate && isoDate(new Date(t.dueDate)) !== todayKey,
+            );
+            if (nextDays.length === 0) return null;
+            return (
+              <details className="rounded-xl border border-card-border bg-card p-4">
+                <summary className="cursor-pointer text-sm font-semibold flex items-center gap-2">
+                  <CalendarDays size={15} className="text-primary" />
+                  Questa settimana ({nextDays.length})
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {nextDays
+                    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+                    .map((t) => (
+                      <TaskTodayRow
+                        key={t.id}
+                        task={t}
+                        overdue={false}
+                        onClick={() => goToTask(t)}
+                        onToggleDone={() => toggleTaskDone(t)}
+                      />
+                    ))}
+                </div>
+              </details>
+            );
+          })()}
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">

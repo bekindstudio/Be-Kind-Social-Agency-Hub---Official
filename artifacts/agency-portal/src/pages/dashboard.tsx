@@ -134,16 +134,19 @@ function trendDelta(current: number, previous: number): string {
   return `${sign}${Math.round(delta)}% vs mese scorso`;
 }
 
+// Solo i widget che hanno un CORPO renderizzato qui sotto. Prima la lista
+// includeva 4 chiavi (scadenze, clienti_attention, attivita_team,
+// messaggi_non_letti) senza corpo → 4 card vuote in colonna, e i toggle delle
+// Preferenze non controllavano i pannelli veri (che vivono nella colonna destra).
 const DEFAULT_WIDGETS = [
   "progetti_corso",
   "task_oggi",
   "editoriale",
   "adv",
-  "scadenze",
-  "clienti_attention",
-  "attivita_team",
-  "messaggi_non_letti",
 ] as const;
+// Guard: non renderizzare una card se per quella chiave non esiste un corpo
+// (protegge da stati widget salvati in localStorage con le vecchie chiavi).
+const WIDGETS_WITH_BODY = new Set<string>(["progetti_corso", "task_oggi", "editoriale", "adv"]);
 
 type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
 
@@ -943,7 +946,7 @@ export default function Dashboard() {
         {/* Main Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <div className="xl:col-span-3 space-y-4">
-            {widgets.map((wk, idx) => visibleWidget(wk) && (
+            {widgets.map((wk, idx) => visibleWidget(wk) && WIDGETS_WITH_BODY.has(wk) && (
               <div key={wk} className="bg-card border border-card-border rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="font-semibold text-sm capitalize">{wk.replaceAll("_", " ")}</p>

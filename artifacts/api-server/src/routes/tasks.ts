@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and, isNull, inArray, desc } from "drizzle-orm";
+import { eq, sql, and, or, isNull, inArray, desc } from "drizzle-orm";
 import { db, tasksTable, projectsTable, teamMembersTable, activityLog } from "@workspace/db";
 import {
   CreateTaskBody,
@@ -17,6 +17,7 @@ import { validate } from "../middlewares/validate";
 const router: IRouter = Router();
 
 const createTaskSchema = CreateTaskBody.extend({
+  clientId: z.number().nullable().optional(),
   tipo: z.string().optional(),
   categoria: z.string().nullable().optional(),
   checklistJson: z.string().optional(),
@@ -138,11 +139,13 @@ router.get("/tasks", async (req, res): Promise<void> => {
       .from(projectsTable)
       .where(and(isNull(projectsTable.deletedAt), eq(projectsTable.clientId, clientId)));
     const clientProjectIds = clientProjects.map((row) => row.id);
-    if (clientProjectIds.length === 0) {
-      res.json([]);
-      return;
-    }
-    conditions.push(inArray(tasksTable.projectId, clientProjectIds));
+    // Le task del cliente sono quelle col clientId DIRETTO (create dal cockpit
+    // senza progetto) OPPURE quelle di un suo progetto. Prima si filtrava solo
+    // per progetto → una task "Nessun progetto" spariva, e se il cliente non
+    // aveva progetti si tornava [] anche con task dirette.
+    const orParts = [eq(tasksTable.clientId, clientId)];
+    if (clientProjectIds.length > 0) orParts.push(inArray(tasksTable.projectId, clientProjectIds));
+    conditions.push(orParts.length === 1 ? orParts[0] : or(...orParts)!);
   }
 
   const tasks = await db
@@ -179,6 +182,9 @@ router.post("/tasks", validate(createTaskSchema), async (req, res): Promise<void
     title: d.title,
     description: d.description ?? null,
     projectId: d.projectId ?? null,
+    // Salva il cliente diretto: così una task creata senza progetto dal cockpit
+    // resta legata al cliente e non sparisce dalla sua lista.
+    clientId: d.clientId ?? null,
     assigneeId: d.assigneeId ?? null,
     status: d.status,
     priority: d.priority,

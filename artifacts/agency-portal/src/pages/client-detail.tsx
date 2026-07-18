@@ -1103,7 +1103,11 @@ export default function ClientDetail({ id }: Props) {
         ? [tasks as any]
         : [];
   const clientProjectIds = new Set(clientProjects.map((p: any) => p.id));
-  const clientTasks = taskList.filter((t: any) => t.projectId != null && clientProjectIds.has(t.projectId));
+  // Include anche le task legate DIRETTAMENTE al cliente (create dal cockpit
+  // senza progetto): prima venivano escluse perché senza projectId.
+  const clientTasks = taskList.filter(
+    (t: any) => Number(t.clientId) === clientId || (t.projectId != null && clientProjectIds.has(t.projectId)),
+  );
 
   // ── Meta assignment (centralized) ──────────────────────────────────────
   type MetaClientStatus = {
@@ -1474,15 +1478,19 @@ export default function ClientDetail({ id }: Props) {
     if (!taskForm.title.trim()) return;
     createTask.mutate(
       {
+        // `clientId` lega la task a questo cliente anche senza progetto (il
+        // backend ora lo salva e lo include nel filtro). Cast: il tipo generato
+        // non espone ancora clientId.
         data: {
           title: taskForm.title,
           description: taskForm.description || null,
           projectId: taskForm.projectId ? Number(taskForm.projectId) : null,
+          clientId,
           assigneeId: taskForm.assigneeId ? Number(taskForm.assigneeId) : null,
           status: taskForm.status as never,
           priority: taskForm.priority as never,
           dueDate: taskForm.dueDate || null,
-        },
+        } as any,
       },
       {
         onSuccess: () => {

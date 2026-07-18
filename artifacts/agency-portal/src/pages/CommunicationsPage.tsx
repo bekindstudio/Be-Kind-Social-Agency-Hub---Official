@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout/Layout";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
+import { apiErrorDetail } from "@/lib/apiError";
 import { Send, Mail, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 
 /* Pagina "Comunicazioni" — invio email ai clienti da un unico punto
@@ -45,7 +46,9 @@ function useApi<T>(key: (string | number)[], path: string, staleSec = 120): T | 
     staleTime: staleSec * 1000,
     queryFn: async () => {
       const r = await portalFetch(path, { credentials: "include" });
-      if (!r.ok) return null as any;
+      // Prima tornava null in silenzio (errore indistinguibile da "nessun dato"):
+      // ora lancia, così react-query ritenta e l'errore non passa inosservato.
+      if (!r.ok) throw new Error(await apiErrorDetail(r));
       return r.json();
     },
   });

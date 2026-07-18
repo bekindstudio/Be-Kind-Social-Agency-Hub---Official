@@ -7,6 +7,7 @@ import { useSupabaseAuth } from "@/auth/SupabaseAuthContext";
 import { useClientContext } from "@/context/ClientContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
+import { apiErrorDetail } from "@/lib/apiError";
 import {
   Sun,
   AlertTriangle,
@@ -169,7 +170,7 @@ export default function TodayPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!r.ok) {
-        toast({ variant: "destructive", title: "Aggiornamento non riuscito" });
+        toast({ variant: "destructive", title: "Aggiornamento non riuscito", description: await apiErrorDetail(r) });
         return;
       }
       // Invalida le query touched (today.tasks)
@@ -478,7 +479,9 @@ export default function TodayPage() {
                 </h2>
                 <div className="divide-y divide-card-border/50 -mx-5">
                   {aggregates.eventsThisWeek.length > 0 && (
-                    <Link href="/tools/events">
+                    // /agenda (cross-cliente) e non /tools/events, che è filtrato
+                    // sul cliente attivo o blocca su "Seleziona un cliente".
+                    <Link href="/agenda?view=calendar">
                       <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
                         <CalendarDays size={16} className="text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">
@@ -496,7 +499,9 @@ export default function TodayPage() {
                     </Link>
                   )}
                   {totalReports > 0 && (
-                    <Link href="/tools/reports">
+                    // /dashboard ha la coda report cross-cliente; /tools/reports
+                    // è filtrato sul cliente attivo.
+                    <Link href="/dashboard">
                       <div className="flex items-center gap-3 py-3 px-5 hover:bg-muted/40 transition-colors cursor-pointer">
                         <FileText size={16} className="text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">

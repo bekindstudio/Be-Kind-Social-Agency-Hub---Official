@@ -59,6 +59,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BRIEF_SECTIONS } from "@/lib/briefSchema";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
+import { apiErrorDetail } from "@/lib/apiError";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
 import { useClientContext } from "@/context/ClientContext";
 
@@ -476,14 +477,17 @@ function DrivePanel({ clientId, clientName, driveUrl, clientEmail, onRefresh }: 
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        toast({ variant: "destructive", title: "Errore creazione cartella", description: data?.message ?? "Riprova" });
+        toast({ variant: "destructive", title: "Errore creazione cartella", description: await apiErrorDetail(r) });
         return;
       }
+      const data = await r.json().catch(() => ({}));
       toast({ title: "Cartella Drive creata", description: data.folderName });
       onRefresh();
       void refetchList();
+    } catch {
+      // Prima un errore di rete lasciava solo lo spinner che si spegneva.
+      toast({ variant: "destructive", title: "Errore di rete", description: "Cartella non creata. Riprova." });
     } finally {
       setCreating(false);
     }
@@ -704,7 +708,7 @@ function ClientNotesTab({ clientId }: { clientId: number }) {
       body: JSON.stringify({ pinned: !n.pinned }),
     });
     if (r.ok) refresh();
-    else toast({ variant: "destructive", title: "Operazione non riuscita" });
+    else toast({ variant: "destructive", title: "Operazione non riuscita", description: await apiErrorDetail(r) });
   };
 
   const handleDelete = async (n: ClientNoteRow) => {
@@ -714,7 +718,7 @@ function ClientNotesTab({ clientId }: { clientId: number }) {
       toast({ title: "Nota eliminata" });
       refresh();
     } else {
-      toast({ variant: "destructive", title: "Eliminazione non riuscita" });
+      toast({ variant: "destructive", title: "Eliminazione non riuscita", description: await apiErrorDetail(r) });
     }
   };
 
@@ -730,7 +734,7 @@ function ClientNotesTab({ clientId }: { clientId: number }) {
       setEditingContent("");
       refresh();
     } else {
-      toast({ variant: "destructive", title: "Salvataggio non riuscito" });
+      toast({ variant: "destructive", title: "Salvataggio non riuscito", description: await apiErrorDetail(r) });
     }
   };
 
@@ -1046,15 +1050,18 @@ export default function ClientDetail({ id }: Props) {
   const handleMetaSync = async () => {
     setMetaSyncing(true);
     try {
-      await portalFetch(`/api/meta/sync/${clientId}`, { method: "POST" });
+      const r = await portalFetch(`/api/meta/sync/${clientId}`, { method: "POST" });
+      if (!r.ok) { toast({ variant: "destructive", title: "Sincronizzazione Meta non riuscita", description: await apiErrorDetail(r) }); return; }
       await fetchMetaStatus();
-    } finally { setMetaSyncing(false); }
+      toast({ title: "Dati Meta sincronizzati" });
+    } catch { toast({ variant: "destructive", title: "Errore di rete" }); }
+    finally { setMetaSyncing(false); }
   };
 
   const handleMetaAssignSave = async () => {
     setMetaSaving(true);
     try {
-      await portalFetch(`/api/meta/assign/${clientId}`, {
+      const r = await portalFetch(`/api/meta/assign/${clientId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1063,15 +1070,23 @@ export default function ClientDetail({ id }: Props) {
           metaAdAccountId: metaAssign.adId || null,
         }),
       });
+      // Prima falliva in silenzio: sembrava salvato ma non lo era.
+      if (!r.ok) { toast({ variant: "destructive", title: "Salvataggio assegnazioni non riuscito", description: await apiErrorDetail(r) }); return; }
       await fetchMetaStatus();
-    } finally { setMetaSaving(false); }
+      toast({ title: "Assegnazioni Meta salvate" });
+    } catch { toast({ variant: "destructive", title: "Errore di rete" }); }
+    finally { setMetaSaving(false); }
   };
 
   const handleMetaDisconnect = async () => {
     if (!confirm("Rimuovere le assegnazioni Meta per questo cliente?")) return;
-    await portalFetch(`/api/meta/disconnect/${clientId}`, { method: "POST" });
-    setMetaAssign({ pageId: "", igId: "", adId: "" });
-    await fetchMetaStatus();
+    try {
+      const r = await portalFetch(`/api/meta/disconnect/${clientId}`, { method: "POST" });
+      if (!r.ok) { toast({ variant: "destructive", title: "Rimozione non riuscita", description: await apiErrorDetail(r) }); return; }
+      setMetaAssign({ pageId: "", igId: "", adId: "" });
+      await fetchMetaStatus();
+      toast({ title: "Assegnazioni Meta rimosse" });
+    } catch { toast({ variant: "destructive", title: "Errore di rete" }); }
   };
 
   // ── Client Reports ─────────────────────────────────────────────────────────
@@ -1116,7 +1131,7 @@ export default function ClientDetail({ id }: Props) {
   const handleApproveReport = async (id: number) => {
     const res = await portalFetch(`/api/reports/${id}/approve`, { method: "POST" });
     if (!res.ok) {
-      toast({ variant: "destructive", title: "Approvazione non riuscita", description: "Riprova tra qualche secondo." });
+      toast({ variant: "destructive", title: "Approvazione non riuscita", description: await apiErrorDetail(res) });
       return;
     }
     toast({ title: "Report approvato" });
@@ -1126,7 +1141,7 @@ export default function ClientDetail({ id }: Props) {
   const handleRejectReport = async (id: number) => {
     const res = await portalFetch(`/api/reports/${id}/reject`, { method: "POST" });
     if (!res.ok) {
-      toast({ variant: "destructive", title: "Rifiuto non riuscito", description: "Riprova tra qualche secondo." });
+      toast({ variant: "destructive", title: "Rifiuto non riuscito", description: await apiErrorDetail(res) });
       return;
     }
     toast({ title: "Report rifiutato" });

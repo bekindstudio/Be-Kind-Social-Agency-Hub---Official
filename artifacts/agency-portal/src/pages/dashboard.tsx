@@ -1109,7 +1109,7 @@ export default function Dashboard() {
                   );
                 })}
               </div>
-              <button className="mt-2 text-xs text-primary hover:underline">+ Aggiungi scadenza</button>
+              <button onClick={() => navigate("/tasks?new=1")} className="mt-2 text-xs text-primary hover:underline">+ Aggiungi scadenza</button>
             </div>
 
             <div className="bg-card border border-card-border rounded-xl p-4">

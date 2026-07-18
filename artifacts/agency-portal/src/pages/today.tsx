@@ -12,6 +12,8 @@ import {
   Sun,
   AlertTriangle,
   CalendarDays,
+  CalendarClock,
+  Clock,
   CheckSquare,
   FileText,
   ChevronRight,
@@ -189,6 +191,15 @@ export default function TodayPage() {
   const tasksApi = useApi<AnyObj[]>(["today", "tasks"], "/api/tasks", 60);
   const tasks = tasksApi.data ?? [];
   const events = useApi<AnyObj[]>(["today", "events"], "/api/dashboard/events", 60).data ?? [];
+  // I tuoi appuntamenti personali di OGGI (call/meeting/in sede). Passo la
+  // finestra "solo oggi": l'API espande anche le ricorrenze in quel giorno.
+  const dayStartIso = startOfToday().toISOString();
+  const dayEndIso = new Date(startOfToday().getTime() + 86400000 - 1).toISOString();
+  const personalToday = useApi<AnyObj[]>(
+    ["today", "appointments"],
+    `/api/personal-agenda?from=${encodeURIComponent(dayStartIso)}&to=${encodeURIComponent(dayEndIso)}`,
+    60,
+  ).data ?? [];
   const reports = useApi<AnyObj[]>(["today", "reports"], "/api/reports", 90).data ?? [];
   const expContracts = useApi<AnyObj[]>(["today", "expContracts"], "/api/client-contracts/expiring", 120).data ?? [];
   const clients = useApi<AnyObj[]>(["today", "clients"], "/api/clients", 120).data ?? [];
@@ -385,10 +396,51 @@ export default function TodayPage() {
           );
         })()}
 
-        {/* Sezione principale: solo "Da fare oggi" full-width. Le altre 3
-            sezioni (Eventi, Approvare, Promemoria) sono consolidate sotto
-            in un blocco compatto "Altro da sapere" — meno carico cognitivo. */}
+        {/* Oggi = cosa faccio ora: prima gli appuntamenti (call/meeting/in sede +
+            eventi cliente di oggi), poi le task. */}
         <div className="space-y-4">
+          {(() => {
+            const PERSONAL_LABEL: Record<string, string> = { call: "Call", meeting: "Meeting", in_sede: "In sede" };
+            const fmtTime = (iso: string) => {
+              const d = new Date(iso);
+              return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+            };
+            const items = [
+              ...personalToday.map((a) => ({
+                id: `p-${a.id}-${a.startAt}`, time: a.startAt, title: a.title,
+                badge: PERSONAL_LABEL[a.type] ?? "Appuntamento", sub: a.location ?? null,
+                onClick: () => navigate("/agenda"),
+              })),
+              ...aggregates.eventsToday.map((e) => ({
+                id: `c-${e.id}`, time: e.date, title: e.title,
+                badge: e.clientName ?? "Cliente", sub: null as string | null,
+                onClick: () => navigate(`/clients/${e.clientId}`),
+              })),
+            ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+            if (items.length === 0) return null;
+            return (
+              <div className="rounded-xl border border-card-border bg-card p-4">
+                <h2 className="font-semibold text-sm flex items-center gap-2 mb-3">
+                  <CalendarClock size={15} className="text-primary" /> Appuntamenti di oggi ({items.length})
+                </h2>
+                <div className="space-y-2">
+                  {items.map((it) => (
+                    <button key={it.id} type="button" onClick={it.onClick} className="w-full text-left rounded-lg border border-card-border p-3 hover:bg-muted/40 flex items-center gap-3">
+                      <span className="text-sm font-semibold tabular-nums shrink-0 inline-flex items-center gap-1 text-primary">
+                        <Clock size={12} /> {fmtTime(it.time)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{it.title}</p>
+                        {it.sub && <p className="text-xs text-muted-foreground truncate">{it.sub}</p>}
+                      </div>
+                      <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{it.badge}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Da fare oggi — tutte (scadute + di oggi + completate oggi), no slice
               Click task → naviga al cliente, checkbox per toggle done */}
           <SectionCard

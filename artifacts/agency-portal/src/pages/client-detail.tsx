@@ -13,6 +13,7 @@ import { useClientDetail } from "@/hooks/useClientDetail";
 import { useToast } from "@/hooks/use-toast";
 import {
   ChevronLeft,
+  ChevronRight,
   Pencil,
   Save,
   X,
@@ -422,15 +423,106 @@ function EventsTab({ clientId, onOpen }: { clientId: number; onOpen: () => void 
   );
 }
 
-/* ─── Tab Editoriale (link al builder) ─────────────────────────────────── */
-function EditorialTab({ onOpen }: { onOpen: () => void }) {
+/* ─── Tab Editoriale: piani del cliente + accesso al costruttore ────────── */
+const EDIT_PLAN_MESI = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+const EDIT_PLAN_STATUS: Record<string, { label: string; color: string }> = {
+  bozza: { label: "Bozza", color: "bg-muted text-muted-foreground" },
+  in_revisione: { label: "In revisione", color: "bg-amber-100 text-amber-700" },
+  approvato: { label: "Approvato", color: "bg-emerald-100 text-emerald-700" },
+  inviato: { label: "Inviato al cliente", color: "bg-blue-100 text-blue-700" },
+  confermato_cliente: { label: "Confermato", color: "bg-teal-100 text-teal-700" },
+};
+
+function EditorialTab({ clientId, onOpenCalendar }: { clientId: number; onOpenCalendar: () => void }) {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [creating, setCreating] = useState(false);
+
+  const { data, isLoading } = useQuery<any[]>({
+    queryKey: ["editorial-plans", clientId],
+    staleTime: 30_000,
+    queryFn: async () => {
+      // La lista non ha filtro ?clientId lato API: prendo tutti i piani accessibili
+      // e filtro sul cliente corrente.
+      const r = await portalFetch("/api/editorial-plans");
+      if (!r.ok) throw new Error(await apiErrorDetail(r));
+      const all = await r.json();
+      return Array.isArray(all) ? all.filter((p) => Number(p.clientId) === clientId) : [];
+    },
+  });
+  const plans = data ?? [];
+
+  const handleCreate = async () => {
+    if (creating) return;
+    const now = new Date();
+    setCreating(true);
+    try {
+      const r = await portalFetch("/api/editorial-plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, month: now.getMonth() + 1, year: now.getFullYear() }),
+      });
+      if (!r.ok) { toast({ variant: "destructive", title: "Creazione piano non riuscita", description: await apiErrorDetail(r) }); return; }
+      const created = await r.json();
+      navigate(`/tools/piano-editoriale/${created.id}`);
+    } catch {
+      toast({ variant: "destructive", title: "Errore di rete" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
-    <div className="rounded-xl border border-card-border bg-card p-5">
-      <h2 className="font-semibold text-sm flex items-center gap-2 mb-2"><CalendarDays size={15} className="text-primary" /> Piano editoriale</h2>
-      <p className="text-xs text-muted-foreground mb-3">Pianifica i contenuti del cliente nel calendario editoriale.</p>
-      <button onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
-        Apri calendario editoriale <ExternalLink size={12} />
-      </button>
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-card-border bg-card p-4 md:p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-semibold text-sm flex items-center gap-2"><CalendarDays size={15} className="text-primary" /> Piano editoriale</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Crea e apri i piani mensili dei contenuti di questo cliente.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onOpenCalendar} className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-xs font-medium hover:bg-muted">
+              Calendario <ExternalLink size={12} />
+            </button>
+            <button onClick={() => void handleCreate()} disabled={creating} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              <Plus size={13} /> {creating ? "Creo…" : "Nuovo piano"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Caricamento…</p>
+      ) : plans.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-card-border p-8 text-center">
+          <CalendarDays size={20} className="mx-auto mb-2 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Nessun piano editoriale per questo cliente. Crea il primo con "Nuovo piano".</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {plans.map((p) => {
+            const st = EDIT_PLAN_STATUS[p.status] ?? { label: p.status, color: "bg-muted text-muted-foreground" };
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => navigate(`/tools/piano-editoriale/${p.id}`)}
+                className="w-full text-left rounded-xl border border-card-border bg-card p-3 hover:shadow-sm transition-shadow flex items-center gap-3"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <CalendarDays size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{EDIT_PLAN_MESI[p.month] ?? p.month} {p.year}</p>
+                  <p className="text-xs text-muted-foreground">{p.totalSlots ?? 0} {(p.totalSlots ?? 0) === 1 ? "contenuto" : "contenuti"}</p>
+                </div>
+                <span className={cn("text-[11px] rounded-full px-2 py-0.5 shrink-0", st.color)}>{st.label}</span>
+                <ChevronRight size={15} className="text-muted-foreground shrink-0" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1741,7 +1833,8 @@ export default function ClientDetail({ id }: Props) {
         {/* ─── TAB: Editoriale ─── */}
         {activeTab === "editoriale" && (
           <EditorialTab
-            onOpen={() => {
+            clientId={clientId}
+            onOpenCalendar={() => {
               const match = contextClients.find((item) => String(item.id) === String(viewClient.id));
               if (match) setActiveClient(match);
               navigate("/tools/calendar");

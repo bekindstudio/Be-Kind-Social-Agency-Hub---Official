@@ -197,6 +197,9 @@ router.get("/public/portal/:token/editorial", async (req, res): Promise<void> =>
       publishDate: s.publishDate ?? null,
       title: s.title ?? null,
       caption: s.caption ?? null,
+      // Lo script è ciò che il cliente deve poter leggere prima di girare
+      // (dialoghi, battute). Restano interni notesInternal e visualUrl.
+      script: s.script ?? null,
       status: s.status,
     })),
   });

@@ -47,6 +47,8 @@ export const editorialSlotsTable = pgTable("editorial_slots", {
   publishTime: time("publish_time"),
   title: text("title"),
   caption: text("caption"),
+  /** Il parlato del video (dialoghi, regia). Diverso da caption, che è il testo del post. */
+  script: text("script"),
   hashtagsJson: jsonb("hashtags_json").default("[]"),
   callToAction: text("call_to_action"),
   linkInBio: text("link_in_bio"),

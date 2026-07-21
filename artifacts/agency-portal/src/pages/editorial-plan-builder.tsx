@@ -86,6 +86,7 @@ type Slot = {
   publishTime: string | null;
   title: string | null;
   caption: string | null;
+  script: string | null;
   hashtagsJson: string[];
   callToAction: string | null;
   linkInBio: string | null;
@@ -664,6 +665,23 @@ function SlotEditor({
           onChange={(e) => save("caption", e.target.value || null)}
           placeholder="Scrivi la caption del post..."
           rows={5}
+          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background resize-none font-mono"
+        />
+      </div>
+
+      {/* Script = il parlato del video. Sta accanto alla caption ma è un'altra
+          cosa: la caption è il testo pubblicato, lo script è cosa si dice a
+          camera. Il cliente lo vede dal portale, così può prepararsi. */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-muted-foreground">Script video</label>
+          <span className="text-[10px] text-muted-foreground">dialoghi e regia</span>
+        </div>
+        <textarea
+          value={localSlot.script ?? ""}
+          onChange={(e) => save("script", e.target.value || null)}
+          placeholder={"Chi parla, cosa dice, indicazioni di regia.\nVisibile al cliente dal portale."}
+          rows={8}
           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background resize-none font-mono"
         />
       </div>

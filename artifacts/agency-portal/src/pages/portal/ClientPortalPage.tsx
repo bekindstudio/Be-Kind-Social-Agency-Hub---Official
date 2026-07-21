@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   BRIEF_SECTIONS,
   emptyBriefData,
@@ -563,6 +564,55 @@ function PortalEvents({ token }: { token: string }) {
   );
 }
 
+/**
+ * Riga contenuto nel portale cliente. Se il contenuto ha uno script, la riga
+ * si apre e lo mostra per intero: è la cosa che il cliente deve leggere prima
+ * di girare, e su un telefono deve stare in verticale, non in una riga tagliata.
+ */
+function PortalSlotRow({ slot }: { slot: any }) {
+  const [open, setOpen] = useState(false);
+  const hasScript = typeof slot.script === "string" && slot.script.trim().length > 0;
+
+  return (
+    <div className="border-t border-card-border/50 pt-1.5 first:border-0 first:pt-0">
+      <button
+        type="button"
+        onClick={() => hasScript && setOpen((v) => !v)}
+        className={cn(
+          "w-full flex items-center gap-2 text-sm text-left",
+          hasScript ? "cursor-pointer" : "cursor-default",
+        )}
+      >
+        <span className="text-xs text-muted-foreground w-16 shrink-0">{fmtDate(slot.publishDate)}</span>
+        <span className="text-[10px] rounded bg-[#7a8f5c]/10 text-[#7a8f5c] px-1.5 py-0.5 shrink-0">{slot.platform}</span>
+        <span className="truncate flex-1">{slot.title || slot.contentType}</span>
+        {hasScript && (
+          <span className="text-[10px] rounded-full bg-[#7a8f5c] text-white px-2 py-0.5 shrink-0">
+            {open ? "chiudi" : "script"}
+          </span>
+        )}
+      </button>
+
+      {hasScript && open && (
+        <div className="mt-2 mb-1 rounded-lg bg-muted/40 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
+            Script video
+          </p>
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">{slot.script}</p>
+          {slot.caption && (
+            <>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-3 mb-1.5">
+                Testo del post
+              </p>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{slot.caption}</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PortalEditorial({ token }: { token: string }) {
   const { data, loading } = usePortalData<{ plans: any[]; slots: any[] }>(token, "/editorial");
   if (loading) return <Spinner />;
@@ -585,11 +635,7 @@ function PortalEditorial({ token }: { token: string }) {
             ) : (
               <div className="space-y-1.5">
                 {ps.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2 text-sm border-t border-card-border/50 pt-1.5 first:border-0 first:pt-0">
-                    <span className="text-xs text-muted-foreground w-16 shrink-0">{fmtDate(s.publishDate)}</span>
-                    <span className="text-[10px] rounded bg-[#7a8f5c]/10 text-[#7a8f5c] px-1.5 py-0.5 shrink-0">{s.platform}</span>
-                    <span className="truncate flex-1">{s.title || s.contentType}</span>
-                  </div>
+                  <PortalSlotRow key={s.id} slot={s} />
                 ))}
               </div>
             )}

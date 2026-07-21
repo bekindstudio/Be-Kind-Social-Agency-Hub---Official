@@ -389,6 +389,7 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
         publishTime: slot.publishTime,
         title: slot.title,
         caption: slot.caption,
+        script: slot.script,
         hashtagsJson: slot.hashtagsJson,
         callToAction: slot.callToAction,
         linkInBio: slot.linkInBio,
@@ -416,7 +417,7 @@ router.post("/editorial-plans/:id/duplicate", async (req, res): Promise<void> =>
 
 router.post("/editorial-slots", async (req, res): Promise<void> => {
   const userId = getUserId(req);
-  const { planId, platform, contentType, categoryId, publishDate, publishTime, title, caption, hashtagsJson, callToAction, linkInBio, visualUrl, visualDescription, notesInternal, notesClient, status, position } = req.body;
+  const { planId, platform, contentType, categoryId, publishDate, publishTime, title, caption, script, hashtagsJson, callToAction, linkInBio, visualUrl, visualDescription, notesInternal, notesClient, status, position } = req.body;
 
   if (!planId || !platform) { res.status(400).json({ error: "planId e platform obbligatori" }); return; }
 
@@ -436,6 +437,7 @@ router.post("/editorial-slots", async (req, res): Promise<void> => {
     publishTime: publishTime ?? null,
     title: title ?? null,
     caption: caption ?? null,
+    script: script ?? null,
     hashtagsJson: hashtagsJson ?? [],
     callToAction: callToAction ?? null,
     linkInBio: linkInBio ?? null,
@@ -455,7 +457,7 @@ router.patch("/editorial-slots/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "ID non valido" }); return; }
 
-  const allowedFields = ["platform", "contentType", "categoryId", "publishDate", "publishTime", "title", "caption", "hashtagsJson", "callToAction", "linkInBio", "visualUrl", "visualDescription", "notesInternal", "notesClient", "status", "position"];
+  const allowedFields = ["platform", "contentType", "categoryId", "publishDate", "publishTime", "title", "caption", "script", "hashtagsJson", "callToAction", "linkInBio", "visualUrl", "visualDescription", "notesInternal", "notesClient", "status", "position"];
   const updates: any = {};
   for (const key of allowedFields) {
     if (req.body[key] !== undefined) {

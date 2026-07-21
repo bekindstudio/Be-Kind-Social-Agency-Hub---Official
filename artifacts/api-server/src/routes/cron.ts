@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { renewExpiringTokens } from "../jobs/metaTokenRenew";
 import { generateMonthlyReportDrafts } from "../jobs/monthlyReports";
+import { runRetainerRollover } from "../jobs/retainerRollover";
 import { logger } from "../lib/logger";
 
 function checkCronAuth(req: Request, res: Response): boolean {
@@ -47,8 +48,19 @@ router.get("/cron/meta-token-renew", async (req: Request, res: Response) => {
 router.get("/cron/monthly-reports", async (req: Request, res: Response) => {
   if (!checkCronAuth(req, res)) return;
   try {
-    const stats = await generateMonthlyReportDrafts();
-    res.json({ ok: true, ...stats });
+    // Il 1° del mese servono due cose: la bozza report del mese CHIUSO e le task
+    // del retainer del mese CHE INIZIA. Girano insieme in questo cron invece che
+    // in due, perché Vercel limita il numero di cron per progetto.
+    // Indipendenti: se il rollover fallisce, le bozze report restano valide.
+    const reports = await generateMonthlyReportDrafts();
+    let retainer: Awaited<ReturnType<typeof runRetainerRollover>> | { error: string };
+    try {
+      retainer = await runRetainerRollover();
+    } catch (err) {
+      logger.error({ err }, "retainer-rollover fallito dentro monthly-reports cron");
+      retainer = { error: "ROLLOVER_FAILED" };
+    }
+    res.json({ ok: true, reports, retainer });
   } catch (err) {
     logger.error({ err }, "monthly-reports cron failed");
     res.status(500).json({ error: "CRON_FAILED" });

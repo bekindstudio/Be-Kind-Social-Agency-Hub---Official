@@ -35,6 +35,7 @@ import clientCompetitorsRouter from "./client-competitors";
 import clientEventsRouter from "./client-events";
 import clientNotesRouter from "./client-notes";
 import clientContentIdeasRouter from "./client-content-ideas";
+import clientRetainerRouter from "./client-retainer";
 import cronRouter from "./cron";
 import googleDriveRouter from "./google-drive";
 import personalAgendaRouter from "./personal-agenda";
@@ -83,6 +84,8 @@ router.use(clientNotesRouter);
 // Path assoluti (`/content-ideas`, `/clients/:clientId/content-ideas`) → montato
 // bare come clientNotesRouter, NON sotto "/clients" (darebbe /api/clients/clients/…).
 router.use(clientContentIdeasRouter);
+// Idem: path assoluti /clients/:clientId/retainer/*, montato bare.
+router.use(clientRetainerRouter);
 router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);

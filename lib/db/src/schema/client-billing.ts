@@ -13,6 +13,8 @@ export const clientBillingTable = pgTable("client_billing", {
   terminiPagamento: text("termini_pagamento"),
   iban: text("iban"),
   valoreMensile: integer("valore_mensile").default(0),
+  /** Ore/mese comprese nel canone. NULL = retainer senza monte ore concordato. */
+  oreIncluse: integer("ore_incluse"),
   noteFatturazione: text("note_fatturazione"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

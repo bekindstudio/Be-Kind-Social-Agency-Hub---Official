@@ -27,6 +27,10 @@ export const tasksTable = pgTable("tasks", {
   lastPostponedAt: timestamp("last_postponed_at", { withTimezone: true }),
   postponedCount: integer("postponed_count").notNull().default(0),
   completedFromFocus: boolean("completed_from_focus").notNull().default(false),
+  /** Modello di retainer che ha generato la task (client_retainer_tasks.id). */
+  retainerTaskId: integer("retainer_task_id"),
+  /** Mese di retainer, formato YYYY-MM. NULL = task normale. */
+  retainerPeriod: text("retainer_period"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

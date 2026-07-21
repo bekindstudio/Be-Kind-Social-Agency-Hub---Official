@@ -31,7 +31,7 @@ type Step = 0 | 1 | 2 | 3;
 const DRAFT_KEY = "bekind:task-wizard-draft";
 
 const STEPS: { key: Step; label: string; icon: typeof ListTodo; question: string; hint: string }[] = [
-  { key: 0, label: "Essenziale", icon: ListTodo, question: "Di cosa si tratta questa task?", hint: "Titolo e progetto (opzionale). Tutto il resto puoi metterlo dopo." },
+  { key: 0, label: "Essenziale", icon: ListTodo, question: "Di cosa si tratta questa task?", hint: "Titolo e cliente. Il cliente è obbligatorio: se è una cosa tua, scegli Generale." },
   { key: 1, label: "Chi & Priorità", icon: Users, question: "Chi la fa e quanto urge?", hint: "Assegnato, priorità, stato. Lascia 'Non assegnato' se ancora da decidere." },
   { key: 2, label: "Scadenza", icon: CalendarRange, question: "Quando va consegnata?", hint: "Data, descrizione, e — se è una task strutturata — categoria avanzata." },
   { key: 3, label: "Conferma", icon: Sparkles, question: "Tutto pronto?", hint: "Riepilogo + checklist (se avanzata). Crea, o 'Crea + nuova' per batch." },
@@ -56,7 +56,8 @@ type Props = {
   onClose: () => void;
   onCreate: (payload: { form: TaskFormState; checklist: ChecklistItem[] }, opts?: { resetAfter?: boolean }) => Promise<void>;
   isSubmitting: boolean;
-  projectOptions: Array<{ id: number | string; name: string }>;
+  clientOptions: Array<{ id: number | string; name: string }>;
+  projectOptions: Array<{ id: number | string; name: string; clientId?: number | string | null }>;
   memberOptions: Array<{ id: number | string; name?: string | null; surname?: string | null; email?: string | null }>;
 };
 
@@ -64,6 +65,7 @@ function initialForm(): TaskFormState {
   return {
     title: "",
     description: "",
+    clientId: "",
     projectId: "",
     assigneeId: "",
     status: "todo",
@@ -82,7 +84,7 @@ function memberLabel(m: Props["memberOptions"][number]): string {
   return full || m.email || `#${m.id}`;
 }
 
-export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptions, memberOptions }: Props) {
+export function TaskWizard({ open, onClose, onCreate, isSubmitting, clientOptions, projectOptions, memberOptions }: Props) {
   const [step, setStep] = useState<Step>(0);
   const [form, setForm] = useState<TaskFormState>(initialForm());
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
@@ -102,7 +104,7 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
 
   useEffect(() => {
     if (!open) return;
-    if (!form.title && !form.projectId) return;
+    if (!form.title && !form.clientId && !form.projectId) return;
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, checklist }));
     } catch { /* ignore */ }
@@ -116,13 +118,28 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
     return p?.name ?? "";
   }, [projectOptions, form.projectId]);
 
+  const clientName = useMemo(() => {
+    if (form.clientId === "general") return "Generale";
+    const c = clientOptions.find((x) => String(x.id) === form.clientId);
+    return c?.name ?? "";
+  }, [clientOptions, form.clientId]);
+
+  // Solo i progetti del cliente scelto: agganciare una task al progetto di un
+  // altro cliente è sempre un errore.
+  const visibleProjects = useMemo(() => {
+    if (!form.clientId || form.clientId === "general") return [];
+    return projectOptions.filter((p) => String(p.clientId ?? "") === form.clientId);
+  }, [projectOptions, form.clientId]);
+
   const assigneeName = useMemo(() => {
     const m = memberOptions.find((x) => String(x.id) === form.assigneeId);
     return m ? memberLabel(m) : "";
   }, [memberOptions, form.assigneeId]);
 
   const canAdvance = (): boolean => {
-    if (step === 0) return form.title.trim().length >= 2;
+    // Il cliente è una scelta obbligatoria ed esplicita: "Generale" è un'opzione,
+    // non il default silenzioso. Serve a non ritrovarsi task orfane.
+    if (step === 0) return form.title.trim().length >= 2 && form.clientId !== "";
     return true;
   };
 
@@ -203,21 +220,64 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Progetto (opzionale)</label>
-                <select
-                  value={form.projectId}
-                  onChange={(e) => setField("projectId", e.target.value)}
-                  className="w-full mt-1 px-4 py-3 text-sm border border-input rounded-xl bg-background"
-                >
-                  <option value="">Nessun progetto (task generale)</option>
-                  {projectOptions.map((p) => (
-                    <option key={p.id} value={String(p.id)}>{p.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Lascia "Nessun progetto" per task interne (acquisti, meeting, scadenze personali…). La trovi comunque in Tasks col badge <span className="px-1 py-0.5 rounded bg-zinc-200 text-zinc-700 text-[10px] font-semibold">Generale</span>.
-                </p>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Per quale cliente? *</label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, clientId: "general", projectId: "" }))}
+                    className={cn(
+                      "px-3 py-2.5 text-sm rounded-xl border text-left transition-colors",
+                      form.clientId === "general"
+                        ? "bg-zinc-800 border-zinc-800 text-white font-semibold"
+                        : "bg-background border-input hover:bg-muted"
+                    )}
+                  >
+                    Generale
+                    <span className="block text-[10px] font-normal opacity-70">Roba mia, nessun cliente</span>
+                  </button>
+                  {clientOptions.map((c) => {
+                    const active = form.clientId === String(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setForm((p) => ({ ...p, clientId: String(c.id), projectId: "" }))}
+                        className={cn(
+                          "px-3 py-2.5 text-sm rounded-xl border text-left truncate transition-colors",
+                          active
+                            ? "bg-primary/10 border-primary text-primary font-semibold"
+                            : "bg-background border-input hover:bg-muted"
+                        )}
+                        title={c.name}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.clientId === "" && (
+                  <p className="mt-1.5 text-[11px] text-amber-700">Scegli un cliente per andare avanti.</p>
+                )}
               </div>
+
+              {form.clientId !== "" && form.clientId !== "general" && (
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Progetto (opzionale)</label>
+                  <select
+                    value={form.projectId}
+                    onChange={(e) => setField("projectId", e.target.value)}
+                    className="w-full mt-1 px-4 py-3 text-sm border border-input rounded-xl bg-background"
+                  >
+                    <option value="">Nessun progetto — resta sul cliente</option>
+                    {visibleProjects.map((p) => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                  {visibleProjects.length === 0 && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">Questo cliente non ha ancora progetti: la task resta agganciata a lui.</p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Descrizione (opzionale)</label>
                 <textarea
@@ -395,6 +455,7 @@ export function TaskWizard({ open, onClose, onCreate, isSubmitting, projectOptio
               <div className="rounded-xl border border-card-border bg-muted/30 p-4 space-y-2">
                 <h3 className="font-semibold text-sm">Riepilogo</h3>
                 <Row label="Titolo" value={form.title || "—"} />
+                <Row label="Cliente" value={clientName || "—"} />
                 {projectName && <Row label="Progetto" value={projectName} />}
                 {assigneeName && <Row label="Assegnata" value={assigneeName} />}
                 <Row label="Priorità" value={PRIORITY_OPTIONS.find((p) => p.value === form.priority)?.label ?? form.priority} />

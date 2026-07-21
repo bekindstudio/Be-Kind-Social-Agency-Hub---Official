@@ -124,9 +124,10 @@ function TaskTodayRow({
           {overdue && task.dueDate ? `Scaduta il ${formatDate(task.dueDate)}` : task.dueDate ? `Scadenza oggi` : "Senza scadenza"}
           {/* Mostra SEMPRE il cliente (in evidenza) così si capisce di chi è la
               task; poi il progetto come contesto secondario. */}
-          {task.clientName && <> · <span className="font-medium text-foreground/80">{task.clientName}</span></>}
+          {task.clientName
+            ? <> · <span className="font-medium text-foreground/80">{task.clientName}</span></>
+            : <> · <span className="text-foreground/60">Generale</span></>}
           {task.projectName ? ` · ${task.projectName}` : ""}
-          {!task.clientName && !task.projectName && !task.clientId && !task.projectId ? " · Generale" : ""}
         </p>
       </button>
 

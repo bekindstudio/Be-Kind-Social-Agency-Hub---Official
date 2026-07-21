@@ -160,6 +160,11 @@ export interface TaskRow {
   description?: string | null;
   projectId?: number | null;
   projectName?: string | null;
+  /** Cliente scritto direttamente sulla task (null = task Generale o ereditata dal progetto). */
+  clientId?: number | null;
+  /** Cliente diretto, oppure quello del progetto collegato. È ciò che la UI mostra. */
+  effectiveClientId?: number | null;
+  clientName?: string | null;
   assigneeId?: number | null;
   assigneeName?: string | null;
   status: string;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles, Columns3, List } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
-import { EMPTY_TASK_FORM } from "@/hooks/useTasks";
+import { EMPTY_TASK_FORM, toApiClientId } from "@/hooks/useTasks";
 import { useTasksPageController } from "@/hooks/useTasksPageController";
 import { useToast } from "@/hooks/use-toast";
 import { TaskFilters } from "@/components/tasks/TaskFilters";
@@ -122,10 +122,12 @@ export default function Tasks() {
 
   const handleWizardCreate = async ({ form, checklist }: { form: any; checklist: any[] }): Promise<void> => {
     if (!form.title?.trim()) return;
+    if (!form.clientId) return;
     const isAvanzata = form.taskType === "avanzata";
     const payload = {
       title: form.title,
       description: form.description || null,
+      clientId: toApiClientId(form.clientId),
       projectId: form.projectId ? Number(form.projectId) : null,
       assigneeId: form.assigneeId ? Number(form.assigneeId) : null,
       status: form.status,
@@ -201,13 +203,15 @@ export default function Tasks() {
           onClose={() => setWizardOpen(false)}
           onCreate={handleWizardCreate}
           isSubmitting={vm.createTask.isPending}
-          projectOptions={vm.scopedProjectList as Array<{ id: number | string; name: string }>}
+          clientOptions={vm.clientList}
+          projectOptions={vm.pickerProjectList}
           memberOptions={vm.memberList as Array<{ id: number | string; name?: string | null; surname?: string | null; email?: string | null }>}
         />
 
         <TaskForm
           state={{ open: vm.showForm, editId: vm.editId, form: vm.form, isSubmitting: vm.createTask.isPending || vm.updateTask.isPending }}
-          projectOptions={vm.scopedProjectList as Array<{ id: number | string; name: string }>}
+          clientOptions={vm.clientList}
+          projectOptions={vm.pickerProjectList}
           memberOptions={vm.memberList as Array<{ id: number | string; name?: string | null; surname?: string | null }>}
           activeTemplate={vm.activeTemplate}
           onFormChange={(updates) => vm.setForm((prev) => ({ ...prev, ...updates }))}
@@ -231,6 +235,9 @@ export default function Tasks() {
           onFilterStatusChange={vm.setFilterStatus}
           filterPriority={vm.filterPriority}
           onFilterPriorityChange={vm.setFilterPriority}
+          filterClient={vm.filterClient}
+          onFilterClientChange={vm.setFilterClient}
+          clientOptions={vm.clientList}
           filterProject={vm.filterProject}
           onFilterProjectChange={vm.setFilterProject}
           projectOptions={vm.scopedProjectList as Array<{ id: number | string; name: string }>}

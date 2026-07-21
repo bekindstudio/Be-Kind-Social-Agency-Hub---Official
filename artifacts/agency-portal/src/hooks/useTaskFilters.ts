@@ -6,12 +6,20 @@ type UseTaskFiltersParams = {
   hasScopedProjects: boolean;
   scopedProjectIds: Set<number>;
   scopedProjectList: Array<{ id?: number | string | null }>;
+  activeClientId: number | null;
 };
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
-export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, scopedProjectList }: UseTaskFiltersParams) {
+/** Cliente mostrato per una task: diretto o ereditato dal progetto. */
+export function taskClientId(task: TaskRow): number | null {
+  return task.effectiveClientId ?? task.clientId ?? null;
+}
+
+export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, scopedProjectList, activeClientId }: UseTaskFiltersParams) {
   const [search, setSearch] = useState("");
+  // "" = tutti, "general" = solo task senza cliente, "<id>" = un cliente.
+  const [filterClient, setFilterClient] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterTipo, setFilterTipo] = useState("");
@@ -24,7 +32,18 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
 
   const filtered = useMemo(() => {
     const list = taskList.filter((task) => {
-      const matchActiveClient = !hasScopedProjects || (task.projectId != null && scopedProjectIds.has(Number(task.projectId)));
+      // Con un cliente attivo si vedono sia le task dei suoi progetti sia quelle
+      // agganciate direttamente a lui. Prima contava solo il progetto: una task
+      // "cliente sì, progetto no" spariva dalla lista.
+      const cid = taskClientId(task);
+      const matchActiveClient = !hasScopedProjects
+        || (task.projectId != null && scopedProjectIds.has(Number(task.projectId)))
+        || (activeClientId != null && cid === activeClientId);
+      const matchClient = !filterClient
+        ? true
+        : filterClient === "general"
+          ? cid == null
+          : String(cid) === filterClient;
       const matchSearch = String(task?.title ?? "").toLowerCase().includes(search.toLowerCase());
       const matchStatus = !filterStatus || task.status === filterStatus;
       const matchPriority = !filterPriority || task.priority === filterPriority;
@@ -38,7 +57,7 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
           : String(task.assigneeId) === filterAssignee;
       const matchDateFrom = !filterDateFrom || (task.dueDate != null && task.dueDate >= filterDateFrom);
       const matchDateTo = !filterDateTo || (task.dueDate != null && task.dueDate <= filterDateTo);
-      return matchActiveClient && matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;
+      return matchActiveClient && matchClient && matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;
     });
 
     return list.sort((a, b) => {
@@ -59,6 +78,8 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
     taskList,
     hasScopedProjects,
     scopedProjectIds,
+    activeClientId,
+    filterClient,
     search,
     filterStatus,
     filterPriority,
@@ -76,10 +97,11 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
     if (!stillVisible) setFilterProject("");
   }, [filterProject, scopedProjectList]);
 
-  const hasActiveFilters = !!(filterProject || filterAssignee || filterDateFrom || filterDateTo || filterStatus || filterPriority || filterTipo || filterCategory || search);
+  const hasActiveFilters = !!(filterClient || filterProject || filterAssignee || filterDateFrom || filterDateTo || filterStatus || filterPriority || filterTipo || filterCategory || search);
 
   const clearFilters = () => {
     setSearch("");
+    setFilterClient("");
     setFilterStatus("");
     setFilterPriority("");
     setFilterTipo("");
@@ -93,6 +115,8 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
   return {
     search,
     setSearch,
+    filterClient,
+    setFilterClient,
     filterStatus,
     setFilterStatus,
     filterPriority,

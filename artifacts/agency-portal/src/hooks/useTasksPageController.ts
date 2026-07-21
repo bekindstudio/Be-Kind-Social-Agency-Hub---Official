@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { TASK_STATUS_LABELS } from "@/lib/utils";
 import { playTaskComplete } from "@/lib/sounds";
 import { useToast } from "@/hooks/use-toast";
-import { useTasks, EMPTY_TASK_FORM } from "@/hooks/useTasks";
+import { useTasks, EMPTY_TASK_FORM, toApiClientId } from "@/hooks/useTasks";
 import { useTaskFilters } from "@/hooks/useTaskFilters";
 import { useTaskBulkActions } from "@/hooks/useTaskBulkActions";
 import { useTaskChecklist } from "@/hooks/useTaskChecklist";
@@ -31,9 +31,12 @@ export function useTasksPageController() {
   const { toast } = useToast();
   const {
     activeTemplate,
+    activeClientId,
     isLoading,
     taskList,
+    clientList,
     memberList,
+    pickerProjectList,
     scopedProjectList,
     scopedProjectIds,
     hasScopedProjects,
@@ -51,6 +54,7 @@ export function useTasksPageController() {
     hasScopedProjects,
     scopedProjectIds,
     scopedProjectList: scopedProjectList as Array<{ id?: number | string | null }>,
+    activeClientId,
   });
 
   const bulkActions = useTaskBulkActions({
@@ -118,6 +122,13 @@ export function useTasksPageController() {
     setForm({
       title: task.title,
       description: task.description ?? "",
+      // In modifica il cliente è già deciso: mostriamo quello effettivo (diretto
+      // o ereditato dal progetto), "general" se la task non ha cliente.
+      clientId: task.effectiveClientId != null
+        ? String(task.effectiveClientId)
+        : task.clientId != null
+          ? String(task.clientId)
+          : "general",
       projectId: task.projectId ? String(task.projectId) : "",
       assigneeId: task.assigneeId ? String(task.assigneeId) : "",
       status: task.status,
@@ -142,10 +153,16 @@ export function useTasksPageController() {
 
   const handleSave = useCallback(() => {
     if (!form.title.trim()) return;
+    // Il cliente dev'essere scelto esplicitamente (anche solo "Generale").
+    if (!form.clientId) {
+      toast({ variant: "destructive", title: "Scegli il cliente", description: "Se non è di un cliente, seleziona Generale." });
+      return;
+    }
     const isAvanzata = form.taskType === "avanzata";
     const payload = {
       title: form.title,
       description: form.description || null,
+      clientId: toApiClientId(form.clientId),
       projectId: form.projectId ? Number(form.projectId) : null,
       assigneeId: form.assigneeId ? Number(form.assigneeId) : null,
       status: form.status,
@@ -250,7 +267,9 @@ export function useTasksPageController() {
   return {
     isLoading,
     taskList,
+    clientList,
     memberList,
+    pickerProjectList,
     scopedProjectList,
     activeTemplate,
     listTasksKey,

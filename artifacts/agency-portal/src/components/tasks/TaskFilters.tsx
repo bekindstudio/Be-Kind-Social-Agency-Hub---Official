@@ -16,6 +16,9 @@ interface TaskFiltersProps {
   onFilterStatusChange: (value: string) => void;
   filterPriority: string;
   onFilterPriorityChange: (value: string) => void;
+  filterClient: string;
+  onFilterClientChange: (value: string) => void;
+  clientOptions: Array<{ id: number | string; name: string }>;
   filterProject: string;
   onFilterProjectChange: (value: string) => void;
   projectOptions: Array<{ id: number | string; name: string }>;
@@ -47,6 +50,9 @@ export function TaskFilters({
   onFilterStatusChange,
   filterPriority,
   onFilterPriorityChange,
+  filterClient,
+  onFilterClientChange,
+  clientOptions,
   filterProject,
   onFilterProjectChange,
   projectOptions,
@@ -70,6 +76,45 @@ export function TaskFilters({
   ];
   return (
     <>
+      {/* Riga clienti: è il modo veloce per passare da "tutto" a un cliente
+          o alla sezione Generale (le task interne, senza cliente). */}
+      <div className="mb-3 flex flex-wrap gap-1.5 items-center">
+        <button
+          onClick={() => onFilterClientChange("")}
+          className={cn(
+            "px-2.5 py-1 rounded-full text-xs border transition-colors",
+            filterClient === "" ? "border-primary bg-primary/10 text-primary font-semibold" : "border-input hover:bg-muted"
+          )}
+        >
+          Tutte
+        </button>
+        <button
+          onClick={() => onFilterClientChange(filterClient === "general" ? "" : "general")}
+          className={cn(
+            "px-2.5 py-1 rounded-full text-xs border transition-colors",
+            filterClient === "general" ? "border-zinc-800 bg-zinc-800 text-white font-semibold" : "border-input hover:bg-muted"
+          )}
+        >
+          Generale
+        </button>
+        {clientOptions.map((c) => {
+          const value = String(c.id);
+          const active = filterClient === value;
+          return (
+            <button
+              key={c.id}
+              onClick={() => onFilterClientChange(active ? "" : value)}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-xs border transition-colors max-w-[160px] truncate",
+                active ? "border-primary bg-primary/10 text-primary font-semibold" : "border-input hover:bg-muted"
+              )}
+              title={c.name}
+            >
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
       {onApplyPreset && (
         <div className="mb-3 flex flex-wrap gap-1.5 items-center">
           <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mr-1">Preset</span>

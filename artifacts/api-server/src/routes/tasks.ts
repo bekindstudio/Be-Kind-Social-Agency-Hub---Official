@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, sql, and, or, isNull, inArray, desc } from "drizzle-orm";
-import { db, tasksTable, projectsTable, teamMembersTable, activityLog } from "@workspace/db";
+import { db, tasksTable, projectsTable, teamMembersTable, clientsTable, activityLog } from "@workspace/db";
 import {
   CreateTaskBody,
   GetTaskParams,
@@ -24,18 +24,32 @@ const createTaskSchema = CreateTaskBody.extend({
   pacchettoContenuti: z.string().nullable().optional(),
   meseRiferimento: z.string().nullable().optional(),
 }).passthrough();
+/**
+ * `UpdateTaskBody` (generato) non conosce clientId, quindi lo leggiamo a parte
+ * invece che con un Number() sul body grezzo: così "abc" o 0 danno 400 dalla
+ * validazione anziché un 500 da Postgres sulla colonna integer.
+ */
+const updateTaskExtraSchema = z.object({
+  clientId: z.number().int().positive().nullable().optional(),
+}).passthrough();
+
 const createTaskCommentSchema = z.object({
   content: z.string().trim().min(1).max(2000),
   authorName: z.string().trim().min(1).max(255),
 });
 
-async function getLookupMaps(projectIds: number[], assigneeIds: number[]) {
+async function getLookupMaps(projectIds: number[], assigneeIds: number[], directClientIds: number[] = []) {
   const [projects, members] = await Promise.all([
+    // NB: qui NON si filtra su deletedAt. Un progetto cestinato non deve far
+    // sparire il cliente della task: l'appartenenza al cliente regge sia
+    // l'etichetta in UI sia il filtro di autorizzazione più sotto. Filtrandolo,
+    // la task risultava "Generale" e visibile a chi non ha accesso al cliente,
+    // mentre GET /tasks/:id sullo stesso record rispondeva 403.
     projectIds.length > 0
       ? db
-        .select({ id: projectsTable.id, name: projectsTable.name, clientId: projectsTable.clientId })
+        .select({ id: projectsTable.id, name: projectsTable.name, clientId: projectsTable.clientId, deletedAt: projectsTable.deletedAt })
         .from(projectsTable)
-        .where(and(isNull(projectsTable.deletedAt), inArray(projectsTable.id, projectIds)))
+        .where(inArray(projectsTable.id, projectIds))
       : Promise.resolve([]),
     assigneeIds.length > 0
       ? db
@@ -44,28 +58,65 @@ async function getLookupMaps(projectIds: number[], assigneeIds: number[]) {
         .where(inArray(teamMembersTable.id, assigneeIds))
       : Promise.resolve([]),
   ]);
+
+  // Nomi cliente: servono sia per le task col cliente diretto sia per quelle che
+  // lo ereditano dal progetto. Senza questa mappa la UI (Oggi, lista task) non
+  // poteva mostrare di chi è la task e le marcava tutte come "Generale".
+  const clientIds = Array.from(new Set([
+    ...directClientIds,
+    ...projects.map((p) => p.clientId).filter((id): id is number => id != null),
+  ]));
+  const clients = clientIds.length > 0
+    ? await db
+      .select({ id: clientsTable.id, name: clientsTable.name })
+      .from(clientsTable)
+      .where(inArray(clientsTable.id, clientIds))
+    : [];
+
   return {
-    projectMap: new Map(projects.map((p) => [p.id, p.name])),
+    // Il NOME del progetto invece sì: di un progetto cestinato non lo mostriamo.
+    projectMap: new Map(projects.filter((p) => p.deletedAt == null).map((p) => [p.id, p.name])),
     projectClientMap: new Map(projects.map((p) => [p.id, p.clientId ?? null])),
     memberMap: new Map(members.map((m) => [m.id, m.name])),
+    clientMap: new Map(clients.map((c) => [c.id, c.name])),
   };
 }
 
-function serializeTask(task: typeof tasksTable.$inferSelect, projectMap: Map<number, string>, memberMap: Map<number, string>) {
+type LookupMaps = Awaited<ReturnType<typeof getLookupMaps>>;
+
+function serializeTask(task: typeof tasksTable.$inferSelect, maps: LookupMaps) {
+  // Cliente "effettivo": quello diretto sul task, altrimenti ereditato dal
+  // progetto. `clientId` resta il valore grezzo (serve al form di modifica),
+  // `effectiveClientId` + `clientName` sono ciò che la UI mostra.
+  const effectiveClientId = task.clientId
+    ?? (task.projectId != null ? maps.projectClientMap.get(task.projectId) ?? null : null);
   return {
     ...task,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
-    projectName: task.projectId ? (projectMap.get(task.projectId) ?? null) : null,
-    assigneeName: task.assigneeId ? (memberMap.get(task.assigneeId) ?? null) : null,
+    projectName: task.projectId ? (maps.projectMap.get(task.projectId) ?? null) : null,
+    assigneeName: task.assigneeId ? (maps.memberMap.get(task.assigneeId) ?? null) : null,
+    effectiveClientId,
+    clientName: effectiveClientId != null ? (maps.clientMap.get(effectiveClientId) ?? null) : null,
   };
 }
 
 async function enrichTask(task: typeof tasksTable.$inferSelect) {
-  const projectIds = task.projectId != null ? [task.projectId] : [];
-  const assigneeIds = task.assigneeId != null ? [task.assigneeId] : [];
-  const { projectMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
-  return serializeTask(task, projectMap, memberMap);
+  const maps = await getLookupMaps(
+    task.projectId != null ? [task.projectId] : [],
+    task.assigneeId != null ? [task.assigneeId] : [],
+    task.clientId != null ? [task.clientId] : [],
+  );
+  return serializeTask(task, maps);
+}
+
+/** Cliente del progetto, per ereditarlo su una task che non ne dichiara uno. */
+async function clientIdOfProject(projectId: number): Promise<number | null> {
+  const [p] = await db
+    .select({ clientId: projectsTable.clientId })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId));
+  return p?.clientId ?? null;
 }
 
 /**
@@ -156,7 +207,9 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   const projectIds = Array.from(new Set(tasks.map((task) => task.projectId).filter((id): id is number => id != null)));
   const assigneeIds = Array.from(new Set(tasks.map((task) => task.assigneeId).filter((id): id is number => id != null)));
-  const { projectMap, projectClientMap, memberMap } = await getLookupMaps(projectIds, assigneeIds);
+  const directClientIds = Array.from(new Set(tasks.map((task) => task.clientId).filter((id): id is number => id != null)));
+  const maps = await getLookupMaps(projectIds, assigneeIds, directClientIds);
+  const { projectClientMap } = maps;
 
   // Autorizzazione per-cliente: un utente non-admin vede solo i task dei clienti
   // a cui ha accesso (cliente diretto del task o del progetto collegato). I task
@@ -169,7 +222,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
         return cid == null || accessible.includes(cid);
       });
 
-  const result = visibleTasks.map((task) => serializeTask(task, projectMap, memberMap));
+  const result = visibleTasks.map((task) => serializeTask(task, maps));
   res.json(result);
 });
 
@@ -178,13 +231,31 @@ router.post("/tasks", validate(createTaskSchema), async (req, res): Promise<void
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const d = req.body as z.infer<typeof createTaskSchema>;
   const b = req.body as Record<string, unknown>;
+  // Il cliente è sempre esplicito lato UI (o "Generale" = nessuno). Se però
+  // arriva solo il progetto, ereditiamo il suo cliente: una task di progetto non
+  // deve mai finire fra le "Generale".
+  // Se c'è un progetto il cliente è SEMPRE il suo, anche se il body ne dichiara
+  // un altro: altrimenti si potrebbe infilare la task nel progetto di un cliente
+  // non accessibile dichiarando come "copertura" un cliente proprio.
+  let clientId = d.clientId ?? null;
+  if (d.projectId != null) {
+    const fromProject = await clientIdOfProject(d.projectId);
+    if (fromProject != null) clientId = fromProject;
+  }
+  if (clientId != null) {
+    const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(clientId)) {
+      res.status(403).json({ error: "Accesso negato a questo cliente" });
+      return;
+    }
+  }
   const [task] = await db.insert(tasksTable).values({
     title: d.title,
     description: d.description ?? null,
     projectId: d.projectId ?? null,
     // Salva il cliente diretto: così una task creata senza progetto dal cockpit
     // resta legata al cliente e non sparisce dalla sua lista.
-    clientId: d.clientId ?? null,
+    clientId,
     assigneeId: d.assigneeId ?? null,
     status: d.status,
     priority: d.priority,
@@ -363,6 +434,12 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const parsedExtra = updateTaskExtraSchema.safeParse(req.body);
+  if (!parsedExtra.success) {
+    res.status(400).json({ error: parsedExtra.error.message });
+    return;
+  }
+  const extra = parsedExtra.data;
 
   const updates: Record<string, unknown> = {};
   const d = parsed.data;
@@ -370,6 +447,16 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (d.title != null) updates.title = d.title;
   if (d.description !== undefined) updates.description = d.description;
   if (d.projectId !== undefined) updates.projectId = d.projectId;
+  // Il cliente si può cambiare (o azzerare → task "Generale"). Prima il campo
+  // veniva ignorato in PATCH: si poteva creare una task con cliente ma non
+  // spostarla. Come in POST, se c'è un progetto vince il cliente del progetto.
+  if (d.projectId != null) {
+    const fromProject = await clientIdOfProject(d.projectId);
+    if (fromProject != null) updates.clientId = fromProject;
+    else if (extra.clientId !== undefined) updates.clientId = extra.clientId;
+  } else if (extra.clientId !== undefined) {
+    updates.clientId = extra.clientId;
+  }
   if (d.assigneeId !== undefined) updates.assigneeId = d.assigneeId;
   if (d.status != null) {
     updates.status = d.status;
@@ -396,6 +483,15 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (!(await userCanAccessTask(ex, userId))) {
     res.status(403).json({ error: "Accesso non autorizzato" });
     return;
+  }
+  // Il cliente di destinazione dev'essere anch'esso accessibile, altrimenti si
+  // potrebbe "spingere" una task dentro il perimetro di un cliente non proprio.
+  if (updates.clientId != null) {
+    const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId);
+    if (accessible !== "all" && !accessible.includes(updates.clientId as number)) {
+      res.status(403).json({ error: "Accesso negato a questo cliente" });
+      return;
+    }
   }
 
   const [task] = await db.update(tasksTable).set(updates).where(eq(tasksTable.id, params.data.id)).returning();

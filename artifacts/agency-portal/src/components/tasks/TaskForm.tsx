@@ -3,6 +3,13 @@ import type { ReactNode } from "react";
 export type TaskFormState = {
   title: string;
   description: string;
+  /**
+   * Cliente della task. Tre valori possibili:
+   * ""        → non ancora scelto (blocca il salvataggio)
+   * "general" → task interna, sezione Generale
+   * "<id>"    → cliente agganciato
+   */
+  clientId: string;
   projectId: string;
   assigneeId: string;
   status: string;
@@ -17,6 +24,7 @@ export type TaskFormState = {
 
 export function TaskForm({
   state,
+  clientOptions,
   projectOptions,
   memberOptions,
   activeTemplate,
@@ -31,7 +39,8 @@ export function TaskForm({
     form: TaskFormState;
     isSubmitting: boolean;
   };
-  projectOptions: Array<{ id: number | string; name: string }>;
+  clientOptions: Array<{ id: number | string; name: string }>;
+  projectOptions: Array<{ id: number | string; name: string; clientId?: number | string | null }>;
   memberOptions: Array<{ id: number | string; name?: string | null; surname?: string | null }>;
   activeTemplate: { label: string } | null;
   onFormChange: (updates: Partial<TaskFormState>) => void;
@@ -56,6 +65,11 @@ export function TaskForm({
   if (!state.open) return null;
 
   const { form } = state;
+  // I progetti proposti sono solo quelli del cliente scelto: evita di agganciare
+  // una task al progetto di un altro cliente.
+  const visibleProjects = form.clientId && form.clientId !== "general"
+    ? projectOptions.filter((p) => String(p.clientId ?? "") === form.clientId)
+    : [];
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-6 mb-6 shadow-sm">
@@ -161,14 +175,33 @@ export function TaskForm({
         )}
 
         <div>
-          <label className="text-xs font-medium text-muted-foreground">Progetto</label>
+          <label className="text-xs font-medium text-muted-foreground">Cliente *</label>
           <select
             className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none"
+            value={form.clientId}
+            // Cambiando cliente il progetto va azzerato, altrimenti resterebbe
+            // selezionato quello di un altro cliente.
+            onChange={(e) => onFormChange({ clientId: e.target.value, projectId: "" })}
+          >
+            <option value="">— Scegli —</option>
+            <option value="general">Generale (nessun cliente)</option>
+            {clientOptions.map((client) => (
+              <option key={client.id} value={String(client.id)}>
+                {client.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Progetto</label>
+          <select
+            className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none disabled:opacity-50"
             value={form.projectId}
+            disabled={!form.clientId || form.clientId === "general"}
             onChange={(e) => onFormChange({ projectId: e.target.value })}
           >
             <option value="">Nessun progetto</option>
-            {projectOptions.map((project) => (
+            {visibleProjects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>
@@ -246,7 +279,8 @@ export function TaskForm({
       <div className="flex flex-col sm:flex-row gap-2 mt-4">
         <button
           onClick={actions.onSave}
-          disabled={state.isSubmitting}
+          disabled={state.isSubmitting || !form.clientId}
+          title={!form.clientId ? "Scegli prima il cliente (o Generale)" : undefined}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
           {state.isSubmitting ? "Salvataggio..." : state.editId ? "Aggiorna Task" : "Crea Task"}

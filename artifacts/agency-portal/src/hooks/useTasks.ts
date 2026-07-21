@@ -19,7 +19,7 @@ import type { TaskRow } from "@/types/client";
 
 export function useTasks() {
   const qc = useQueryClient();
-  const { activeClient } = useClientContext();
+  const { activeClient, clients } = useClientContext();
 
   const activeClientNumericId = activeClient?.id ? Number(activeClient.id) : NaN;
   const apiClientId = Number.isFinite(activeClientNumericId) ? activeClientNumericId : null;
@@ -28,6 +28,9 @@ export function useTasks() {
 
   const { data: tasks, isLoading } = useListTasks(tasksQueryParams as any);
   const { data: projects } = useListProjects(projectsQueryParams);
+  // Elenco completo dei progetti (non filtrato dal cliente attivo): serve al
+  // selettore in creazione task, dove si può scegliere qualunque cliente.
+  const { data: allProjects } = useListProjects({});
   const { data: members } = useListTeamMembers();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
@@ -40,15 +43,34 @@ export function useTasks() {
     return getOperationalTemplateById(templateId);
   }, [activeClient?.id]);
 
-  type ProjectLite = { id?: unknown; clientId?: unknown; clientName?: unknown };
-  const projectList = useMemo<ProjectLite[]>(() => {
-    if (!projects) return [];
-    if (Array.isArray(projects)) return projects as ProjectLite[];
-    if (Array.isArray((projects as { items?: unknown[] }).items)) {
-      return (projects as { items: ProjectLite[] }).items;
+  type ProjectLite = { id?: unknown; name?: unknown; clientId?: unknown; clientName?: unknown };
+  const asProjectArray = (raw: unknown): ProjectLite[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw as ProjectLite[];
+    if (Array.isArray((raw as { items?: unknown[] }).items)) {
+      return (raw as { items: ProjectLite[] }).items;
     }
-    return [projects as ProjectLite].filter(Boolean);
-  }, [projects]);
+    return [raw as ProjectLite].filter(Boolean);
+  };
+
+  const projectList = useMemo<ProjectLite[]>(() => asProjectArray(projects), [projects]);
+
+  const pickerProjectList = useMemo(
+    () =>
+      asProjectArray(allProjects).map((p) => ({
+        id: p.id as number | string,
+        name: String(p.name ?? ""),
+        clientId: (p.clientId ?? null) as number | string | null,
+      })),
+    [allProjects],
+  );
+
+  // Lista clienti per il selettore obbligatorio in creazione task. Arriva dal
+  // ClientContext, già caricato: nessuna fetch aggiuntiva.
+  const clientList = useMemo(
+    () => (clients ?? []).map((c) => ({ id: c.id, name: c.name })),
+    [clients],
+  );
 
   const memberList = useMemo(() => {
     if (!members) return [];
@@ -136,10 +158,13 @@ export function useTasks() {
 
   return {
     activeClient,
+    activeClientId: apiClientId,
     activeTemplate,
     isLoading,
     taskList,
     projectList,
+    pickerProjectList,
+    clientList,
     memberList,
     scopedProjectList,
     scopedProjectIds,
@@ -154,9 +179,20 @@ export function useTasks() {
   };
 }
 
+/**
+ * Traduce il valore del selettore cliente nel campo `clientId` dell'API:
+ * "" (non scelto) e "general" diventano null, cioè task senza cliente.
+ */
+export function toApiClientId(formClientId: string): number | null {
+  if (!formClientId || formClientId === "general") return null;
+  const parsed = Number(formClientId);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export const EMPTY_TASK_FORM: TaskFormState = {
   title: "",
   description: "",
+  clientId: "",
   projectId: "",
   assigneeId: "",
   status: "todo",

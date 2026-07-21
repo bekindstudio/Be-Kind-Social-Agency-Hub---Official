@@ -83,9 +83,11 @@ export function TaskList({
                     >
                       {task.title}
                     </button>
-                    {/* F1: badge "Generale" sotto il titolo se la task non ha un progetto. */}
-                    {task.projectId == null && (
-                      <span className="inline-block ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task non legata a un progetto">Generale</span>
+                    {/* Cliente sotto il titolo; "Generale" solo se non ne ha uno. */}
+                    {task.clientName ? (
+                      <span className="inline-block ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-primary/10 text-primary" title={task.clientName}>{task.clientName}</span>
+                    ) : (
+                      <span className="inline-block ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task non legata a un cliente">Generale</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -153,9 +155,11 @@ export function TaskList({
                     </span>
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", PRIORITY_COLORS[task.priority])}>{PRIORITY_LABELS[task.priority]}</span>
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", TASK_STATUS_COLORS[task.status])}>{TASK_STATUS_LABELS[task.status]}</span>
-                    {/* F1: badge "Generale" per task non legate a un progetto. */}
-                    {task.projectId == null && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task generale (non legata a un progetto)">Generale</span>
+                    {/* Cliente della task; "Generale" solo se non ne ha uno. */}
+                    {task.clientName ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-primary/10 text-primary max-w-[140px] truncate" title={task.clientName}>{task.clientName}</span>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task generale (non legata a un cliente)">Generale</span>
                     )}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">

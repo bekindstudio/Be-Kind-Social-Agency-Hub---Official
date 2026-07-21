@@ -73,9 +73,14 @@ export function TaskCard({
             {task.categoria}
           </span>
         )}
-        {/* F1: badge "Generale" per task senza projectId (interne agenzia, non legate a un cliente). */}
-        {task.projectId == null && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task generale (non legata a un progetto)">
+        {/* Cliente della task: è l'informazione che serve per prima. "Generale"
+            solo quando la task non ha davvero un cliente (to-do interna). */}
+        {task.clientName ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-primary/10 text-primary max-w-[140px] truncate" title={task.clientName}>
+            {task.clientName}
+          </span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-zinc-200 text-zinc-700" title="Task generale (non legata a un cliente)">
             Generale
           </span>
         )}

@@ -247,6 +247,39 @@ router.get("/quote-services", async (req, res): Promise<void> => {
   res.json(rows);
 });
 
+const tierSchema = z.object({ label: z.string().min(1).max(120), value: z.string().min(1).max(60), price: z.number().int().min(0).max(1000000) });
+const updateServiceSchema = z.object({
+  name: z.string().trim().min(2).max(200).optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+  basePrice: z.number().int().min(0).max(1000000).optional(),
+  unitPrice: z.number().int().min(0).max(1000000).nullable().optional(),
+  tiers: z.array(tierSchema).max(10).optional(),
+  active: z.boolean().optional(),
+}).strict();
+
+/** Modifica una voce di catalogo (prezzi, scaglioni, attivo). Solo agenzia. */
+router.patch("/quote-services/:id", async (req, res): Promise<void> => {
+  if (!requireUser(req, res)) return;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "ID non valido" }); return; }
+  const parsed = updateServiceSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const updates: Record<string, unknown> = {};
+  const d = parsed.data;
+  if (d.name !== undefined) updates.name = d.name;
+  if (d.description !== undefined) updates.description = d.description;
+  if (d.basePrice !== undefined) updates.basePrice = d.basePrice;
+  if (d.unitPrice !== undefined) updates.unitPrice = d.unitPrice;
+  if (d.tiers !== undefined) updates.tiers = d.tiers;
+  if (d.active !== undefined) updates.active = d.active;
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nessun campo da aggiornare" }); return; }
+
+  const [row] = await db.update(quoteServicesTable).set(updates).where(eq(quoteServicesTable.id, id)).returning();
+  if (!row) { res.status(404).json({ error: "Servizio non trovato" }); return; }
+  res.json(row);
+});
+
 const createLinkSchema = z.object({
   prospectName: z.string().trim().min(2).max(200),
   note: z.string().trim().max(1000).optional(),

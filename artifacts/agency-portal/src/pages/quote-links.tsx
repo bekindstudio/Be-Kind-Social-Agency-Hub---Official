@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2 } from "lucide-react";
+import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2, Tags, Save } from "lucide-react";
 
 /**
  * Gestione del configuratore preventivo: genera un link personale per ogni
@@ -13,7 +13,12 @@ import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2 } from "lucide-
 const eur = (n: number) => `${Number(n).toLocaleString("it-IT")} €`;
 
 type QuoteLink = { id: number; token: string; prospectName: string; note: string | null; status: string; url: string; createdAt: string; preset: string[] };
-type Service = { key: string; name: string; category: string };
+type Tier = { label: string; value: string; price: number };
+type Service = {
+  id: number; key: string; name: string; description: string | null; category: string;
+  billing: "monthly" | "oneoff"; pricing: "fixed" | "tiered" | "per_unit";
+  basePrice: number; unitLabel: string | null; unitPrice: number | null; tiers: Tier[]; active: boolean;
+};
 type Lead = {
   id: number; prospectName: string | null; email: string | null; phone: string | null;
   months: number; monthlySubtotal: number; oneoffSubtotal: number; discountPct: number;
@@ -25,7 +30,7 @@ export default function QuoteLinksPage() {
   const [links, setLinks] = useState<QuoteLink[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [tab, setTab] = useState<"links" | "leads">("links");
+  const [tab, setTab] = useState<"links" | "leads" | "prezzi">("links");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [preset, setPreset] = useState<string[]>([]);
@@ -40,8 +45,10 @@ export default function QuoteLinksPage() {
     ]);
     setLinks(Array.isArray(l) ? l : []);
     setLeads(Array.isArray(r) ? r : []);
-    setServices(Array.isArray(s) ? s.filter((x: any) => x.active !== false) : []);
+    // Tutti i servizi (anche inattivi): la tab Prezzi deve poterli riattivare.
+    setServices(Array.isArray(s) ? s : []);
   };
+  const activeServices = services.filter((s) => s.active);
   useEffect(() => { void load(); }, []);
 
   const create = async () => {
@@ -91,6 +98,9 @@ export default function QuoteLinksPage() {
           <button onClick={() => setTab("leads")} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === "leads" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>
             <Inbox size={14} className="inline mr-1.5" />Preventivi ricevuti ({leads.length})
           </button>
+          <button onClick={() => setTab("prezzi")} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === "prezzi" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>
+            <Tags size={14} className="inline mr-1.5" />Prezzi & servizi
+          </button>
         </div>
 
         {tab === "links" && (
@@ -103,11 +113,11 @@ export default function QuoteLinksPage() {
                 <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota interna (facoltativa)"
                   className="px-3 py-2 text-sm border border-input rounded-lg bg-background" />
               </div>
-              {services.length > 0 && (
+              {activeServices.length > 0 && (
                 <div className="mt-3">
                   <p className="text-xs text-muted-foreground mb-1.5">Servizi consigliati (pre-selezionati all'apertura)</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {services.map((s) => {
+                    {activeServices.map((s) => {
                       const on = preset.includes(s.key);
                       return (
                         <button key={s.key} type="button"
@@ -173,7 +183,116 @@ export default function QuoteLinksPage() {
             ))}
           </div>
         )}
+
+        {tab === "prezzi" && (
+          <div className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              Modifica prezzi, scaglioni e disponibilità. Le modifiche valgono subito su tutti i link.
+            </p>
+            {Object.entries(groupServices(services)).map(([cat, list]) => (
+              <div key={cat}>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">{cat}</h3>
+                <div className="space-y-2">
+                  {list.map((s) => (
+                    <ServicePriceRow key={s.id} service={s} onSaved={(updated) =>
+                      setServices((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Layout>
+  );
+}
+
+function groupServices(arr: Service[]): Record<string, Service[]> {
+  const out: Record<string, Service[]> = {};
+  for (const s of arr) (out[s.category] ??= []).push(s);
+  return out;
+}
+
+/** Riga editabile di un servizio: prezzi, scaglioni, attivo. Salvataggio esplicito. */
+function ServicePriceRow({ service, onSaved }: { service: Service; onSaved: (s: Service) => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState(service.name);
+  const [basePrice, setBasePrice] = useState(service.basePrice);
+  const [unitPrice, setUnitPrice] = useState(service.unitPrice ?? 0);
+  const [tiers, setTiers] = useState<Tier[]>(service.tiers);
+  const [active, setActive] = useState(service.active);
+  const [saving, setSaving] = useState(false);
+
+  const dirty =
+    name !== service.name || basePrice !== service.basePrice || unitPrice !== (service.unitPrice ?? 0) ||
+    active !== service.active || JSON.stringify(tiers) !== JSON.stringify(service.tiers);
+
+  const suffix = service.billing === "oneoff" ? "una tantum" : "/mese";
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { name, active };
+      if (service.pricing === "fixed") body.basePrice = basePrice;
+      if (service.pricing === "per_unit") body.unitPrice = unitPrice;
+      if (service.pricing === "tiered") body.tiers = tiers;
+      const r = await portalFetch(`/api/quote-services/${service.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      onSaved(updated);
+      toast({ title: "Prezzo aggiornato", description: service.name });
+    } catch { toast({ variant: "destructive", title: "Salvataggio non riuscito" }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className={`rounded-xl border p-3 ${active ? "border-card-border bg-card" : "border-card-border bg-muted/40"}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <input value={name} onChange={(e) => setName(e.target.value)}
+          className="flex-1 min-w-0 font-medium text-sm bg-transparent border-b border-transparent hover:border-input focus:border-primary focus:outline-none py-0.5" />
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 cursor-pointer">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="accent-primary" />
+          Attivo
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {service.pricing === "fixed" && (
+          <PriceField label="Prezzo" suffix={suffix} value={basePrice} onChange={setBasePrice} />
+        )}
+        {service.pricing === "per_unit" && (
+          <PriceField label={`Prezzo / ${service.unitLabel ?? "unità"}`} suffix={suffix} value={unitPrice} onChange={setUnitPrice} />
+        )}
+        {service.pricing === "tiered" && tiers.map((t, i) => (
+          <PriceField key={t.value} label={t.label} suffix={suffix} value={t.price}
+            onChange={(v) => setTiers((prev) => prev.map((x, xi) => (xi === i ? { ...x, price: v } : x)))} />
+        ))}
+      </div>
+
+      {dirty && (
+        <div className="mt-3 flex justify-end">
+          <button onClick={save} disabled={saving}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salva
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PriceField({ label, suffix, value, onChange }: { label: string; suffix: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div>
+      <label className="block text-[11px] text-muted-foreground mb-0.5">{label}</label>
+      <div className="inline-flex items-center rounded-lg border border-input bg-background overflow-hidden">
+        <input type="number" min={0} value={value}
+          onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          className="w-20 px-2 py-1.5 text-sm text-right bg-transparent focus:outline-none tabular-nums" />
+        <span className="px-2 text-xs text-muted-foreground border-l border-input">€ {suffix}</span>
+      </div>
+    </div>
   );
 }

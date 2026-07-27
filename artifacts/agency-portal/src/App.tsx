@@ -51,6 +51,8 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 const ClientPortalPage = lazy(() => import("@/pages/portal/ClientPortalPage"));
+const QuoteConfiguratorPage = lazy(() => import("@/pages/public/QuoteConfiguratorPage"));
+const QuoteLinksPage = lazy(() => import("@/pages/quote-links"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -203,6 +205,14 @@ function Router() {
             </RouteBoundary>
           )}
         </Route>
+        {/* Configuratore preventivo pubblico (prospect, senza login) */}
+        <Route path="/preventivo/:token">
+          {(params) => (
+            <RouteBoundary routeKey="/preventivo">
+              <QuoteConfiguratorPage token={params.token} />
+            </RouteBoundary>
+          )}
+        </Route>
         <Route path="/dashboard">
           <RouteBoundary routeKey="/dashboard">
             <RequireAuth><Dashboard /></RequireAuth>
@@ -270,6 +280,11 @@ function Router() {
         <Route path="/quotes">
           <RouteBoundary routeKey="/quotes">
             <RequireAuth><Quotes /></RequireAuth>
+          </RouteBoundary>
+        </Route>
+        <Route path="/preventivo-online">
+          <RouteBoundary routeKey="/preventivo-online">
+            <RequireAuth><QuoteLinksPage /></RequireAuth>
           </RouteBoundary>
         </Route>
         <Route path="/contracts/templates">

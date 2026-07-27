@@ -39,3 +39,4 @@ export * from "./client-notes";
 export * from "./personal-agenda";
 export * from "./client-content-ideas";
 export * from "./client-retainer-tasks";
+export * from "./quote-configurator";

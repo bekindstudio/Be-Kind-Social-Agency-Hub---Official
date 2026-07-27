@@ -89,6 +89,8 @@ const publicPortalLimiter = rateLimit({
   },
 });
 app.use("/api/public/portal", publicPortalLimiter);
+// Stesso trattamento per il configuratore preventivo pubblico (no auth, token).
+app.use("/api/public/preventivo", publicPortalLimiter);
 
 const allowedOrigins = [
   "http://localhost:3000",

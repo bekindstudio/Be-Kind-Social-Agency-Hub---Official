@@ -88,6 +88,7 @@ const navGroups = [
     label: "Documentazione",
     items: [
       { href: "/quotes", label: "Preventivi", icon: Receipt },
+      { href: "/preventivo-online", label: "Preventivo online", icon: Sparkles },
       { href: "/contracts/templates", label: "Modelli contratti", icon: FileSignature },
     ],
   },

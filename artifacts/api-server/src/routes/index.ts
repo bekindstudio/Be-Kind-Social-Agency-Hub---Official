@@ -36,6 +36,7 @@ import clientEventsRouter from "./client-events";
 import clientNotesRouter from "./client-notes";
 import clientContentIdeasRouter from "./client-content-ideas";
 import clientRetainerRouter from "./client-retainer";
+import quoteConfiguratorRouter from "./quote-configurator";
 import cronRouter from "./cron";
 import googleDriveRouter from "./google-drive";
 import personalAgendaRouter from "./personal-agenda";
@@ -86,6 +87,8 @@ router.use(clientNotesRouter);
 router.use(clientContentIdeasRouter);
 // Idem: path assoluti /clients/:clientId/retainer/*, montato bare.
 router.use(clientRetainerRouter);
+// Path assoluti: /public/preventivo/* (pubbliche) e /quote-* (agenzia).
+router.use(quoteConfiguratorRouter);
 router.use(dailyFocusRouter);
 router.use(trashRouter);
 router.use(cronRouter);

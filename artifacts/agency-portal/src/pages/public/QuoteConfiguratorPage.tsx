@@ -283,14 +283,24 @@ export default function QuoteConfiguratorPage({ token }: { token: string }) {
                   Sconto -{breakdown.discountPercent}%{breakdown.bundlePercent > 0 && breakdown.serviceCount >= 3 ? " (più servizi)" : ""}
                 </span>
               )}
+              {/* Il totale resta visibile ma piccolo: l'headline è il mensile. */}
               <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                {breakdown.monthlyDiscounted > 0 && <span><b className="text-zinc-800">{eur(breakdown.monthlyDiscounted)}</b>/mese × {breakdown.months}</span>}
-                {breakdown.oneoffSubtotal > 0 && <span>+ {eur(breakdown.oneoffSubtotal)} una tantum</span>}
+                {breakdown.contractTotal > 0 && <span>Su {breakdown.months} mesi · {eur(breakdown.contractTotal)}</span>}
+                {breakdown.oneoffSubtotal > 0 && <span>di cui {eur(breakdown.oneoffSubtotal)} una tantum</span>}
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-[11px] text-zinc-400 uppercase tracking-wide">Totale collaborazione</div>
-              <div className="text-2xl font-extrabold tabular-nums leading-none">{eur(breakdown.contractTotal)}</div>
+              {breakdown.monthlyDiscounted > 0 ? (
+                <>
+                  <div className="text-[11px] text-zinc-400 uppercase tracking-wide">Al mese</div>
+                  <div className="text-2xl font-extrabold tabular-nums leading-none">{eur(breakdown.monthlyDiscounted)}</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[11px] text-zinc-400 uppercase tracking-wide">Una tantum</div>
+                  <div className="text-2xl font-extrabold tabular-nums leading-none">{eur(breakdown.oneoffSubtotal)}</div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex gap-2">

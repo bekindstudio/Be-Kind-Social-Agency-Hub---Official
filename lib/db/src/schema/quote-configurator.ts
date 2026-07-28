@@ -47,6 +47,8 @@ export const quoteLinksTable = pgTable("quote_links", {
   note: text("note"),
   /** Chiavi servizi pre-selezionate all'apertura. */
   preset: jsonb("preset").notNull().default([]),
+  /** Override di prezzo per questo cliente, per chiave servizio. {} = catalogo globale. */
+  priceOverrides: jsonb("price_overrides").notNull().default({}),
   createdBy: text("created_by"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

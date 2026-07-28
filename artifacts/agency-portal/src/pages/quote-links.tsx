@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { portalFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2, Tags, Save } from "lucide-react";
+import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2, Tags, Save, SlidersHorizontal, EyeOff } from "lucide-react";
 
 /**
  * Gestione del configuratore preventivo: genera un link personale per ogni
@@ -12,8 +12,9 @@ import { Sparkles, Copy, Check, Link2, Ban, Inbox, Plus, Loader2, Tags, Save } f
 
 const eur = (n: number) => `${Number(n).toLocaleString("it-IT")} €`;
 
-type QuoteLink = { id: number; token: string; prospectName: string; note: string | null; status: string; url: string; createdAt: string; preset: string[] };
 type Tier = { label: string; value: string; price: number };
+type Override = { basePrice?: number; unitPrice?: number; tiers?: Record<string, number>; hidden?: boolean };
+type QuoteLink = { id: number; token: string; prospectName: string; note: string | null; status: string; url: string; createdAt: string; preset: string[]; priceOverrides: Record<string, Override> };
 type Service = {
   id: number; key: string; name: string; description: string | null; category: string;
   billing: "monthly" | "oneoff"; pricing: "fixed" | "tiered" | "per_unit";
@@ -36,6 +37,7 @@ export default function QuoteLinksPage() {
   const [preset, setPreset] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [pricingFor, setPricingFor] = useState<number | null>(null);
 
   const load = async () => {
     const [l, r, s] = await Promise.all([
@@ -138,21 +140,38 @@ export default function QuoteLinksPage() {
 
             <div className="space-y-2">
               {links.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nessun link ancora. Creane uno qui sopra.</p>}
-              {links.map((l) => (
-                <div key={l.id} className={`rounded-xl border p-3 flex items-center gap-3 ${l.status === "active" ? "border-card-border bg-card" : "border-card-border bg-muted/40 opacity-70"}`}>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{l.prospectName} {l.status !== "active" && <span className="text-[10px] text-muted-foreground">· disattivato</span>}</p>
-                    <p className="text-xs text-muted-foreground truncate">{l.url}</p>
-                    {l.note && <p className="text-xs text-muted-foreground/80 truncate">{l.note}</p>}
+              {links.map((l) => {
+                const custom = Object.keys(l.priceOverrides ?? {}).length;
+                return (
+                <div key={l.id} className={`rounded-xl border ${l.status === "active" ? "border-card-border bg-card" : "border-card-border bg-muted/40 opacity-70"}`}>
+                  <div className="p-3 flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">
+                        {l.prospectName}
+                        {custom > 0 && <span className="ml-2 text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">prezzi su misura</span>}
+                        {l.status !== "active" && <span className="text-[10px] text-muted-foreground"> · disattivato</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{l.url}</p>
+                      {l.note && <p className="text-xs text-muted-foreground/80 truncate">{l.note}</p>}
+                    </div>
+                    <button onClick={() => setPricingFor(pricingFor === l.id ? null : l.id)}
+                      className={`p-2 rounded-lg hover:bg-muted ${pricingFor === l.id ? "text-primary bg-primary/10" : "text-muted-foreground"}`} title="Prezzi per questo cliente">
+                      <SlidersHorizontal size={16} />
+                    </button>
+                    <button onClick={() => copy(l.url)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Copia link">
+                      {copied === l.url ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                    </button>
+                    {l.status === "active" && (
+                      <button onClick={() => disable(l.id)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Disattiva"><Ban size={16} /></button>
+                    )}
                   </div>
-                  <button onClick={() => copy(l.url)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Copia link">
-                    {copied === l.url ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
-                  </button>
-                  {l.status === "active" && (
-                    <button onClick={() => disable(l.id)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" title="Disattiva"><Ban size={16} /></button>
+                  {pricingFor === l.id && (
+                    <LinkPriceEditor link={l} services={services}
+                      onSaved={(updated) => { setLinks((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))); setPricingFor(null); }} />
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -211,6 +230,132 @@ function groupServices(arr: Service[]): Record<string, Service[]> {
   const out: Record<string, Service[]> = {};
   for (const s of arr) (out[s.category] ??= []).push(s);
   return out;
+}
+
+/**
+ * Editor prezzi per un singolo cliente (link). Ogni campo parte dal prezzo
+ * globale; se lo cambi diventa un override salvato solo su questo link. Puoi
+ * anche nascondere un servizio per questo cliente. Al salvataggio inviamo solo
+ * ciò che differisce dal catalogo, così i link restano puliti.
+ */
+function LinkPriceEditor({ link, services, onSaved }: { link: QuoteLink; services: Service[]; onSaved: (l: QuoteLink) => void }) {
+  const { toast } = useToast();
+  const activeServices = services.filter((s) => s.active);
+  const [state, setState] = useState(() => {
+    const init: Record<string, { basePrice: number; unitPrice: number; tiers: Record<string, number>; hidden: boolean }> = {};
+    for (const s of activeServices) {
+      const ov = link.priceOverrides?.[s.key] ?? {};
+      init[s.key] = {
+        basePrice: ov.basePrice ?? s.basePrice,
+        unitPrice: ov.unitPrice ?? s.unitPrice ?? 0,
+        tiers: Object.fromEntries(s.tiers.map((t) => [t.value, ov.tiers?.[t.value] ?? t.price])),
+        hidden: !!ov.hidden,
+      };
+    }
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const set = (key: string, patch: Partial<{ basePrice: number; unitPrice: number; hidden: boolean }>) =>
+    setState((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const setTier = (key: string, value: string, price: number) =>
+    setState((p) => ({ ...p, [key]: { ...p[key], tiers: { ...p[key].tiers, [value]: price } } }));
+
+  const save = async () => {
+    // Costruisci gli override: solo ciò che differisce dal catalogo globale.
+    const overrides: Record<string, Override> = {};
+    for (const s of activeServices) {
+      const st = state[s.key];
+      if (st.hidden) { overrides[s.key] = { hidden: true }; continue; }
+      const entry: Override = {};
+      if (s.pricing === "fixed" && st.basePrice !== s.basePrice) entry.basePrice = st.basePrice;
+      if (s.pricing === "per_unit" && st.unitPrice !== (s.unitPrice ?? 0)) entry.unitPrice = st.unitPrice;
+      if (s.pricing === "tiered") {
+        const diff: Record<string, number> = {};
+        for (const t of s.tiers) if (st.tiers[t.value] !== t.price) diff[t.value] = st.tiers[t.value];
+        if (Object.keys(diff).length) entry.tiers = diff;
+      }
+      if (Object.keys(entry).length) overrides[s.key] = entry;
+    }
+    setSaving(true);
+    try {
+      const r = await portalFetch(`/api/quote-links/${link.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priceOverrides: overrides }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      onSaved(updated);
+      toast({ title: "Prezzi salvati", description: `Su misura per ${link.prospectName}` });
+    } catch { toast({ variant: "destructive", title: "Salvataggio non riuscito" }); }
+    finally { setSaving(false); }
+  };
+
+  const suffix = (s: Service) => (s.billing === "oneoff" ? "una tantum" : "/mese");
+
+  return (
+    <div className="border-t border-card-border bg-muted/30 px-3 py-3">
+      <p className="text-xs text-muted-foreground mb-3">
+        Prezzi solo per <b>{link.prospectName}</b>. Ciò che non tocchi resta al prezzo di listino.
+      </p>
+      <div className="space-y-2">
+        {activeServices.map((s) => {
+          const st = state[s.key];
+          const changed =
+            st.hidden ||
+            (s.pricing === "fixed" && st.basePrice !== s.basePrice) ||
+            (s.pricing === "per_unit" && st.unitPrice !== (s.unitPrice ?? 0)) ||
+            (s.pricing === "tiered" && s.tiers.some((t) => st.tiers[t.value] !== t.price));
+          return (
+            <div key={s.id} className={`rounded-lg border p-2.5 bg-card ${st.hidden ? "opacity-60" : ""} ${changed && !st.hidden ? "border-primary/40" : "border-card-border"}`}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-sm font-medium truncate">{s.name} {changed && !st.hidden && <span className="text-[10px] text-primary">· modificato</span>}</span>
+                <button onClick={() => set(s.key, { hidden: !st.hidden })}
+                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full ${st.hidden ? "bg-zinc-200 text-zinc-600" : "text-muted-foreground hover:bg-muted"}`}
+                  title={st.hidden ? "Nascosto a questo cliente" : "Nascondi a questo cliente"}>
+                  <EyeOff size={12} /> {st.hidden ? "Nascosto" : "Nascondi"}
+                </button>
+              </div>
+              {!st.hidden && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  {s.pricing === "fixed" && (
+                    <OverrideField label="Prezzo" suffix={suffix(s)} def={s.basePrice} value={st.basePrice} onChange={(v) => set(s.key, { basePrice: v })} />
+                  )}
+                  {s.pricing === "per_unit" && (
+                    <OverrideField label={`/ ${s.unitLabel ?? "unità"}`} suffix={suffix(s)} def={s.unitPrice ?? 0} value={st.unitPrice} onChange={(v) => set(s.key, { unitPrice: v })} />
+                  )}
+                  {s.pricing === "tiered" && s.tiers.map((t) => (
+                    <OverrideField key={t.value} label={t.label} suffix={suffix(s)} def={t.price} value={st.tiers[t.value]} onChange={(v) => setTier(s.key, t.value, v)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button onClick={save} disabled={saving}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-50">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salva prezzi cliente
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OverrideField({ label, suffix, def, value, onChange }: { label: string; suffix: string; def: number; value: number; onChange: (n: number) => void }) {
+  const changed = value !== def;
+  return (
+    <div>
+      <label className="block text-[11px] text-muted-foreground mb-0.5">{label}</label>
+      <div className={`inline-flex items-center rounded-lg border bg-background overflow-hidden ${changed ? "border-primary" : "border-input"}`}>
+        <input type="number" min={0} value={value}
+          onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          className="w-20 px-2 py-1.5 text-sm text-right bg-transparent focus:outline-none tabular-nums" />
+        <span className="px-2 text-xs text-muted-foreground border-l border-input">€ {suffix}</span>
+      </div>
+      {changed && <p className="text-[10px] text-muted-foreground mt-0.5">listino {def} €</p>}
+    </div>
+  );
 }
 
 /** Riga editabile di un servizio: prezzi, scaglioni, attivo. Salvataggio esplicito. */

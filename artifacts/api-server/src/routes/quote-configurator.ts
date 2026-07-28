@@ -56,6 +56,33 @@ async function loadActiveServices(): Promise<QuoteServiceDef[]> {
   return rows.map(toServiceDef);
 }
 
+type PriceOverride = { basePrice?: number; unitPrice?: number; tiers?: Record<string, number>; hidden?: boolean };
+
+/**
+ * Applica gli override di prezzo di un link sopra il catalogo globale. I servizi
+ * marcati `hidden` per quel cliente vengono tolti. Usato sia per mostrare il
+ * catalogo (GET) sia per ricalcolare il prezzo autorevole (POST): così display
+ * e conto usano sempre gli stessi numeri personalizzati.
+ */
+function applyOverrides(services: QuoteServiceDef[], raw: unknown): QuoteServiceDef[] {
+  const overrides = (raw && typeof raw === "object" ? raw : {}) as Record<string, PriceOverride>;
+  const out: QuoteServiceDef[] = [];
+  for (const s of services) {
+    const ov = overrides[s.key];
+    if (!ov) { out.push(s); continue; }
+    if (ov.hidden) continue;
+    out.push({
+      ...s,
+      basePrice: typeof ov.basePrice === "number" ? ov.basePrice : s.basePrice,
+      unitPrice: typeof ov.unitPrice === "number" ? ov.unitPrice : s.unitPrice,
+      tiers: ov.tiers
+        ? s.tiers.map((t) => (typeof ov.tiers![t.value] === "number" ? { ...t, price: ov.tiers![t.value] } : t))
+        : s.tiers,
+    });
+  }
+  return out;
+}
+
 /** Percentuale di un codice sconto valido (0 se assente/scaduto). */
 async function codePercent(code?: string | null): Promise<{ percent: number; code: string | null }> {
   const c = (code ?? "").trim();
@@ -79,7 +106,7 @@ router.get("/public/preventivo/:token", async (req, res): Promise<void> => {
     .limit(1);
   if (!link) { res.status(404).json({ error: "LINK_NON_VALIDO" }); return; }
 
-  const services = await loadActiveServices();
+  const services = applyOverrides(await loadActiveServices(), link.priceOverrides);
   res.json({
     prospectName: link.prospectName,
     preset: Array.isArray(link.preset) ? link.preset : [],
@@ -122,7 +149,7 @@ router.post("/public/preventivo/:token/quote", async (req, res): Promise<void> =
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const body = parsed.data;
 
-  const services = await loadActiveServices();
+  const services = applyOverrides(await loadActiveServices(), link.priceOverrides);
   const { percent, code } = await codePercent(body.code);
   const breakdown = computeQuote(services, body.selection as QuoteSelectionItem[], body.months, percent);
 
@@ -309,15 +336,34 @@ router.get("/quote-links", async (req, res): Promise<void> => {
   res.json(rows.map((l) => ({ ...l, url: `${base}/preventivo/${l.token}` })));
 });
 
+const overrideSchema = z.object({
+  basePrice: z.number().int().min(0).max(1000000).optional(),
+  unitPrice: z.number().int().min(0).max(1000000).optional(),
+  tiers: z.record(z.string(), z.number().int().min(0).max(1000000)).optional(),
+  hidden: z.boolean().optional(),
+});
+const patchLinkSchema = z.object({
+  status: z.enum(["active", "disabled"]).optional(),
+  preset: z.array(z.string()).max(50).optional(),
+  priceOverrides: z.record(z.string(), overrideSchema).optional(),
+}).strict();
+
 router.patch("/quote-links/:id", async (req, res): Promise<void> => {
   if (!requireUser(req, res)) return;
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "ID non valido" }); return; }
-  const status = String((req.body as { status?: unknown })?.status ?? "");
-  if (!["active", "disabled"].includes(status)) { res.status(400).json({ error: "Stato non valido" }); return; }
-  const [row] = await db.update(quoteLinksTable).set({ status }).where(eq(quoteLinksTable.id, id)).returning();
+  const parsed = patchLinkSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const updates: Record<string, unknown> = {};
+  if (parsed.data.status !== undefined) updates.status = parsed.data.status;
+  if (parsed.data.preset !== undefined) updates.preset = parsed.data.preset;
+  if (parsed.data.priceOverrides !== undefined) updates.priceOverrides = parsed.data.priceOverrides;
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nessun campo da aggiornare" }); return; }
+
+  const [row] = await db.update(quoteLinksTable).set(updates).where(eq(quoteLinksTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Link non trovato" }); return; }
-  res.json(row);
+  res.json({ ...row, url: `${baseUrl(req)}/preventivo/${row.token}` });
 });
 
 router.get("/quote-requests", async (req, res): Promise<void> => {

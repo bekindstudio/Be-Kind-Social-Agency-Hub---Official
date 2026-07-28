@@ -195,9 +195,11 @@ router.get("/public/portal/:token/manifest.webmanifest", async (req, res): Promi
     background_color: "#ffffff",
     theme_color: color,
     lang: "it-IT",
+    // Icona = logo Be Kind (l'app è uno strumento dell'agenzia). Nome e colore
+    // restano del cliente, così sulla home l'etichetta è la sua ma l'icona è Be Kind.
     icons: [
-      { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/logo-bekind.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/logo-bekind.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
     ],
   });
 });
@@ -273,6 +275,34 @@ router.get("/public/portal/:token/events", async (req, res): Promise<void> => {
       note: e.note ?? null,
     })),
   );
+});
+
+// Il cliente aggiunge i suoi prossimi eventi e collaborazioni. Finisce nella
+// stessa tabella eventi che vede l'agenzia, così sono subito visibili a tutti.
+router.post("/public/portal/:token/events", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+  const body = req.body as { title?: unknown; date?: unknown; type?: unknown; note?: unknown };
+  const title = String(body.title ?? "").trim();
+  const dateStr = String(body.date ?? "").trim();
+  const type = ["collaborazione", "evento"].includes(String(body.type)) ? String(body.type) : "evento";
+  const note = body.note != null ? String(body.note).trim().slice(0, 1000) : null;
+  if (title.length < 2 || title.length > 200) { res.status(400).json({ error: "Titolo non valido" }); return; }
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) { res.status(400).json({ error: "Data non valida" }); return; }
+
+  const [row] = await db.insert(clientEventsTable).values({
+    clientId: client.id,
+    title,
+    date,
+    type,
+    priority: "medium",
+    note: note || null,
+  }).returning();
+  res.status(201).json({
+    id: String(row.id), title: row.title, date: row.date.toISOString(),
+    endDate: null, type: row.type, priority: row.priority, note: row.note ?? null,
+  });
 });
 
 /* ── PIANO EDITORIALE (sola lettura) ─────────────────────────── */

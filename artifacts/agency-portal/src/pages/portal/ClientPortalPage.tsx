@@ -8,6 +8,7 @@ import {
   sectionHasEssential,
   visibleFields,
   type BriefData,
+  type BriefField,
 } from "@/lib/briefSchema";
 import {
   platformMeta,
@@ -31,6 +32,11 @@ import {
   ExternalLink,
   Lightbulb,
   Plus,
+  ArrowRight,
+  ArrowLeft,
+  Sparkles,
+  PartyPopper,
+  Check,
 } from "lucide-react";
 
 /* Area cliente pubblica (accesso via link, senza login). */
@@ -84,25 +90,23 @@ export default function ClientPortalPage({ token }: { token: string }) {
     finally { setPinBusy(false); }
   }, [pin, token, load]);
 
-  // PWA per-cliente: ribrandizza il <head> con manifest, icona, colore e titolo
-  // del cliente mentre è sul portale; ripristina Be Kind quando esce.
+  // PWA per-cliente: nome e colore del cliente nel <head> mentre è sul portale.
+  // L'ICONA resta quella di Be Kind (apple-touch-icon globale + icone del
+  // manifest = logo Be Kind): l'app è uno strumento dell'agenzia.
   useEffect(() => {
     const head = document.head;
     const manifest = head.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
-    const appleIcon = head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
     const themeMeta = head.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
     const titleMeta = head.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null;
     const prev = {
-      manifest: manifest?.getAttribute("href"), icon: appleIcon?.getAttribute("href"),
+      manifest: manifest?.getAttribute("href"),
       theme: themeMeta?.getAttribute("content"), title: titleMeta?.getAttribute("content"), doc: document.title,
     };
     manifest?.setAttribute("href", API(token, "/manifest.webmanifest"));
-    appleIcon?.setAttribute("href", API(token, "/icon.png"));
     if (client?.color) themeMeta?.setAttribute("content", client.color);
     if (client?.name) { titleMeta?.setAttribute("content", client.name); document.title = client.name; }
     return () => {
       if (prev.manifest) manifest?.setAttribute("href", prev.manifest);
-      if (prev.icon) appleIcon?.setAttribute("href", prev.icon);
       if (prev.theme) themeMeta?.setAttribute("content", prev.theme);
       if (prev.title) titleMeta?.setAttribute("content", prev.title);
       document.title = prev.doc;
@@ -255,10 +259,6 @@ function PortalBrief({ token }: { token: string }) {
   const [data, setData] = useState<BriefData>(emptyBriefData);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [open, setOpen] = useState<Record<string, boolean>>({ [BRIEF_SECTIONS[0].key]: true });
-  // Percorso essenziale acceso di default: il cliente vede poche domande chiare,
-  // non un muro di 70 campi. Il resto è a un tocco.
-  const [essentialOnly, setEssentialOnly] = useState(true);
   const loadedRef = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<BriefData>(data);
@@ -324,121 +324,137 @@ function PortalBrief({ token }: { token: string }) {
     schedule();
   };
 
-  const essential = useMemo(() => briefEssentialStats(data), [data]);
-  const shownSections = useMemo(
-    () => (essentialOnly ? BRIEF_SECTIONS.filter(sectionHasEssential) : BRIEF_SECTIONS),
-    [essentialOnly],
+  // Flusso Typeform: una domanda alla volta. Prima le essenziali, poi (se vuole)
+  // le facoltative. intro → [essenziali] → bivio → [facoltative] → fatto.
+  type Flow =
+    | { kind: "intro" }
+    | { kind: "gate" }
+    | { kind: "done" }
+    | { kind: "field"; sk: string; sl: string; f: BriefField };
+  const { essFields, optFields } = useMemo(() => {
+    const ess: Flow[] = []; const opt: Flow[] = [];
+    for (const s of BRIEF_SECTIONS) for (const f of s.fields) {
+      (f.essential ? ess : opt).push({ kind: "field", sk: s.key, sl: s.label, f });
+    }
+    return { essFields: ess, optFields: opt };
+  }, []);
+  const flow = useMemo<Flow[]>(
+    () => [{ kind: "intro" }, ...essFields, { kind: "gate" }, ...optFields, { kind: "done" }],
+    [essFields, optFields],
   );
+  const [si, setSi] = useState(0);
+  const doneIndex = flow.length - 1;
+  const essential = useMemo(() => briefEssentialStats(data), [data]);
 
   if (loading) {
-    return (
-      <div className="py-16 text-center">
-        <Loader2 className="mx-auto animate-spin text-[#7a8f5c]" />
-      </div>
-    );
+    return <div className="py-16 text-center"><Loader2 className="mx-auto animate-spin text-[#7a8f5c]" /></div>;
   }
 
+  const step = flow[Math.min(si, doneIndex)];
+  const progress = Math.round((si / doneIndex) * 100);
+  const next = () => setSi((i) => Math.min(doneIndex, i + 1));
+  const back = () => setSi((i) => Math.max(0, i - 1));
+
   return (
-    <div>
-      <div className="mb-4 rounded-xl border border-card-border bg-card p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Raccontaci di te</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Sotto ogni domanda trovi un aiuto con un esempio. Le risposte si salvano da sole.
+    <div className="min-h-[60vh]">
+      {/* Barra progresso + stato salvataggio */}
+      {step.kind !== "intro" && (
+        <div className="mb-6">
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className="h-full bg-[#7a8f5c] transition-all duration-500" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[11px] text-muted-foreground">
+              {essential.filled}/{essential.total} risposte chiave
+            </span>
+            <SaveBadge state={saveState} />
+          </div>
+        </div>
+      )}
+
+      <div key={si} className="animate-in fade-in slide-in-from-bottom-3 duration-300">
+        {step.kind === "intro" && (
+          <div className="text-center py-10">
+            <div className="inline-flex items-center gap-1.5 text-sm font-semibold mb-4 px-3 py-1 rounded-full bg-[#7a8f5c]/10 text-[#5f7047]">
+              <Sparkles size={15} /> Raccontaci di te
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight">
+              Aiutaci a partire col piede giusto.
+            </h2>
+            <p className="text-lg text-muted-foreground mt-3">
+              Poche domande, una alla volta. Si salvano da sole, puoi tornarci quando vuoi.
             </p>
+            <button onClick={next}
+              className="mt-8 inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-[#7a8f5c] text-white text-lg font-bold shadow-lg active:scale-[.98] transition-transform">
+              Iniziamo <ArrowRight size={20} />
+            </button>
           </div>
-          <SaveBadge state={saveState} />
-        </div>
+        )}
 
-        {/* Toggle: prima l'essenziale, poi (se vuole) il resto. */}
-        <div className="mt-3 inline-flex items-center rounded-lg border border-input bg-background p-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => setEssentialOnly(true)}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${essentialOnly ? "bg-[#7a8f5c] text-white" : "text-muted-foreground"}`}
-          >
-            L'essenziale
-          </button>
-          <button
-            type="button"
-            onClick={() => setEssentialOnly(false)}
-            className={`px-3 py-1.5 rounded-md font-medium transition-colors ${!essentialOnly ? "bg-[#7a8f5c] text-white" : "text-muted-foreground"}`}
-          >
-            Tutte le domande
-          </button>
-        </div>
+        {step.kind === "field" && (
+          <div className="py-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#7a8f5c] mb-2">{step.sl}</p>
+            <label className="block text-2xl md:text-3xl font-extrabold tracking-tight leading-tight">{step.f.label}</label>
+            {step.f.help && <p className="text-base text-muted-foreground mt-2">{step.f.help}</p>}
+            <textarea
+              autoFocus
+              value={data[step.sk]?.[step.f.key] ?? ""}
+              onChange={(e) => setField(step.sk, step.f.key, e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !step.f.long) { e.preventDefault(); next(); } }}
+              placeholder={step.f.placeholder ?? "Scrivi qui…"}
+              rows={step.f.long ? 4 : 2}
+              className="w-full mt-5 resize-y rounded-2xl border-2 border-input bg-background px-4 py-4 text-lg focus:outline-none focus:border-[#7a8f5c]"
+            />
+          </div>
+        )}
 
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span>{essentialOnly ? "Le domande essenziali" : "Completamento"}</span>
-            <span className="font-semibold text-foreground tabular-nums">{essential.filled}/{essential.total}</span>
-          </div>
-          <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-[#7a8f5c] transition-all duration-500" style={{ width: `${essential.pct}%` }} />
-          </div>
-          {essentialOnly && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Bastano queste per iniziare.{" "}
-              <button type="button" onClick={() => setEssentialOnly(false)} className="text-[#7a8f5c] font-medium hover:underline">
-                Vuoi aggiungere altri dettagli?
+        {step.kind === "gate" && (
+          <div className="text-center py-10">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
+              <Check size={30} className="text-emerald-600" />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">L'essenziale c'è. Grazie!</h2>
+            <p className="text-lg text-muted-foreground mt-3">
+              Vuoi aggiungere qualche dettaglio in più? Ci aiuta a fare un lavoro più su misura.
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row gap-2 justify-center">
+              <button onClick={() => setSi(doneIndex)}
+                className="px-6 py-3.5 rounded-2xl border-2 border-input font-bold">Ho finito così</button>
+              <button onClick={next}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#7a8f5c] text-white font-bold">
+                Aggiungo dettagli <ArrowRight size={18} />
               </button>
+            </div>
+          </div>
+        )}
+
+        {step.kind === "done" && (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 rounded-full bg-[#7a8f5c]/15 flex items-center justify-center mx-auto mb-5">
+              <PartyPopper size={30} className="text-[#7a8f5c]" />
+            </div>
+            <h2 className="text-3xl font-extrabold tracking-tight">Perfetto, è tutto salvato.</h2>
+            <p className="text-lg text-muted-foreground mt-3">
+              Puoi tornare qui quando vuoi per modificare o aggiungere.
             </p>
-          )}
-        </div>
+            <button onClick={() => setSi(0)}
+              className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-2xl border-2 border-input font-bold">
+              <ArrowLeft size={18} /> Rivedi le risposte
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-3">
-        {shownSections.map((s) => {
-          const isOpen = !!open[s.key];
-          const Icon = s.icon;
-          const fields = visibleFields(s, essentialOnly);
-          const filled = fields.filter((f) => (data[s.key]?.[f.key] ?? "").trim().length > 0).length;
-          const optional = !sectionHasEssential(s);
-          return (
-            <section key={s.key} className="rounded-xl border border-card-border bg-card overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setOpen((p) => ({ ...p, [s.key]: !p[s.key] }))}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#7a8f5c]/10 text-[#7a8f5c]">
-                  <Icon size={18} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{s.label}</span>
-                    {filled === fields.length && filled > 0 && <CheckCircle2 size={14} className="text-emerald-500" />}
-                    {optional && !essentialOnly && (
-                      <span className="text-[10px] rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground shrink-0">facoltativa</span>
-                    )}
-                  </span>
-                  {s.hint && <span className="block text-[11px] text-muted-foreground truncate">{s.hint}</span>}
-                </span>
-                <span className="text-[11px] text-muted-foreground shrink-0">{filled}/{fields.length}</span>
-                <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
-              </button>
-              {isOpen && (
-                <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
-                  {fields.map((f) => (
-                    <div key={f.key} className={f.long ? "md:col-span-2" : undefined}>
-                      <label className="block text-xs font-semibold text-foreground mb-0.5">{f.label}</label>
-                      {f.help && <p className="text-[11px] text-muted-foreground mb-1.5 leading-snug">{f.help}</p>}
-                      <textarea
-                        value={data[s.key]?.[f.key] ?? ""}
-                        onChange={(e) => setField(s.key, f.key, e.target.value)}
-                        placeholder={f.placeholder ?? "Scrivi qui…"}
-                        rows={f.long ? 3 : 2}
-                        className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
+      {/* Navigazione (nei passi domanda) */}
+      {step.kind === "field" && (
+        <div className="mt-6 flex items-center gap-3">
+          <button onClick={back} className="p-3 rounded-2xl text-muted-foreground hover:bg-muted" aria-label="Indietro"><ArrowLeft size={20} /></button>
+          <button onClick={next}
+            className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-[#7a8f5c] text-white text-lg font-bold active:scale-[.99] transition-transform">
+            Avanti <ArrowRight size={20} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -641,22 +657,93 @@ function fmtDate(iso?: string | null) {
 }
 
 function PortalEvents({ token }: { token: string }) {
-  const { data, loading } = usePortalData<any[]>(token, "/events");
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [type, setType] = useState<"evento" | "collaborazione">("evento");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch(API(token, "/events"));
+        if (alive && r.ok) setEvents(await r.json());
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [token]);
+
+  const add = async () => {
+    if (title.trim().length < 2 || !date) return;
+    setSaving(true);
+    try {
+      const r = await fetch(API(token, "/events"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), date, type, note: note.trim() || undefined }),
+      });
+      if (r.ok) {
+        const created = await r.json();
+        setEvents((prev) => [...prev, created].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+        setTitle(""); setDate(""); setNote(""); setType("evento"); setShowForm(false);
+      }
+    } finally { setSaving(false); }
+  };
+
   if (loading) return <Spinner />;
-  const events = Array.isArray(data) ? data : [];
-  if (events.length === 0) return <Empty text="Nessun evento in programma." />;
+
   return (
-    <div className="space-y-2">
-      {events.map((e) => (
-        <div key={e.id} className="rounded-xl border border-card-border bg-card p-3 flex items-start gap-3">
-          <CalendarDays size={16} className="text-[#7a8f5c] mt-0.5 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm">{e.title}</p>
-            <p className="text-xs text-muted-foreground">{fmtDate(e.date)}{e.endDate ? ` → ${fmtDate(e.endDate)}` : ""}{e.note ? ` · ${e.note}` : ""}</p>
+    <div className="space-y-3">
+      {/* Aggiungi: card grande e invitante in cima */}
+      {showForm ? (
+        <div className="rounded-2xl border-2 border-[#7a8f5c] bg-card p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <p className="font-semibold">Un tuo evento o collaborazione</p>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus
+            placeholder="Es. Apertura nuova sede · Collab con @…"
+            className="w-full px-4 py-3 rounded-xl border border-input bg-background text-base focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40" />
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setType("evento")}
+              className={`py-2.5 rounded-xl border-2 text-sm font-semibold ${type === "evento" ? "border-[#7a8f5c] bg-[#7a8f5c]/10 text-[#5f7047]" : "border-input text-muted-foreground"}`}>Evento</button>
+            <button type="button" onClick={() => setType("collaborazione")}
+              className={`py-2.5 rounded-xl border-2 text-sm font-semibold ${type === "collaborazione" ? "border-[#7a8f5c] bg-[#7a8f5c]/10 text-[#5f7047]" : "border-input text-muted-foreground"}`}>Collaborazione</button>
           </div>
-          <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-input bg-background text-base focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40" />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Una nota (facoltativa)"
+            className="w-full px-4 py-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8f5c]/40" />
+          <div className="flex gap-2">
+            <button onClick={() => { setShowForm(false); setTitle(""); setDate(""); setNote(""); }}
+              className="px-4 py-2.5 rounded-xl border border-input text-sm font-medium">Annulla</button>
+            <button onClick={() => void add()} disabled={saving || title.trim().length < 2 || !date}
+              className="flex-1 py-2.5 rounded-xl bg-[#7a8f5c] text-white font-bold text-sm disabled:opacity-50">
+              {saving ? "…" : "Aggiungi"}
+            </button>
+          </div>
         </div>
-      ))}
+      ) : (
+        <button onClick={() => setShowForm(true)}
+          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-[#7a8f5c]/40 text-[#5f7047] font-semibold hover:bg-[#7a8f5c]/5 transition-colors">
+          <Plus size={18} /> Aggiungi un tuo evento o collaborazione
+        </button>
+      )}
+
+      {events.length === 0 ? (
+        <Empty text="Nessun evento ancora. Aggiungi il primo qui sopra." />
+      ) : (
+        events.map((e) => (
+          <div key={e.id} className="rounded-xl border border-card-border bg-card p-3 flex items-start gap-3">
+            <CalendarDays size={16} className="text-[#7a8f5c] mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">{e.title}</p>
+              <p className="text-xs text-muted-foreground">{fmtDate(e.date)}{e.endDate ? ` → ${fmtDate(e.endDate)}` : ""}{e.note ? ` · ${e.note}` : ""}</p>
+            </div>
+            <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 shrink-0">{e.type}</span>
+          </div>
+        ))
+      )}
     </div>
   );
 }

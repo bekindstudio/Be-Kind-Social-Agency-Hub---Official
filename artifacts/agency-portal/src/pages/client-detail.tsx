@@ -5,6 +5,7 @@ import {
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout/Layout";
 import { ClientDetailHeader } from "@/components/client/ClientDetailHeader";
+import { ShareClientDialog } from "@/components/ShareClientDialog";
 import { ClientMetaSection } from "@/components/client/ClientMetaSection";
 import { ClientReportsSection } from "@/components/client/ClientReportsSection";
 import { ClientProjectsSection } from "@/components/client/ClientProjectsSection";
@@ -1032,6 +1033,7 @@ export default function ClientDetail({ id }: Props) {
   const [, navigate] = useLocation();
   const clientId = parseInt(id, 10);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const {
     client,
     isLoading,
@@ -1540,6 +1542,14 @@ export default function ClientDetail({ id }: Props) {
             setLogoPreview(null);
           }}
           onStartEdit={startEditing}
+          onShare={() => setShareOpen(true)}
+        />
+
+        <ShareClientDialog
+          clientId={clientId}
+          clientName={viewClient.name ?? "Cliente"}
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
         />
 
         {/* Hero focalizzato del cockpit (Wave BS): apre sul "cosa serve adesso"

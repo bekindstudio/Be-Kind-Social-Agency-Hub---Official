@@ -1,4 +1,4 @@
-import { Globe, Pencil, Save, Sparkles, X } from "lucide-react";
+import { Globe, Pencil, Save, Sparkles, X, Share2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/featureFlags";
 
@@ -20,6 +20,7 @@ interface ClientDetailHeaderProps {
   onSave: () => void;
   onCancel: () => void;
   onStartEdit: () => void;
+  onShare: () => void;
 }
 
 export function ClientDetailHeader({
@@ -33,6 +34,7 @@ export function ClientDetailHeader({
   onSave,
   onCancel,
   onStartEdit,
+  onShare,
 }: ClientDetailHeaderProps) {
   return (
     <div className="flex items-start justify-between mb-8">
@@ -101,12 +103,21 @@ export function ClientDetailHeader({
             </button>
           </>
         ) : (
-          <button
-            onClick={onStartEdit}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90"
-          >
-            <Pencil size={15} /> Modifica
-          </button>
+          <>
+            <button
+              onClick={onShare}
+              className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:opacity-80"
+              title="Copia il link del portale da mandare al cliente (con PIN opzionale)"
+            >
+              <Share2 size={15} /> Condividi
+            </button>
+            <button
+              onClick={onStartEdit}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90"
+            >
+              <Pencil size={15} /> Modifica
+            </button>
+          </>
         )}
       </div>
     </div>

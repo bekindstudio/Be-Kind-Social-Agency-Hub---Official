@@ -23,6 +23,9 @@ export function ShareClientDialog({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [pinSet, setPinSet] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
 
   const url = token ? `${window.location.origin}/portal/${token}` : "";
 
@@ -37,6 +40,7 @@ export function ShareClientDialog({
         if (r.ok) {
           const c = await r.json();
           setToken(c?.shareToken ?? null);
+          setPinSet(Boolean(c?.portalPinSet));
         }
       } finally {
         if (alive) setLoading(false);
@@ -84,6 +88,32 @@ export function ShareClientDialog({
     } catch {
       toast({ variant: "destructive", title: "Copia non riuscita", description: "Copia il link manualmente." });
     }
+  };
+
+  const savePin = async () => {
+    if (!/^\d{4,6}$/.test(pinInput)) { toast({ variant: "destructive", title: "Il PIN deve essere 4-6 cifre" }); return; }
+    setPinBusy(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/portal-pin`, {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: pinInput }),
+      });
+      if (!r.ok) throw new Error();
+      setPinSet(true); setPinInput("");
+      toast({ title: "PIN impostato", description: "Comunicalo tu al cliente." });
+    } catch { toast({ variant: "destructive", title: "Impossibile impostare il PIN" }); }
+    finally { setPinBusy(false); }
+  };
+  const removePin = async () => {
+    setPinBusy(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/portal-pin`, {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "" }),
+      });
+      if (!r.ok) throw new Error();
+      setPinSet(false); setPinInput("");
+      toast({ title: "PIN rimosso" });
+    } catch { toast({ variant: "destructive", title: "Impossibile rimuovere il PIN" }); }
+    finally { setPinBusy(false); }
   };
 
   if (!open) return null;
@@ -135,6 +165,30 @@ export function ShareClientDialog({
                   <Trash2 size={12} /> Revoca
                 </button>
               </div>
+            </div>
+
+            {/* PIN opzionale: seconda chiave, utile se il cliente installa l'app */}
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-semibold mb-1">PIN di accesso (opzionale)</p>
+              {pinSet ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-emerald-600 font-medium">PIN attivo · il cliente lo inserisce all'apertura</span>
+                  <button onClick={() => void removePin()} disabled={pinBusy} className="text-xs text-red-600 hover:underline disabled:opacity-50">Rimuovi</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    inputMode="numeric" placeholder="4-6 cifre"
+                    className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm tracking-widest"
+                  />
+                  <button onClick={() => void savePin()} disabled={pinBusy || pinInput.length < 4} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                    {pinBusy ? "…" : "Imposta"}
+                  </button>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-1.5">Comunicalo tu al cliente a voce. Non viene salvato in chiaro.</p>
             </div>
           </div>
         ) : (

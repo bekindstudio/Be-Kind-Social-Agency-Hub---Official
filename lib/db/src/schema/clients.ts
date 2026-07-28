@@ -54,6 +54,8 @@ export const clientsTable = pgTable("clients", {
   accountManagerId: integer("account_manager_id"),
   // Token per il link di condivisione col cliente (accesso senza login a poche sezioni).
   shareToken: text("share_token"),
+  /** Hash HMAC del PIN portale (NULL = nessun PIN). Mai in chiaro. */
+  portalPinHash: text("portal_pin_hash"),
   contractStatus: text("contract_status").default("nessuno"),
   monthlyValue: integer("monthly_value").default(0),
   lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),

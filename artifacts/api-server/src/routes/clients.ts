@@ -86,8 +86,11 @@ function safeJsonArray(value: string | null | undefined): unknown[] {
 }
 
 function serializeClient(c: typeof clientsTable.$inferSelect) {
+  // Mai esporre l'hash del PIN: solo un flag "impostato / no".
+  const { portalPinHash, ...rest } = c;
   return {
-    ...c,
+    ...rest,
+    portalPinSet: Boolean(portalPinHash),
     contacts: safeJsonArray(c.contactsJson),
     services: safeJsonArray(c.servicesJson),
     // B12: serializzazione date safe — se per qualche motivo c.createdAt
@@ -405,6 +408,31 @@ router.delete("/clients/:id/share-link", async (req, res): Promise<void> => {
     .returning();
   if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
   res.json({ ok: true });
+});
+
+/** Hash del PIN portale. Identico a hashPortalPin in public-portal.ts. */
+function hashPortalPin(clientId: number, pin: string): string {
+  return createHmac("sha256", shareTokenSecret()).update(`portal-pin:${clientId}:${pin}`).digest("hex");
+}
+
+// Imposta (o rimuove, pin vuoto/null) il PIN del portale cliente.
+router.put("/clients/:id/portal-pin", async (req, res): Promise<void> => {
+  const params = GetClientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
+
+  const raw = (req.body as { pin?: unknown })?.pin;
+  const pin = raw == null ? "" : String(raw).trim();
+  if (pin && !/^\d{4,6}$/.test(pin)) { res.status(400).json({ error: "Il PIN deve essere di 4-6 cifre" }); return; }
+  const hash = pin ? hashPortalPin(params.data.id, pin) : null;
+
+  const [updated] = await db
+    .update(clientsTable)
+    .set({ portalPinHash: hash })
+    .where(and(eq(clientsTable.id, params.data.id), isNull(clientsTable.deletedAt)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
+  res.json({ ok: true, pinSet: Boolean(hash) });
 });
 
 router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Promise<void> => {

@@ -81,7 +81,45 @@ async function resolveClient(token: string): Promise<{ client: ClientRow | null;
   return { client: client ?? null };
 }
 
-/** Middleware-style helper: risolve il token o risponde con il codice corretto. */
+/* ── PIN portale (seconda chiave leggera, opzionale) ─────────────
+ * Hash del PIN salvato su clients.portal_pin_hash. La prova d'accesso è un
+ * cookie firmato (nessuna dipendenza: Set-Cookie/lettura a mano), che i fetch
+ * same-origin mandano da soli. Cambiare il PIN invalida le prove vecchie perché
+ * la firma include un pezzo dell'hash del PIN. */
+export function hashPortalPin(clientId: number, pin: string): string {
+  return createHmac("sha256", shareTokenSecret()).update(`portal-pin:${clientId}:${pin}`).digest("hex");
+}
+function pinProof(clientId: number, pinHash: string): string {
+  const exp = Date.now() + 30 * 24 * 3600 * 1000;
+  const expB36 = exp.toString(36);
+  const sig = createHmac("sha256", shareTokenSecret()).update(`pinok:${clientId}:${expB36}:${pinHash.slice(0, 12)}`).digest("hex").slice(0, 32);
+  return `${expB36}.${sig}`;
+}
+function pinProofValid(clientId: number, pinHash: string, proof: string | undefined): boolean {
+  if (!proof) return false;
+  const [expB36, sig] = proof.split(".");
+  if (!expB36 || !sig) return false;
+  const exp = parseInt(expB36, 36);
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  const expected = createHmac("sha256", shareTokenSecret()).update(`pinok:${clientId}:${expB36}:${pinHash.slice(0, 12)}`).digest("hex").slice(0, 32);
+  return sig === expected;
+}
+function readCookie(req: Request, name: string): string | undefined {
+  const raw = req.headers.cookie;
+  if (!raw) return undefined;
+  for (const part of raw.split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === name) return decodeURIComponent(v.join("="));
+  }
+  return undefined;
+}
+/** True se il cliente ha un PIN e la richiesta NON porta una prova valida. */
+function pinBlocks(req: Request, client: ClientRow): boolean {
+  if (!client.portalPinHash) return false;
+  return !pinProofValid(client.id, client.portalPinHash, readCookie(req, `pp${client.id}`));
+}
+
+/** Middleware-style helper: risolve il token, applica il PIN, o risponde. */
 async function withClient(req: Request, res: Response): Promise<ClientRow | null> {
   const result = await resolveClient(req.params.token as string);
   if (!result.client) {
@@ -92,22 +130,89 @@ async function withClient(req: Request, res: Response): Promise<ClientRow | null
     }
     return null;
   }
+  if (pinBlocks(req, result.client)) {
+    res.status(401).json({ error: "PIN richiesto", pinRequired: true });
+    return null;
+  }
   return result.client;
 }
 
-// Info di base del cliente + sezioni abilitate (per il guscio della pagina pubblica).
+// Info di base del cliente + sezioni. Il branding (nome/logo/colore) esce anche
+// se il PIN non è ancora inserito, così la schermata PIN è brandizzata e la PWA
+// si può installare. I DATI delle sezioni restano dietro il PIN (withClient).
 router.get("/public/portal/:token", async (req, res): Promise<void> => {
-  const client = await withClient(req, res);
-  if (!client) return;
-  res.json({
-    client: {
-      name: client.name,
-      logo: client.logoUrl ?? null,
-      color: client.brandColor ?? client.color ?? "#7a8f5c",
-      driveUrl: client.driveUrl ?? null,
-    },
-    sections: ["brief", "ideas", "events", "editorial", "reports", "files"],
+  const result = await resolveClient(req.params.token as string);
+  if (!result.client) {
+    res.status(result.reason === "EXPIRED" ? 410 : 404).json({ error: "Link non valido o scaduto" });
+    return;
+  }
+  const client = result.client;
+  const brand = {
+    name: client.name,
+    logo: client.logoUrl ?? null,
+    color: client.brandColor ?? client.color ?? "#7a8f5c",
+    driveUrl: client.driveUrl ?? null,
+  };
+  if (pinBlocks(req, client)) {
+    res.json({ client: { name: client.name, logo: client.logoUrl ?? null, color: brand.color }, pinRequired: true });
+    return;
+  }
+  res.json({ client: brand, sections: ["brief", "ideas", "events", "editorial", "reports", "files"] });
+});
+
+// Verifica il PIN e rilascia il cookie di prova (30 giorni).
+router.post("/public/portal/:token/verify-pin", async (req, res): Promise<void> => {
+  const result = await resolveClient(req.params.token as string);
+  if (!result.client) { res.status(404).json({ error: "Link non valido" }); return; }
+  const client = result.client;
+  if (!client.portalPinHash) { res.json({ ok: true }); return; } // nessun PIN impostato
+  const pin = String((req.body as { pin?: unknown })?.pin ?? "").trim();
+  if (!/^\d{4,6}$/.test(pin) || hashPortalPin(client.id, pin) !== client.portalPinHash) {
+    res.status(403).json({ error: "PIN errato" });
+    return;
+  }
+  const proof = pinProof(client.id, client.portalPinHash);
+  res.setHeader("Set-Cookie", `pp${client.id}=${encodeURIComponent(proof)}; Path=/api/public/portal; Max-Age=${30 * 24 * 3600}; HttpOnly; SameSite=Lax; Secure`);
+  res.json({ ok: true });
+});
+
+// Manifest PWA per-cliente: nome, colore e icone del cliente. Non protetto dal
+// PIN (espone solo branding, non dati). Serve per installare col suo logo.
+router.get("/public/portal/:token/manifest.webmanifest", async (req, res): Promise<void> => {
+  const result = await resolveClient(req.params.token as string);
+  if (!result.client) { res.status(404).json({ error: "Link non valido" }); return; }
+  const client = result.client;
+  const color = client.brandColor ?? client.color ?? "#7a8f5c";
+  const base = `/portal/${req.params.token}`;
+  res.type("application/manifest+json").json({
+    name: client.name,
+    short_name: client.name.slice(0, 12),
+    id: base,
+    start_url: base,
+    scope: base,
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#ffffff",
+    theme_color: color,
+    lang: "it-IT",
+    icons: [
+      { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "512x512", type: "image/png", purpose: "any" },
+    ],
   });
+});
+
+// Icona del cliente (dal logo). PNG servito così com'è: se il logo non è
+// quadrato/opaco l'icona resta usabile ma non perfetta (vedi nota all'agenzia).
+router.get("/public/portal/:token/icon.png", async (req, res): Promise<void> => {
+  const result = await resolveClient(req.params.token as string);
+  const logo = result.client?.logoUrl ?? "";
+  const m = /^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i.exec(logo);
+  if (!m) { res.status(404).end(); return; }
+  const buf = Buffer.from(m[2], "base64");
+  res.setHeader("Content-Type", `image/${m[1] === "jpg" ? "jpeg" : m[1]}`);
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.end(buf);
 });
 
 /* ── BRIEF (lettura + scrittura) ─────────────────────────────── */

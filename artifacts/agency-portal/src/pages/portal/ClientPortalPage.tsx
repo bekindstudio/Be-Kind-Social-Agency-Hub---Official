@@ -51,32 +51,63 @@ const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ size?: num
 ];
 
 export default function ClientPortalPage({ token }: { token: string }) {
-  const [status, setStatus] = useState<"loading" | "ok" | "invalid">("loading");
+  const [status, setStatus] = useState<"loading" | "ok" | "pin" | "invalid">("loading");
   const [client, setClient] = useState<ClientInfo | null>(null);
   const [tab, setTab] = useState<TabKey>("brief");
+  const [pin, setPin] = useState("");
+  const [pinErr, setPinErr] = useState<string | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+  const load = useCallback(async () => {
     setStatus("loading");
-    void (async () => {
-      try {
-        const r = await fetch(API(token));
-        if (!alive) return;
-        if (!r.ok) {
-          setStatus("invalid");
-          return;
-        }
-        const data = await r.json();
-        setClient(data.client);
-        setStatus("ok");
-      } catch {
-        if (alive) setStatus("invalid");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+    try {
+      const r = await fetch(API(token));
+      if (!r.ok) { setStatus("invalid"); return; }
+      const data = await r.json();
+      setClient(data.client);
+      setStatus(data.pinRequired ? "pin" : "ok");
+    } catch { setStatus("invalid"); }
   }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const submitPin = useCallback(async () => {
+    if (!/^\d{4,6}$/.test(pin)) { setPinErr("Inserisci il PIN"); return; }
+    setPinBusy(true); setPinErr(null);
+    try {
+      const r = await fetch(API(token, "/verify-pin"), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }),
+      });
+      if (r.ok) { setPin(""); await load(); }
+      else setPinErr("PIN errato");
+    } catch { setPinErr("Errore, riprova"); }
+    finally { setPinBusy(false); }
+  }, [pin, token, load]);
+
+  // PWA per-cliente: ribrandizza il <head> con manifest, icona, colore e titolo
+  // del cliente mentre è sul portale; ripristina Be Kind quando esce.
+  useEffect(() => {
+    const head = document.head;
+    const manifest = head.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    const appleIcon = head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
+    const themeMeta = head.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    const titleMeta = head.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null;
+    const prev = {
+      manifest: manifest?.getAttribute("href"), icon: appleIcon?.getAttribute("href"),
+      theme: themeMeta?.getAttribute("content"), title: titleMeta?.getAttribute("content"), doc: document.title,
+    };
+    manifest?.setAttribute("href", API(token, "/manifest.webmanifest"));
+    appleIcon?.setAttribute("href", API(token, "/icon.png"));
+    if (client?.color) themeMeta?.setAttribute("content", client.color);
+    if (client?.name) { titleMeta?.setAttribute("content", client.name); document.title = client.name; }
+    return () => {
+      if (prev.manifest) manifest?.setAttribute("href", prev.manifest);
+      if (prev.icon) appleIcon?.setAttribute("href", prev.icon);
+      if (prev.theme) themeMeta?.setAttribute("content", prev.theme);
+      if (prev.title) titleMeta?.setAttribute("content", prev.title);
+      document.title = prev.doc;
+    };
+  }, [token, client?.color, client?.name]);
 
   if (status === "loading") {
     return (
@@ -94,6 +125,37 @@ export default function ClientPortalPage({ token }: { token: string }) {
           <p className="text-sm text-muted-foreground mt-1">
             Questo link non è più attivo o è stato revocato. Contatta la tua agenzia per ricevere un nuovo link.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "pin") {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center p-6"
+        style={{ background: `linear-gradient(160deg, ${client.color || "#7a8f5c"}, #2f3c21)` }}>
+        <div className="w-full max-w-xs text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 rounded-2xl bg-white mx-auto flex items-center justify-center overflow-hidden mb-5 shadow-lg">
+            {client.logo
+              ? <img src={client.logo} alt={client.name} className="w-full h-full object-contain p-2" />
+              : <span className="text-2xl font-bold text-[#7a8f5c]">{client.name.slice(0, 2).toUpperCase()}</span>}
+          </div>
+          <h1 className="text-white text-2xl font-bold leading-tight">{client.name}</h1>
+          <p className="text-white/75 text-sm mt-1 mb-6">Inserisci il PIN per entrare</p>
+          <input
+            value={pin}
+            onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setPinErr(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void submitPin(); }}
+            inputMode="numeric" autoFocus
+            placeholder="••••"
+            className="w-full text-center text-3xl tracking-[0.5em] font-bold py-4 rounded-2xl bg-white/95 focus:outline-none focus:ring-4 focus:ring-white/30"
+          />
+          {pinErr && <p className="text-red-100 text-sm mt-2 font-medium">{pinErr}</p>}
+          <button onClick={() => void submitPin()} disabled={pinBusy}
+            className="mt-4 w-full py-3.5 rounded-2xl bg-white font-bold text-lg active:scale-[.99] transition-transform disabled:opacity-60"
+            style={{ color: client.color || "#2f3c21" }}>
+            {pinBusy ? "…" : "Entra"}
+          </button>
         </div>
       </div>
     );
@@ -149,11 +211,46 @@ export default function ClientPortalPage({ token }: { token: string }) {
         {tab === "files" && <PortalFiles token={token} driveUrl={client.driveUrl} />}
         <p className="mt-8 text-center text-[11px] text-muted-foreground">Powered by Be Kind Social Agency</p>
       </main>
+      <InstallHint clientName={client.name} color={client.color || "#7a8f5c"} />
     </div>
   );
 }
 
 /* ── BRIEF (compilabile) ─────────────────────────────────────── */
+/**
+ * Invito discreto a installare il portale come app. Compare solo su mobile, se
+ * non è già aperto come app installata, e si può chiudere. Su iOS l'aggiunta
+ * alla home è manuale (Condividi → Aggiungi a Home): mostriamo l'istruzione.
+ */
+function InstallHint({ clientName, color }: { clientName: string; color: string }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+      || (window.navigator as { standalone?: boolean }).standalone === true;
+    const dismissed = localStorage.getItem("bk-portal-install-dismissed") === "1";
+    const isMobile = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+    if (!standalone && !dismissed && isMobile) setShow(true);
+  }, []);
+  if (!show) return null;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return (
+    <div className="fixed bottom-0 inset-x-0 z-40 p-3">
+      <div className="max-w-md mx-auto rounded-2xl shadow-xl text-white p-3.5 flex items-start gap-3" style={{ background: color }}>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-sm">Tieni {clientName} sul telefono</p>
+          <p className="text-white/85 text-xs mt-0.5">
+            {isIOS
+              ? "Tocca Condividi, poi “Aggiungi a Home”. Avrai l’icona come un’app."
+              : "Apri il menu del browser e scegli “Aggiungi a schermata Home”."}
+          </p>
+        </div>
+        <button onClick={() => { localStorage.setItem("bk-portal-install-dismissed", "1"); setShow(false); }}
+          className="shrink-0 text-white/80 hover:text-white text-xs font-semibold px-2 py-1">Chiudi</button>
+      </div>
+    </div>
+  );
+}
+
 function PortalBrief({ token }: { token: string }) {
   const [data, setData] = useState<BriefData>(emptyBriefData);
   const [loading, setLoading] = useState(true);

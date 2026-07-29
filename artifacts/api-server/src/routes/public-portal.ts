@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHmac } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, gte, count } from "drizzle-orm";
 import {
   db,
   clientsTable,
@@ -151,13 +151,49 @@ router.get("/public/portal/:token", async (req, res): Promise<void> => {
     name: client.name,
     logo: client.logoUrl ?? null,
     color: client.brandColor ?? client.color ?? "#7a8f5c",
+    cover: client.coverUrl ?? null,
     driveUrl: client.driveUrl ?? null,
   };
   if (pinBlocks(req, client)) {
-    res.json({ client: { name: client.name, logo: client.logoUrl ?? null, color: brand.color }, pinRequired: true });
+    res.json({ client: { name: client.name, logo: client.logoUrl ?? null, color: brand.color, cover: brand.cover }, pinRequired: true });
     return;
   }
-  res.json({ client: brand, sections: ["brief", "ideas", "events", "editorial", "reports", "files"] });
+
+  // Conteggi per le stat card della Home (prossimi contenuti, idee, report).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [ideaCount] = await db
+    .select({ n: count() })
+    .from(clientContentIdeasTable)
+    .where(eq(clientContentIdeasTable.clientId, client.id));
+  const [reportCount] = await db
+    .select({ n: count() })
+    .from(clientReportsTable)
+    .where(and(eq(clientReportsTable.clientId, client.id), ne(clientReportsTable.status, "bozza")));
+  const clientPlans = await db
+    .select({ id: editorialPlansTable.id })
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.clientId, client.id), isNull(editorialPlansTable.deletedAt)));
+  let upcoming = 0;
+  if (clientPlans.length) {
+    const [slotCount] = await db
+      .select({ n: count() })
+      .from(editorialSlotsTable)
+      .where(and(
+        inArray(editorialSlotsTable.planId, clientPlans.map((p) => p.id)),
+        isNull(editorialSlotsTable.deletedAt),
+        gte(editorialSlotsTable.publishDate, todayIso),
+      ));
+    upcoming = Number(slotCount?.n ?? 0);
+  }
+  res.json({
+    client: brand,
+    sections: ["brief", "ideas", "events", "editorial", "reports", "files"],
+    counts: {
+      upcomingContent: upcoming,
+      ideas: Number(ideaCount?.n ?? 0),
+      reports: Number(reportCount?.n ?? 0),
+    },
+  });
 });
 
 // Verifica il PIN e rilascia il cookie di prova (30 giorni).
@@ -182,7 +218,6 @@ router.get("/public/portal/:token/manifest.webmanifest", async (req, res): Promi
   const result = await resolveClient(req.params.token as string);
   if (!result.client) { res.status(404).json({ error: "Link non valido" }); return; }
   const client = result.client;
-  const color = client.brandColor ?? client.color ?? "#7a8f5c";
   const base = `/portal/${req.params.token}`;
   res.type("application/manifest+json").json({
     name: client.name,
@@ -192,8 +227,9 @@ router.get("/public/portal/:token/manifest.webmanifest", async (req, res): Promi
     scope: base,
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
-    theme_color: color,
+    background_color: "#f6f2e9",
+    // Colore Be Kind salvia (il portale ora ha il look Be Kind, non del cliente).
+    theme_color: "#7a8f5c",
     lang: "it-IT",
     // Icona = logo Be Kind (l'app è uno strumento dell'agenzia). Nome e colore
     // restano del cliente, così sulla home l'etichetta è la sua ma l'icona è Be Kind.
@@ -332,9 +368,12 @@ router.get("/public/portal/:token/editorial", async (req, res): Promise<void> =>
       publishDate: s.publishDate ?? null,
       title: s.title ?? null,
       caption: s.caption ?? null,
-      // Lo script è ciò che il cliente deve poter leggere prima di girare
-      // (dialoghi, battute). Restano interni notesInternal e visualUrl.
+      // Lo script è ciò che il cliente deve poter leggere prima di girare.
       script: s.script ?? null,
+      // visualUrl = anteprima del contenuto (la thumbnail che dà il look "app").
+      // Non è sensibile: è ciò che verrà pubblicato. notesInternal resta interno.
+      visualUrl: s.visualUrl ?? null,
+      visualDescription: s.visualDescription ?? null,
       status: s.status,
     })),
   });
@@ -349,12 +388,28 @@ router.get("/public/portal/:token/reports", async (req, res): Promise<void> => {
     .from(clientReportsTable)
     .where(and(eq(clientReportsTable.clientId, client.id), ne(clientReportsTable.status, "bozza")))
     .orderBy(desc(clientReportsTable.createdAt));
+  const parseJson = (v: unknown) => {
+    if (v == null) return null;
+    if (typeof v === "object") return v;
+    try { return JSON.parse(String(v)); } catch { return null; }
+  };
   res.json(
     rows.map((r) => ({
       id: r.id,
       titolo: r.titolo ?? r.periodLabel ?? "Report",
       period: r.periodLabel ?? r.period ?? null,
+      periodoInizio: r.periodoInizio ? new Date(r.periodoInizio as any).toISOString() : null,
+      periodoFine: r.periodoFine ? new Date(r.periodoFine as any).toISOString() : null,
       status: r.status,
+      // Contenuto ricco client-facing (già curato dall'agenzia). Esclusi di
+      // proposito: aiSummary/aiFlags, noteAggiuntive, metricsJson (interni).
+      riepilogoEsecutivo: r.riepilogoEsecutivo ?? null,
+      analisiInsights: r.analisiInsights ?? null,
+      strategiaProssimoPeriodo: r.strategiaProssimoPeriodo ?? null,
+      kpiSocial: parseJson(r.kpiSocialJson),
+      kpiMeta: parseJson(r.kpiMetaJson),
+      kpiGoogle: parseJson(r.kpiGoogleJson),
+      topContenuti: parseJson(r.topContenutiJson),
       pdfUrl: r.pdfUrl ?? null,
       createdAt: r.createdAt ? new Date(r.createdAt as any).toISOString() : null,
     })),
@@ -373,16 +428,30 @@ router.get("/public/portal/:token/files", async (req, res): Promise<void> => {
   const files = projectIds.length
     ? await db.select().from(filesTable).where(inArray(filesTable.projectId, projectIds)).orderBy(desc(filesTable.createdAt))
     : [];
-  res.json({
-    driveUrl: client.driveUrl ?? null,
-    files: files.map((f) => ({
-      id: f.id,
-      name: f.name,
-      url: f.url,
-      type: f.type,
-      createdAt: f.createdAt ? new Date(f.createdAt as any).toISOString() : null,
-    })),
-  });
+
+  // "Consegne": aggreghiamo tutto ciò che il cliente può scaricare, così la
+  // sezione è utile anche senza progetti (i file oggi sono legati al progetto).
+  const items: Array<{ id: string; name: string; url: string; type: string; createdAt: string | null }> = [];
+  for (const f of files) {
+    items.push({ id: `file-${f.id}`, name: f.name, url: f.url, type: f.type ?? "file", createdAt: f.createdAt ? new Date(f.createdAt as any).toISOString() : null });
+  }
+  const reportPdfs = await db
+    .select({ id: clientReportsTable.id, label: clientReportsTable.periodLabel, url: clientReportsTable.pdfUrl, at: clientReportsTable.createdAt })
+    .from(clientReportsTable)
+    .where(and(eq(clientReportsTable.clientId, client.id), ne(clientReportsTable.status, "bozza")));
+  for (const r of reportPdfs) {
+    if (r.url) items.push({ id: `report-${r.id}`, name: `Report ${r.label ?? ""}`.trim(), url: r.url, type: "pdf", createdAt: r.at ? new Date(r.at as any).toISOString() : null });
+  }
+  const planPdfs = await db
+    .select({ id: editorialPlansTable.id, month: editorialPlansTable.month, year: editorialPlansTable.year, url: editorialPlansTable.pdfUrl, at: editorialPlansTable.createdAt })
+    .from(editorialPlansTable)
+    .where(and(eq(editorialPlansTable.clientId, client.id), isNull(editorialPlansTable.deletedAt)));
+  for (const p of planPdfs) {
+    if (p.url) items.push({ id: `plan-${p.id}`, name: `Piano editoriale ${p.month}/${p.year}`, url: p.url, type: "pdf", createdAt: p.at ? new Date(p.at as any).toISOString() : null });
+  }
+  items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+
+  res.json({ driveUrl: client.driveUrl ?? null, files: items });
 });
 
 /* ── BANCA IDEE (lettura + inserimento) ──────────────────────── */

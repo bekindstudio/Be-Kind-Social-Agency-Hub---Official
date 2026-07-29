@@ -10,6 +10,8 @@ export const clientsTable = pgTable("clients", {
   company: text("company"),
   color: text("color").notNull().default("#7a8f5c"),
   logoUrl: text("logo_url"),
+  /** Foto di copertina/hero del portale cliente (data URL base64, JPEG downscalata). */
+  coverUrl: text("cover_url"),
   // Dati di fatturazione
   ragioneSociale: text("ragione_sociale"),
   piva: text("piva"),

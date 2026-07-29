@@ -1081,6 +1081,8 @@ export default function ClientDetail({ id }: Props) {
   const [editContacts, setEditContacts] = useState<Array<Record<string, string>>>([]);
   const [editServices, setEditServices] = useState<string[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectForm, setProjectForm] = useState({
@@ -1308,6 +1310,7 @@ export default function ClientDetail({ id }: Props) {
       company: editableClient.company ?? "",
       website: editableClient.website ?? "",
       logoUrl: editableClient.logoUrl ?? "",
+      coverUrl: (editableClient as any).coverUrl ?? "",
       color: editableClient.color ?? "#7a8f5c",
       ragioneSociale: editableClient.ragioneSociale ?? "",
       piva: editableClient.piva ?? "",
@@ -1332,6 +1335,7 @@ export default function ClientDetail({ id }: Props) {
     setEditContacts(Array.isArray(editableClient.contacts) ? editableClient.contacts : []);
     setEditServices(Array.isArray(editableClient.services) ? editableClient.services : []);
     setLogoPreview(editableClient.logoUrl ?? null);
+    setCoverPreview((editableClient as any).coverUrl ?? null);
     setEditing(true);
   };
 
@@ -1365,6 +1369,42 @@ export default function ClientDetail({ id }: Props) {
       img.src = dataUrl;
     });
 
+  // La cover è una FOTO (no trasparenza): JPEG più leggero, max 1200px.
+  const downscaleCover = (dataUrl: string, max = 1200) =>
+    new Promise<string>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+
+  const handleCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 12 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File troppo grande", description: "Massimo 12 MB." });
+      return;
+    }
+    try {
+      const original = await readFileAsDataUrl(file);
+      const dataUrl = await downscaleCover(original, 1200);
+      setCoverPreview(dataUrl);
+      setForm((prev) => ({ ...prev, coverUrl: dataUrl }));
+    } catch {
+      toast({ variant: "destructive", title: "Immagine non leggibile", description: "Riprova con un altro file." });
+    }
+  };
+
   const handleLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1393,6 +1433,7 @@ export default function ClientDetail({ id }: Props) {
           company: form.company || null,
           website: form.website || null,
           logoUrl: form.logoUrl || null,
+          coverUrl: form.coverUrl || null,
           color: form.color || undefined,
           // brandColor è il campo letto per primo da card/selector/badge:
           // aggiornalo insieme a color per evitare colori incoerenti.
@@ -1425,6 +1466,7 @@ export default function ClientDetail({ id }: Props) {
           invalidateClient();
           setEditing(false);
           setLogoPreview(null);
+          setCoverPreview(null);
           toast({ title: "Cliente aggiornato" });
         },
         onError: (err: any) => {
@@ -1643,6 +1685,41 @@ export default function ClientDetail({ id }: Props) {
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">PNG, JPG, SVG — max 2 MB</p>
+                </div>
+
+                {/* Cover del portale: la foto hero che il cliente vede aprendo la sua app. */}
+                <div className="md:col-span-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foto di copertina del portale</label>
+                  <div className="mt-1 rounded-xl overflow-hidden border border-border relative aspect-[16/9] bg-muted flex items-center justify-center"
+                    style={coverPreview ? { backgroundImage: `url(${coverPreview})`, backgroundSize: "cover", backgroundPosition: "center" } : { backgroundColor: f("color") || "#7a8f5c" }}>
+                    {!coverPreview && <ImageIcon size={26} className="text-white/70" />}
+                    <div className="absolute inset-0 flex items-end justify-between p-2 bg-gradient-to-t from-black/40 to-transparent">
+                      <button
+                        type="button"
+                        onClick={() => coverInputRef.current?.click()}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white/90 rounded-lg text-xs font-medium text-foreground hover:bg-white"
+                      >
+                        <Upload size={13} /> {coverPreview ? "Cambia foto" : "Carica foto"}
+                      </button>
+                      {coverPreview && (
+                        <button
+                          type="button"
+                          onClick={() => { setCoverPreview(null); setForm((p) => ({ ...p, coverUrl: "" })); }}
+                          className="px-3 py-1.5 bg-white/90 rounded-lg text-xs font-medium text-destructive hover:bg-white"
+                        >
+                          Rimuovi
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={handleCoverFile}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Foto orizzontale — è la copertina che il cliente vede nella sua app. Max 12 MB.</p>
                 </div>
 
                 <div>

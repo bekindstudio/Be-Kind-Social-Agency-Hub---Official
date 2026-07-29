@@ -43,6 +43,8 @@ const createClientSchema = z.object({
   // con trasparenza); il cap 2MB consente loghi ragionevoli sia come URL esterno
   // sia come data URL inline.
   logoUrl: z.string().trim().max(2_000_000).nullable().optional(),
+  // coverUrl = foto di copertina del portale (data URL JPEG ~1200px), più pesante del logo.
+  coverUrl: z.string().trim().max(3_000_000).nullable().optional(),
   piva: z.string().trim().max(40).nullable().optional(),
   codiceFiscale: z.string().trim().max(40).nullable().optional(),
   indirizzo: z.string().trim().max(255).nullable().optional(),
@@ -444,7 +446,7 @@ router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Pro
   const updates: Record<string, unknown> = {};
   const body = req.body as Record<string, any>;
   const fields = [
-    "name","email","phone","company","color","logoUrl","ragioneSociale","piva","codiceFiscale","indirizzo","cap","citta","provincia","paese","website","notes","instagramHandle","metaPageId","googleAdsId","driveUrl","reportRecipientEmail","nomeCommerciale","settore","dimensione","brandColor","descrizione","comeAcquisito","clienteDal","noteInterne","accountManagerId","contractStatus","monthlyValue","healthScore","pec","sdi","iban","metodoPagamento","terminiPagamento",
+    "name","email","phone","company","color","logoUrl","coverUrl","ragioneSociale","piva","codiceFiscale","indirizzo","cap","citta","provincia","paese","website","notes","instagramHandle","metaPageId","googleAdsId","driveUrl","reportRecipientEmail","nomeCommerciale","settore","dimensione","brandColor","descrizione","comeAcquisito","clienteDal","noteInterne","accountManagerId","contractStatus","monthlyValue","healthScore","pec","sdi","iban","metodoPagamento","terminiPagamento",
   ];
   for (const f of fields) {
     if (body[f] !== undefined) updates[f] = body[f];

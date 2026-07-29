@@ -57,24 +57,30 @@ export default function ClientPortalPage({ token }: { token: string }) {
     finally { setPinBusy(false); }
   }, [pin, token, load]);
 
-  // PWA per-cliente: nome del cliente nel titolo, colore Be Kind salvia, icona
-  // Be Kind (dal manifest/apple-touch-icon globali). Ripristino all'uscita.
+  // PWA per-cliente: nome, colore e ICONA (logo) del cliente, così installando
+  // ha la sua app col suo logo e il suo nome sulla home. Ripristino all'uscita.
   useEffect(() => {
     const head = document.head;
     const manifest = head.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    const appleIcon = head.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
     const themeMeta = head.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
     const titleMeta = head.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null;
-    const prev = { manifest: manifest?.getAttribute("href"), theme: themeMeta?.getAttribute("content"), title: titleMeta?.getAttribute("content"), doc: document.title };
+    const prev = {
+      manifest: manifest?.getAttribute("href"), icon: appleIcon?.getAttribute("href"),
+      theme: themeMeta?.getAttribute("content"), title: titleMeta?.getAttribute("content"), doc: document.title,
+    };
     manifest?.setAttribute("href", portalUrl(token, "/manifest.webmanifest"));
+    if (brand?.logo) appleIcon?.setAttribute("href", portalUrl(token, "/icon.png"));
     themeMeta?.setAttribute("content", T.sage);
     if (brand?.name) { titleMeta?.setAttribute("content", brand.name); document.title = brand.name; }
     return () => {
       if (prev.manifest) manifest?.setAttribute("href", prev.manifest);
+      if (prev.icon) appleIcon?.setAttribute("href", prev.icon);
       if (prev.theme) themeMeta?.setAttribute("content", prev.theme);
       if (prev.title) titleMeta?.setAttribute("content", prev.title);
       document.title = prev.doc;
     };
-  }, [token, brand?.name]);
+  }, [token, brand?.name, brand?.logo]);
 
   if (status === "loading") {
     return <div className="min-h-[100dvh] flex items-center justify-center" style={{ background: T.cream }}><Loader2 className="animate-spin" style={{ color: T.sage }} /></div>;

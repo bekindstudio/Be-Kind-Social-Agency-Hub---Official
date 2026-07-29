@@ -10,6 +10,7 @@ import { ClientMetaSection } from "@/components/client/ClientMetaSection";
 import { ClientReportsSection } from "@/components/client/ClientReportsSection";
 import { ClientProjectsSection } from "@/components/client/ClientProjectsSection";
 import { ClientRetainerSection } from "@/components/client/ClientRetainerSection";
+import { ClientChatSection } from "@/components/client/ClientChatSection";
 import { ContentIdeasBank } from "@/components/client/ContentIdeasBank";
 import { useClientDetail } from "@/hooks/useClientDetail";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,7 @@ import {
   FolderOpen,
   Lightbulb,
   Repeat,
+  MessageCircle,
   Pin,
   PinOff,
   MoreHorizontal,
@@ -142,11 +144,12 @@ const PRIORITY_OPTIONS = [
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 /* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
-type TabKey = "panoramica" | "progetti" | "retainer" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
+type TabKey = "panoramica" | "progetti" | "retainer" | "messaggi" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "panoramica", label: "Panoramica", icon: Layers },
   { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
   { key: "retainer", label: "Retainer", icon: Repeat },
+  { key: "messaggi", label: "Messaggi", icon: MessageCircle },
   { key: "brief", label: "Brief", icon: BookOpen },
   { key: "editoriale", label: "Editoriale", icon: CalendarDays },
   { key: "eventi", label: "Eventi", icon: CalendarDays },
@@ -1068,7 +1071,7 @@ export default function ClientDetail({ id }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
+      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "messaggi", "brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
       if (t && (valid as string[]).includes(t)) return t as TabKey;
     } catch { /* ignore */ }
     return "panoramica";
@@ -1993,6 +1996,11 @@ export default function ClientDetail({ id }: Props) {
         {/* ─── TAB: Retainer ─── */}
         {activeTab === "retainer" && (
           <ClientRetainerSection clientId={clientId} />
+        )}
+
+        {/* ─── TAB: Messaggi ─── */}
+        {activeTab === "messaggi" && (
+          <ClientChatSection clientId={clientId} clientName={viewClient.name ?? "Cliente"} />
         )}
 
         {/* ─── TAB: Meta ─── */}

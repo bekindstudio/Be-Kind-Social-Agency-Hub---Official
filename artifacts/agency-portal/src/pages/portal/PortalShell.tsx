@@ -7,7 +7,7 @@ import { ContentScreen } from "./screens/ContentScreen";
 import { IdeasScreen } from "./screens/IdeasScreen";
 import { ReportsScreen } from "./screens/ReportsScreen";
 import { ReportDetailScreen } from "./screens/ReportDetailScreen";
-import { MenuScreen } from "./screens/MenuScreen";
+import { ChatScreen } from "./screens/ChatScreen";
 import { BriefScreen } from "./screens/BriefScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { FilesScreen } from "./screens/FilesScreen";
@@ -50,9 +50,9 @@ function Tab({ tab }: { tab: TabKey }) {
   switch (tab) {
     case "home": return <HomeScreen />;
     case "content": return <ContentScreen />;
+    case "chat": return <ChatScreen />;
     case "ideas": return <IdeasScreen />;
     case "reports": return <ReportsScreen />;
-    case "more": return <MenuScreen />;
   }
 }
 

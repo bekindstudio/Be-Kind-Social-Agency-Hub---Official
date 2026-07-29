@@ -12,6 +12,7 @@ import {
   filesTable,
   projectsTable,
   clientContentIdeasTable,
+  messagesTable,
 } from "@workspace/db";
 import { derivePlatform, normalizeExternalUrl } from "../lib/social-url";
 import { normalizeCategory } from "../lib/ideas";
@@ -228,15 +229,19 @@ router.get("/public/portal/:token/manifest.webmanifest", async (req, res): Promi
     display: "standalone",
     orientation: "portrait",
     background_color: "#f6f2e9",
-    // Colore Be Kind salvia (il portale ora ha il look Be Kind, non del cliente).
     theme_color: "#7a8f5c",
     lang: "it-IT",
-    // Icona = logo Be Kind (l'app è uno strumento dell'agenzia). Nome e colore
-    // restano del cliente, così sulla home l'etichetta è la sua ma l'icona è Be Kind.
-    icons: [
-      { src: "/logo-bekind.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/logo-bekind.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
-    ],
+    // Icona = LOGO DEL CLIENTE: quando installa, sulla home ha la sua app col suo
+    // logo e il suo nome. Se il logo manca, fallback al logo Be Kind.
+    icons: client.logoUrl
+      ? [
+          { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: `/api/public/portal/${req.params.token}/icon.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ]
+      : [
+          { src: "/logo-bekind.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/logo-bekind.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ],
   });
 });
 
@@ -452,6 +457,41 @@ router.get("/public/portal/:token/files", async (req, res): Promise<void> => {
   items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 
   res.json({ driveUrl: client.driveUrl ?? null, files: items });
+});
+
+/* ── CHAT cliente↔agenzia (lettura + invio) ──────────────────── */
+router.get("/public/portal/:token/messages", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+  const rows = await db
+    .select()
+    .from(messagesTable)
+    .where(eq(messagesTable.clientId, client.id))
+    .orderBy(asc(messagesTable.createdAt));
+  res.json(rows.map((m) => ({
+    id: m.id,
+    content: m.content,
+    authorName: m.authorName,
+    source: m.source,
+    createdAt: m.createdAt.toISOString(),
+  })));
+});
+
+router.post("/public/portal/:token/messages", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+  const content = String((req.body as { content?: unknown })?.content ?? "").trim();
+  if (content.length < 1 || content.length > 4000) { res.status(400).json({ error: "Messaggio non valido" }); return; }
+  const [row] = await db.insert(messagesTable).values({
+    content,
+    clientId: client.id,
+    source: "client",
+    authorName: client.name,
+    authorColor: client.brandColor ?? client.color ?? "#7a8f5c",
+  }).returning();
+  res.status(201).json({
+    id: row.id, content: row.content, authorName: row.authorName, source: row.source, createdAt: row.createdAt.toISOString(),
+  });
 });
 
 /* ── BANCA IDEE (lettura + inserimento) ──────────────────────── */

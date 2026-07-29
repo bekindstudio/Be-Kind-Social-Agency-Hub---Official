@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
+import { z } from "zod";
 import { db, messagesTable, projectsTable, teamMembersTable } from "@workspace/db";
 import {
   CreateMessageBody,
@@ -147,6 +148,62 @@ router.delete("/messages/:id", async (req, res): Promise<void> => {
   }
   await db.delete(messagesTable).where(eq(messagesTable.id, params.data.id));
   res.sendStatus(204);
+});
+
+/* ── CHAT PER CLIENTE (filo diretto cliente↔agenzia) ──────────── */
+
+function serializeChat(m: typeof messagesTable.$inferSelect) {
+  return {
+    id: m.id,
+    content: m.content,
+    authorName: m.authorName,
+    authorColor: m.authorColor,
+    source: m.source,
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+
+async function assertClientAccess(userId: string, clientId: number): Promise<boolean> {
+  if (isEnvAdmin(userId)) return true;
+  const accessible = await getAccessibleClientIds(userId);
+  return accessible === "all" || accessible.includes(clientId);
+}
+
+// Thread del cliente lato agenzia (sotto login).
+router.get("/clients/:id/messages", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const clientId = Number(req.params.id);
+  if (!Number.isFinite(clientId)) { res.status(400).json({ error: "ID cliente non valido" }); return; }
+  if (!(await assertClientAccess(userId, clientId))) { res.status(403).json({ error: "Accesso negato" }); return; }
+
+  const rows = await db.select().from(messagesTable)
+    .where(eq(messagesTable.clientId, clientId))
+    .orderBy(asc(messagesTable.createdAt));
+  res.json(rows.map(serializeChat));
+});
+
+const clientMessageBody = z.object({ content: z.string().trim().min(1).max(4000) });
+
+router.post("/clients/:id/messages", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const clientId = Number(req.params.id);
+  if (!Number.isFinite(clientId)) { res.status(400).json({ error: "ID cliente non valido" }); return; }
+  if (!(await assertClientAccess(userId, clientId))) { res.status(403).json({ error: "Accesso negato" }); return; }
+  const parsed = clientMessageBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const member = await getTeamMemberForUser(userId);
+  const [row] = await db.insert(messagesTable).values({
+    content: parsed.data.content,
+    clientId,
+    source: "agency",
+    authorId: member?.id ?? null,
+    authorName: member?.name ?? "Be Kind",
+    authorColor: normalizeAuthorColor(member?.avatarColor ?? undefined),
+  }).returning();
+  res.status(201).json(serializeChat(row));
 });
 
 export default router;

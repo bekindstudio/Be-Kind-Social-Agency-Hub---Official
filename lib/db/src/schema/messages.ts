@@ -9,6 +9,10 @@ export const messagesTable = pgTable("messages", {
   authorName: text("author_name").notNull(),
   authorColor: text("author_color").notNull().default("#6366f1"),
   projectId: integer("project_id"),
+  /** Filo diretto cliente↔agenzia (chat del portale). NULL = messaggio di progetto/team. */
+  clientId: integer("client_id"),
+  /** 'agency' o 'client': chi ha scritto, per allineare le bolle nella chat. */
+  source: text("source").notNull().default("agency"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

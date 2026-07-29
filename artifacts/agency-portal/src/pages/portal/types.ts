@@ -42,3 +42,5 @@ export type PortalEvent = {
 };
 export type FileItem = { id: string; name: string; url: string; type: string; createdAt: string | null };
 export type FilesData = { driveUrl: string | null; files: FileItem[] };
+
+export type ChatMessage = { id: number; content: string; authorName: string; source: string; createdAt: string };

@@ -1,14 +1,14 @@
-import { Home, LayoutGrid, Lightbulb, BarChart3, Menu } from "lucide-react";
+import { Home, LayoutGrid, MessageCircle, Lightbulb, BarChart3 } from "lucide-react";
 import { T } from "../theme";
 
-export type TabKey = "home" | "content" | "ideas" | "reports" | "more";
+export type TabKey = "home" | "content" | "chat" | "ideas" | "reports";
 
 const ITEMS: { key: TabKey; label: string; icon: typeof Home }[] = [
   { key: "home", label: "Home", icon: Home },
   { key: "content", label: "Contenuti", icon: LayoutGrid },
+  { key: "chat", label: "Chat", icon: MessageCircle },
   { key: "ideas", label: "Idee", icon: Lightbulb },
   { key: "reports", label: "Report", icon: BarChart3 },
-  { key: "more", label: "Altro", icon: Menu },
 ];
 
 /**

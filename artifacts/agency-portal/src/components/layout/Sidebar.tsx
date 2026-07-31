@@ -101,6 +101,7 @@ export function Sidebar() {
   const { hasPermission, loading: roleLoading } = useUserRole();
   const [reportBadge, setReportBadge] = useState(0);
   const [trashBadge, setTrashBadge] = useState(0);
+  const [clientsBadge, setClientsBadge] = useState(0);
   const { activeClient, posts } = useClientContext();
   const calendarPendingBadge =
     activeClient == null
@@ -127,6 +128,19 @@ export function Sidebar() {
     };
     load();
     const interval = setInterval(load, 120000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Messaggi cliente non letti (chat del portale): pallino su "Clienti".
+  useEffect(() => {
+    const load = () => {
+      portalFetch("/api/clients/messages/unread")
+        .then((r) => r.json())
+        .then((d) => setClientsBadge(Number(d?.total ?? 0)))
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(() => { if (document.visibilityState === "visible") load(); }, 20000);
     return () => clearInterval(interval);
   }, []);
 
@@ -172,6 +186,8 @@ export function Sidebar() {
                         ? calendarPendingBadge
                       : href === "/trash" && trashBadge > 0
                         ? trashBadge
+                      : href === "/clients" && clientsBadge > 0
+                        ? clientsBadge
                         : 0;
                   return (
                     <li key={href}>

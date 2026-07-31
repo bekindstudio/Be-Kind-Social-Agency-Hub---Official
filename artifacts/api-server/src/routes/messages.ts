@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, isNull, inArray, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, messagesTable, projectsTable, teamMembersTable } from "@workspace/db";
 import {
@@ -169,13 +169,40 @@ async function assertClientAccess(userId: string, clientId: number): Promise<boo
   return accessible === "all" || accessible.includes(clientId);
 }
 
-// Thread del cliente lato agenzia (sotto login).
+// Riepilogo non letti per cliente (per il pallino nella lista/sidebar).
+// Registrato PRIMA di /clients/:id/messages: "messages" non è un id numerico.
+router.get("/clients/messages/unread", async (req, res): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
+  const accessible = isEnvAdmin(userId) ? ("all" as const) : await getAccessibleClientIds(userId);
+  const conds = [eq(messagesTable.source, "client"), isNull(messagesTable.readAt), sql`${messagesTable.clientId} is not null`];
+  if (accessible !== "all") {
+    if (accessible.length === 0) { res.json({ total: 0, byClient: {} }); return; }
+    conds.push(inArray(messagesTable.clientId, accessible));
+  }
+  const rows = await db
+    .select({ clientId: messagesTable.clientId, n: count() })
+    .from(messagesTable)
+    .where(and(...conds))
+    .groupBy(messagesTable.clientId);
+  const byClient: Record<number, number> = {};
+  let total = 0;
+  for (const r of rows) { if (r.clientId != null) { byClient[r.clientId] = Number(r.n); total += Number(r.n); } }
+  res.json({ total, byClient });
+});
+
+// Thread del cliente lato agenzia (sotto login). Aprendolo timbra come letti i
+// messaggi del cliente → spegne il pallino.
 router.get("/clients/:id/messages", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!userId) { res.status(401).json({ error: "Non autenticato" }); return; }
   const clientId = Number(req.params.id);
   if (!Number.isFinite(clientId)) { res.status(400).json({ error: "ID cliente non valido" }); return; }
   if (!(await assertClientAccess(userId, clientId))) { res.status(403).json({ error: "Accesso negato" }); return; }
+
+  await db.update(messagesTable)
+    .set({ readAt: new Date() })
+    .where(and(eq(messagesTable.clientId, clientId), eq(messagesTable.source, "client"), isNull(messagesTable.readAt)));
 
   const rows = await db.select().from(messagesTable)
     .where(eq(messagesTable.clientId, clientId))

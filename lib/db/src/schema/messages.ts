@@ -13,6 +13,8 @@ export const messagesTable = pgTable("messages", {
   clientId: integer("client_id"),
   /** 'agency' o 'client': chi ha scritto, per allineare le bolle nella chat. */
   source: text("source").notNull().default("agency"),
+  /** Quando l'agenzia ha letto un messaggio del cliente (per il pallino "non letti"). */
+  readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

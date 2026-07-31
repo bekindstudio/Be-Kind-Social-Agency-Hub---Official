@@ -79,6 +79,7 @@ export default function Clients() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
+  const [unread, setUnread] = useState<Record<number, number>>({});
   const [showForm, setShowForm] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
 
@@ -90,6 +91,19 @@ export default function Clients() {
       const newSearch = params.toString();
       window.history.replaceState({}, "", `/clients${newSearch ? `?${newSearch}` : ""}`);
     }
+  }, []);
+
+  // Messaggi non letti per cliente (pallino sulle card).
+  useEffect(() => {
+    const load = () => {
+      portalFetch("/api/clients/messages/unread")
+        .then((r) => r.json())
+        .then((d) => setUnread((d?.byClient ?? {}) as Record<number, number>))
+        .catch(() => {});
+    };
+    load();
+    const iv = setInterval(() => { if (document.visibilityState === "visible") load(); }, 20000);
+    return () => clearInterval(iv);
   }, []);
   const [activeTab, setActiveTab] = useState<"generali" | "contatti" | "servizi" | "fatturazione" | "accessi">("generali");
   const [form, setForm] = useState<any>({
@@ -440,7 +454,14 @@ export default function Clients() {
                       <ClientLogo name={client.name} color={client.brandColor ?? client.color} logoUrl={client.logoUrl} />
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm truncate">{client.name}</p>
+                      <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                        {client.name}
+                        {unread[Number(client.id)] > 0 && (
+                          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold" title="Nuovi messaggi">
+                            {unread[Number(client.id)]}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground truncate">{client.settore ?? "Settore non impostato"}</p>
                       <div className="flex items-center gap-1.5 mt-1"><span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", getHealthColor(Number(client.healthScore ?? 0)))}>Salute {client.healthScore ?? 0}</span><span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{client.contractStatus ?? "nessuno"}</span>{activeClient && normalizeName(activeClient.name) === normalizeName(client.name) && <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Attivo</span>}</div>
                     </div>

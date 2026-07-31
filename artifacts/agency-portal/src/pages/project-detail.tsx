@@ -990,21 +990,14 @@ export default function ProjectDetail({ id }: Props) {
               <p className="inline-flex items-center gap-1 text-muted-foreground">
                 <CalendarDays size={14} /> {project.deadline ? formatDate(project.deadline) : "Nessuna deadline"}
               </p>
-              {budget > 0 && (
-                <p className="mt-1 font-semibold tabular-nums">
-                  € {spent.toLocaleString("it-IT")} / € {budget.toLocaleString("it-IT")} <span className="text-xs text-muted-foreground">({budgetPct}%)</span>
-                </p>
-              )}
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                 Progress: <strong className="text-foreground">{progress}%</strong> · {tasksDone}/{tasksTotal} task
               </p>
             </div>
           </div>
-          {budget > 0 && (
-            <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden">
-              <div className={cn("h-full transition-all", budgetPct > 95 ? "bg-red-500" : budgetPct >= 80 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, budgetPct)}%` }} />
-            </div>
-          )}
+          <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+          </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -1123,31 +1116,6 @@ export default function ProjectDetail({ id }: Props) {
                 </div>
               </div>
 
-              <div className="bg-card border border-card-border rounded-xl p-4">
-                <h3 className="font-semibold mb-3 text-sm">Budget</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Totale</p>
-                    <p className="font-semibold tabular-nums">€ {budget.toLocaleString("it-IT")}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Speso</p>
-                    <p className="font-semibold tabular-nums">€ {spent.toLocaleString("it-IT")}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Rimanente</p>
-                    <p className="font-semibold tabular-nums">€ {remaining.toLocaleString("it-IT")}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Ore</p>
-                    <p className="font-semibold tabular-nums">{project.oreLavorate ?? 0}/{project.oreStimate ?? 0}</p>
-                  </div>
-                </div>
-                {budget === 0 && (
-                  <p className="mt-2 text-[11px] text-muted-foreground">Imposta un budget per attivare i grafici e gli alert.</p>
-                )}
-              </div>
-
               {milestones.length > 0 && (
                 <div className="bg-card border border-card-border rounded-xl p-4">
                   <h3 className="font-semibold mb-3 text-sm">Milestone</h3>
@@ -1212,20 +1180,12 @@ export default function ProjectDetail({ id }: Props) {
                 )}
               </div>
 
-              {(overdueTasks.length > 0 || budgetPct >= 80) && (
+              {overdueTasks.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1">
                   <h3 className="text-xs font-semibold text-amber-800 inline-flex items-center gap-1">
                     <AlertTriangle size={12} /> Alert
                   </h3>
-                  {overdueTasks.length > 0 && (
-                    <p className="text-xs text-amber-700">{overdueTasks.length} task in ritardo</p>
-                  )}
-                  {budgetPct >= 95 && (
-                    <p className="text-xs text-red-700 font-semibold">Budget oltre il 95%</p>
-                  )}
-                  {budgetPct >= 80 && budgetPct < 95 && (
-                    <p className="text-xs text-amber-700">Budget all'{budgetPct}% — attenzione</p>
-                  )}
+                  <p className="text-xs text-amber-700">{overdueTasks.length} task in ritardo</p>
                 </div>
               )}
             </div>

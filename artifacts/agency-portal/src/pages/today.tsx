@@ -59,30 +59,6 @@ function useApi<T>(key: (string | number)[], path: string, staleSec = 60): { dat
   return { data: (q.data as T) ?? null, loading: q.isLoading, error: q.error instanceof Error ? q.error.message : null };
 }
 
-function StatCard({
-  label, value, hint, tone, icon: Icon, href,
-}: { label: string; value: number; hint?: string; tone: "neutral" | "warn" | "ok"; icon: any; href?: string }) {
-  // Cleanup UX (Wave BD): niente più bg colorato pieno (4 card affiancate con
-  // ambra/verde/blu/grigio sovraccaricavano). Solo border-left sottile + valore
-  // colorato quando > 0 — l'occhio va dove conta, senza rumore cromatico.
-  const accent =
-    tone === "warn" ? "border-l-amber-400" :
-    tone === "ok" ? "border-l-emerald-400" : "border-l-primary/40";
-  const valueColor =
-    tone === "warn" && value > 0 ? "text-amber-700" :
-    tone === "ok" && value > 0 ? "text-emerald-700" : "text-foreground";
-  const body = (
-    <div className={cn("rounded-xl border border-card-border border-l-4 bg-card p-4 transition-colors hover:shadow-sm", accent)}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={cn("text-2xl font-bold mt-1", valueColor)}>{value}</p>
-      <div className="flex items-center justify-between mt-1">
-        <p className="text-xs text-muted-foreground">{hint ?? " "}</p>
-        <Icon size={15} className="text-muted-foreground/70" />
-      </div>
-    </div>
-  );
-  return href ? <Link href={href}>{body}</Link> : body;
-}
 
 function TaskTodayRow({
   task, onClick, onToggleDone, overdue,
@@ -201,8 +177,6 @@ export default function TodayPage() {
     `/api/personal-agenda?from=${encodeURIComponent(dayStartIso)}&to=${encodeURIComponent(dayEndIso)}`,
     60,
   ).data ?? [];
-  const reports = useApi<AnyObj[]>(["today", "reports"], "/api/reports", 90).data ?? [];
-  const expContracts = useApi<AnyObj[]>(["today", "expContracts"], "/api/client-contracts/expiring", 120).data ?? [];
   const clients = useApi<AnyObj[]>(["today", "clients"], "/api/clients", 120).data ?? [];
   const projects = useApi<AnyObj[]>(["today", "projects"], "/api/projects", 120).data ?? [];
 
@@ -256,43 +230,6 @@ export default function TodayPage() {
     navigate(`/tasks?id=${t?.id ?? ""}`);
   };
 
-  // Brief per ciascun cliente — uso react-query per ogni cliente
-  const briefQueries = clients.slice(0, 30).map((c: AnyObj) => {
-    return { id: Number(c.id), name: c.name as string };
-  });
-  const briefsAgg = useQuery({
-    queryKey: ["today", "briefs", briefQueries.map((b) => b.id).join(",")],
-    enabled: briefQueries.length > 0,
-    staleTime: 120 * 1000,
-    queryFn: async () => {
-      const out: { clientId: number; name: string; pct: number }[] = [];
-      for (const b of briefQueries) {
-        const r = await portalFetch(`/api/clients/${b.id}/brief`, { credentials: "include" });
-        if (!r.ok) continue;
-        const data = await r.json();
-        let total = 0;
-        let filled = 0;
-        if (data?.parsedJson) {
-          try {
-            const p = JSON.parse(data.parsedJson);
-            for (const sec of Object.values(p ?? {})) {
-              if (sec && typeof sec === "object") {
-                for (const v of Object.values(sec as Record<string, unknown>)) {
-                  total += 1;
-                  if (typeof v === "string" && v.trim()) filled += 1;
-                }
-              }
-            }
-          } catch { /* ignore */ }
-        }
-        const pct = total ? Math.round((filled / total) * 100) : 0;
-        out.push({ clientId: b.id, name: b.name, pct });
-      }
-      return out;
-    },
-  });
-  const briefStats = briefsAgg.data ?? [];
-
   // Aggregati
   const aggregates = useMemo(() => {
     const today = startOfToday();
@@ -319,22 +256,12 @@ export default function TodayPage() {
       return s >= today && s <= week;
     });
     const eventsToday = events.filter((e) => isoDate(new Date(e.date)) === todayKey);
-    const reportsToApprove = reports.filter(
-      (r) => r.status && /in_attesa|attesa|review|revisione|pending/i.test(String(r.status)),
-    );
-    const reportsToSend = reports.filter(
-      (r) => r.status === "approvato" || r.status === "ready",
-    );
-    const briefsIncomplete = briefStats.filter((b) => b.pct < 50);
 
     return {
       tasksOverdue, tasksToday, tasksThisWeek, tasksDoneToday,
       eventsToday, eventsThisWeek,
-      reportsToApprove, reportsToSend,
-      briefsIncomplete,
-      contractsExpiring: expContracts,
     };
-  }, [tasksEnriched, events, reports, expContracts, briefStats, todayKey, sevenDaysFromNow]);
+  }, [tasksEnriched, events, todayKey, sevenDaysFromNow]);
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();

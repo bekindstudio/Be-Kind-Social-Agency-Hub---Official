@@ -140,17 +140,13 @@ function trendDelta(current: number, previous: number): string {
 // Preferenze non controllavano i pannelli veri (che vivono nella colonna destra).
 // task_oggi rimosso (ridisegno 3 schermate): la lista task vive tutta su Oggi,
 // la Dashboard è "come va", non un'altra lista operativa.
-const DEFAULT_WIDGETS = [
-  "progetti_corso",
-  "editoriale",
-  "adv",
-] as const;
-// Guard: non renderizzare una card se per quella chiave non esiste un corpo
-// (protegge da stati widget salvati in localStorage con le vecchie chiavi,
-// task_oggi incluso).
-const WIDGETS_WITH_BODY = new Set<string>(["progetti_corso", "editoriale", "adv"]);
+// Widget rimossi (Wave DE): "editoriale" (doppione del calendario aggregato) e
+// "adv" (placeholder sempre vuoto, integrazioni non collegate) e "progetti_corso"
+// (doppione di "Salute progetti"). La Dashboard è "come va", non un muro di widget.
+const DEFAULT_WIDGETS: readonly string[] = [];
+const WIDGETS_WITH_BODY = new Set<string>();
 
-type WidgetKey = (typeof DEFAULT_WIDGETS)[number];
+type WidgetKey = string;
 
 /* ─── Cruscotto visivo (Wave BT) ─────────────────────────────────────────
    Anello di completamento + riquadro grafico icona/numero. Poco testo. */
@@ -429,12 +425,9 @@ export default function Dashboard() {
     for (const c of clients.filter((x: AnyObj) => x.contractStatus === "scaduto").slice(0, 1)) {
       list.push({ id: `expired-${c.id}`, level: "critical", text: `Contratto ${c.name} scaduto`, href: `/clients/${c.id}` });
     }
-    if (tasksOverdue.length > 0) list.push({ id: "overdue-tasks", level: "critical", text: `${tasksOverdue.length} task scadute oggi senza completamento`, href: "/tasks" });
+    if (tasksOverdue.length > 0) list.push({ id: "overdue-tasks", level: "critical", text: `${tasksOverdue.length} task in ritardo`, href: "/tasks" });
     for (const c of clients.filter((x: AnyObj) => x.contractStatus === "in_scadenza").slice(0, 2)) {
       list.push({ id: `expiring-${c.id}`, level: "warning", text: `Contratto ${c.name} scade presto`, href: `/clients/${c.id}` });
-    }
-    for (const p of projects.filter((x: AnyObj) => Number(x.budget ?? 0) > 0 && (Number(x.budgetSpeso ?? 0) / Number(x.budget ?? 1)) >= 0.85).slice(0, 2)) {
-      list.push({ id: `budget-${p.id}`, level: "warning", text: `Budget ${p.name} all'85%`, href: `/projects/${p.id}` });
     }
     return list.filter((a) => !dismissed.includes(a.id));
   }, [projects, clients, tasksOverdue.length, dismissed]);
@@ -614,7 +607,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatTile icon={Users} value={clients.length} label="Clienti" accent="text-sky-500" onClick={() => navigate("/clients")} />
-                <StatTile icon={FolderKanban} value={projects.length} label="Progetti" accent="text-primary" onClick={() => navigate("/projects")} />
+                <StatTile icon={FolderKanban} value={activeProjects.length} label="Progetti attivi" accent="text-primary" onClick={() => navigate("/projects")} />
                 <button
                   type="button"
                   onClick={() => navigate("/today")}
@@ -945,9 +938,9 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-          <div className="xl:col-span-3 space-y-4">
+        {/* Calendario e scadenze */}
+        <div className="grid grid-cols-1 gap-4">
+          <div className="hidden">
             {widgets.map((wk, idx) => visibleWidget(wk) && WIDGETS_WITH_BODY.has(wk) && (
               <div key={wk} className="bg-card border border-card-border rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -1102,45 +1095,6 @@ export default function Dashboard() {
               <button onClick={() => navigate("/tasks?new=1")} className="mt-2 text-xs text-primary hover:underline">+ Aggiungi scadenza</button>
             </div>
 
-            <div className="bg-card border border-card-border rounded-xl p-4">
-              <p className="font-semibold text-sm mb-2">Clienti che necessitano attenzione</p>
-              {clientsAtRisk.length === 0 ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-700">Tutti i clienti sono in ottima salute ✓</div>
-              ) : (
-                <div className="space-y-2">
-                  {clientsAtRisk.slice(0, 4).map((c: AnyObj) => (
-                    <div key={c.id} className="border border-border rounded-lg p-2.5">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-sm">{c.name}</p>
-                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", Number(c.healthScore) < 40 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{c.healthScore}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{c.contractStatus === "in_scadenza" ? "Contratto in scadenza" : "Nessun report / task scadute"}</p>
-                      <button onClick={() => navigate(`/clients/${c.id}`)} className="text-xs text-primary hover:underline mt-1">Agisci</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-card border border-card-border rounded-xl p-4">
-              <p className="font-semibold text-sm mb-2">Attività recente del team</p>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {activity.slice(0, 8).map((a: AnyObj, i: number) => <div key={a.id ?? i} className="text-xs border border-border rounded-lg p-2"><p><strong>{a.entityName ?? "Team"}</strong> {a.description ?? "ha aggiornato un elemento"}</p><p className="text-muted-foreground mt-0.5">{formatDate(a.createdAt)}</p></div>)}
-              </div>
-            </div>
-
-            <div className="bg-card border border-card-border rounded-xl p-4">
-              <p className="font-semibold text-sm mb-2">Chat team</p>
-              <div className="py-3 px-3 rounded-lg border border-dashed border-card-border bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-1.5">Conversazioni e annunci interni del team.</p>
-                <button
-                  onClick={() => navigate("/chat")}
-                  className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  Apri chat → <ArrowRight size={11} />
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1149,7 +1103,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-3">
             <p className="font-semibold text-sm">Andamento del mese</p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <div className="h-64">
               <p className="text-xs text-muted-foreground mb-1">Task create e completate (ultimi 6 mesi)</p>
               <ResponsiveContainer width="100%" height="100%">
@@ -1180,27 +1134,6 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-            <div className="h-64">
-              <p className="text-xs text-muted-foreground mb-1">Andamento task (create vs completate)</p>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={projectLine}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="avviati" name="Create" stroke="#8b5cf6" strokeWidth={2} />
-                  <Line type="monotone" dataKey="completati" name="Completate" stroke="#14b8a6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3">
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Task in sospeso</p><p className="font-semibold">{(summary as AnyObj)?.pendingTasks ?? 0}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Task completate</p><p className="font-semibold">{tasks.filter((t: AnyObj) => t.status === "done").length}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Nuovi clienti (mese)</p><p className="font-semibold">{newClientsMonth}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Preventivi (template)</p><p className="font-semibold">{revenueData?.totalQuotes ?? "—"}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Valore preventivi accettati</p><p className="font-semibold">{revenueData?.totalRevenue != null ? `€ ${Number(revenueData.totalRevenue).toLocaleString("it-IT")}` : "—"}</p></div>
-            <div className="border border-border rounded-lg p-2"><p className="text-xs text-muted-foreground">Report inviati</p><p className="font-semibold">{reportsInviatiCount != null ? reportsInviatiCount : "—"}</p></div>
           </div>
         </div>
           </div>
@@ -1210,27 +1143,6 @@ export default function Dashboard() {
             duplicava il menu "Nuovo" della topbar, con etichette divergenti.
             La creazione rapida è in topbar su ogni pagina (QuickCreate). */}
 
-        {/* Dashboard Settings */}
-        <button onClick={() => setShowDashPrefs(true)} className="fixed top-20 right-6 z-30 p-2 rounded-lg border border-input bg-background"><Settings size={16} /></button>
-        {showDashPrefs && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-            <div className="bg-card border border-card-border rounded-xl w-full max-w-xl p-5">
-              <h3 className="font-semibold mb-3">Preferenze Dashboard</h3>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {DEFAULT_WIDGETS.map((w) => (
-                  <label key={w} className="flex items-center justify-between border border-border rounded-lg px-3 py-2 text-sm">
-                    <span>{w.replaceAll("_", " ")}</span>
-                    <input type="checkbox" checked={!hiddenWidgets.includes(w)} onChange={(e) => setHiddenWidgets((prev) => e.target.checked ? prev.filter((x) => x !== w) : [...prev, w])} />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button onClick={() => { setWidgets([...DEFAULT_WIDGETS]); setHiddenWidgets([]); }} className="px-3 py-2 text-sm border border-input rounded-lg">Reset default</button>
-                <button onClick={() => setShowDashPrefs(false)} className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-lg">Salva</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

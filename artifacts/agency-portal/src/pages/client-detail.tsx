@@ -1839,8 +1839,13 @@ export default function ClientDetail({ id }: Props) {
             </Section>
 
             {((viewClient as any).ragioneSociale || (viewClient as any).piva || (viewClient as any).codiceFiscale || (viewClient as any).indirizzo || (viewClient as any).pec || (viewClient as any).sdi || (viewClient as any).iban || (viewClient as any).metodoPagamento || (viewClient as any).terminiPagamento) && (
-              <Section title="Dati di Fatturazione" icon={<Receipt size={15} className="text-primary" />}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <details className="rounded-xl border border-card-border bg-card overflow-hidden group">
+                <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
+                  <Receipt size={15} className="text-primary" />
+                  <span className="font-semibold text-sm">Dati di fatturazione</span>
+                  <ChevronDown size={16} className="ml-auto text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {FIELD("Ragione Sociale", (viewClient as any).ragioneSociale)}
                   {FIELD("Partita IVA", (viewClient as any).piva)}
                   {FIELD("Codice Fiscale", (viewClient as any).codiceFiscale)}
@@ -1855,7 +1860,7 @@ export default function ClientDetail({ id }: Props) {
                   {FIELD("Metodo di pagamento", (viewClient as any).metodoPagamento)}
                   {FIELD("Termini di pagamento", (viewClient as any).terminiPagamento)}
                 </div>
-              </Section>
+              </details>
             )}
 
             {((((viewClient as any).contacts?.length ?? 0) > 0) || (((viewClient as any).services?.length ?? 0) > 0)) && (

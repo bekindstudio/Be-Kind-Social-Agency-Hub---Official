@@ -406,10 +406,8 @@ export default function Clients() {
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
           <div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input className="w-full pl-9 pr-4 py-2.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Cerca clienti..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-          <div className="grid grid-cols-3 sm:flex sm:items-center gap-2">
+          <div className="flex items-center gap-2">
             <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterService} onChange={(e) => setFilterService(e.target.value)}><option value="">Servizio</option>{SERVICE_TYPES.map((s) => <option key={s}>{s}</option>)}</select>
-            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterContract} onChange={(e) => setFilterContract(e.target.value)}><option value="">Contratto</option>{CONTRACT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-            <select className="px-3 py-2 text-sm border border-input rounded-lg bg-background" value={filterHealth} onChange={(e) => setFilterHealth(e.target.value)}><option value="">Salute</option><option value="good">Buono/Ottimo</option><option value="attention">Attenzione</option><option value="critical">Rischio/Critico</option></select>
           </div>
           <button onClick={() => setViewMode(viewMode === "card" ? "table" : "card")} className="hidden sm:flex px-3 py-2 border border-input rounded-lg bg-background" aria-label={viewMode === "card" ? "Vista tabella" : "Vista card"}>{viewMode === "card" ? <List size={16} /> : <LayoutGrid size={16} />}</button>
         </div>
@@ -463,13 +461,14 @@ export default function Clients() {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{client.settore ?? "Settore non impostato"}</p>
-                      <div className="flex items-center gap-1.5 mt-1"><span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", getHealthColor(Number(client.healthScore ?? 0)))}>Salute {client.healthScore ?? 0}</span><span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{client.contractStatus ?? "nessuno"}</span>{activeClient && normalizeName(activeClient.name) === normalizeName(client.name) && <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Attivo</span>}</div>
+                      {activeClient && normalizeName(activeClient.name) === normalizeName(client.name) && (
+                        <div className="mt-1"><span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Attivo</span></div>
+                      )}
                     </div>
                   </div>
                   <div className="px-4 pb-4">
                     <div className="flex flex-wrap gap-1 mb-3">{safeTags(client.tagsJson).slice(0, 4).map((tag) => <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tag}</span>)}</div>
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-muted-foreground">€ {Number(client.monthlyValue ?? 0).toLocaleString("it-IT")}/mese</div>
+                    <div className="flex items-center justify-end">
                       <div className="flex items-center gap-1">
                         <button onClick={(e) => { e.preventDefault(); syncActiveClientByName(client.name); navigate(`/clients/${client.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button>
                         <button onClick={(e) => { e.preventDefault(); navigate("/tasks"); }} className="p-1.5 rounded hover:bg-muted"><Plus size={13} /></button>
@@ -485,8 +484,8 @@ export default function Clients() {
         ) : (
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allClientsSelected} onChange={(e) => toggleSelectAllClients(e.target.checked)} className="h-4 w-4 accent-primary" aria-label="Seleziona tutti i clienti filtrati" /></th><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-left">Contratto</th><th className="px-3 py-2 text-left">Valore mensile</th><th className="px-3 py-2 text-left">Ultima attività</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
-              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{safeTags(c.servicesJson).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2">{c.contractStatus ?? "nessuno"}</td><td className="px-3 py-2">€ {Number(c.monthlyValue ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleDateString("it-IT") : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
+              <thead><tr className="border-b border-card-border bg-muted/30"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allClientsSelected} onChange={(e) => toggleSelectAllClients(e.target.checked)} className="h-4 w-4 accent-primary" aria-label="Seleziona tutti i clienti filtrati" /></th><th className="px-3 py-2 text-left">Logo</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Settore</th><th className="px-3 py-2 text-left">Servizi</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
+              <tbody>{filtered.map((c) => <tr key={c.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedClientIds.includes(Number(c.id))} onChange={(e) => toggleClientSelection(Number(c.id), e.target.checked)} className="h-4 w-4 accent-primary" aria-label={`Seleziona cliente ${c.name}`} /></td><td className="px-3 py-2"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="w-8 h-8 rounded-full overflow-hidden" style={{ backgroundColor: c.brandColor ?? c.color }}><ClientLogo name={c.name} logoUrl={c.logoUrl} color={c.brandColor ?? c.color} /></button></td><td className="px-3 py-2">{c.name}</td><td className="px-3 py-2">{c.settore ?? "—"}</td><td className="px-3 py-2">{safeTags(c.servicesJson).slice(0, 2).join(", ") || "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => { syncActiveClientByName(c.name); navigate(`/clients/${c.id}`); }} className="p-1.5 rounded hover:bg-muted"><ExternalLink size={13} /></button></td></tr>)}</tbody>
             </table>
           </div>
         )}

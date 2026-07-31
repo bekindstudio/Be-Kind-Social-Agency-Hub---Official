@@ -26,6 +26,10 @@ function healthStyle(h: string) {
   if (h === "completed") return "bg-teal-100 text-teal-700";
   return "bg-gray-100 text-gray-600";
 }
+const HEALTH_LABEL: Record<string, string> = {
+  "on-track": "In linea", "at-risk": "A rischio", "delayed": "In ritardo", "completed": "Completato",
+};
+const healthLabel = (h: string) => HEALTH_LABEL[h] ?? "In linea";
 
 export default function Projects() {
   const qc = useQueryClient();
@@ -276,7 +280,7 @@ export default function Projects() {
                       <p className="font-semibold">{p.name}</p>
                       <p className="text-xs text-muted-foreground">{p.clientName ?? "Cliente"}</p>
                     </div>
-                    <span className={cn("text-[11px] px-2 py-0.5 rounded-full", healthStyle(p.healthStatus ?? "on-track"))}>{p.healthStatus ?? "on-track"}</span>
+                    <span className={cn("text-[11px] px-2 py-0.5 rounded-full", healthStyle(p.healthStatus ?? "on-track"))}>{healthLabel(p.healthStatus ?? "on-track")}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {(() => {
@@ -285,20 +289,20 @@ export default function Projects() {
                     })()}
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{STATUS_OPTIONS.find((s) => s.value === p.status)?.label ?? p.status}</span>
                   </div>
-                  <div className="mt-3">
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} /></div>
-                    <p className="text-[11px] text-muted-foreground mt-1">{p.tasksDone ?? 0}/{p.tasksTotal ?? 0} task completate ({p.progress ?? 0}%)</p>
-                  </div>
-                  <div className="flex items-center justify-between mt-3">
-                    <p className="text-xs">€ {Number(p.budget ?? 0).toLocaleString("it-IT")}</p>
-                    <p className={cn("text-xs", p.dueDays != null && p.dueDays <= 7 ? "text-red-600 font-semibold" : "text-muted-foreground")}>{p.deadline ? formatDate(p.deadline) : "—"}</p>
+                  {(p.tasksTotal ?? 0) > 0 && (
+                    <div className="mt-3">
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} /></div>
+                      <p className="text-[11px] text-muted-foreground mt-1">{p.tasksDone ?? 0}/{p.tasksTotal ?? 0} task completate ({p.progress ?? 0}%)</p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end mt-3">
+                    <p className={cn("text-xs", p.dueDays != null && p.dueDays <= 7 ? "text-red-600 font-semibold" : "text-muted-foreground")}>{p.deadline ? formatDate(p.deadline) : "Nessuna deadline"}</p>
                   </div>
                   {p.dueDays != null && p.dueDays < 0 && <div className="mt-2 text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> Scaduto da {Math.abs(p.dueDays)} giorni</div>}
                   <div className="mt-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-wrap">
-                    <button onClick={() => navigate(`/projects/${p.id}`)} className="px-2 py-1 text-xs border border-input rounded">Open</button>
-                    <button onClick={() => navigate("/tasks")} className="px-2 py-1 text-xs border border-input rounded">New Task</button>
-                    <button onClick={() => navigate("/chat")} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><MessageCircle size={12} /> Msg</button>
-                    <button onClick={() => portalFetch(`/api/projects/${p.id}/archive`, { method: "POST" }).then(() => qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }))} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><Archive size={12} /> Archive</button>
+                    <button onClick={() => navigate(`/projects/${p.id}`)} className="px-2 py-1 text-xs border border-input rounded">Apri</button>
+                    <button onClick={() => navigate("/tasks")} className="px-2 py-1 text-xs border border-input rounded">Nuova task</button>
+                    <button onClick={() => portalFetch(`/api/projects/${p.id}/archive`, { method: "POST" }).then(() => qc.invalidateQueries({ queryKey: getListProjectsQueryKey() }))} className="px-2 py-1 text-xs border border-input rounded inline-flex items-center gap-1"><Archive size={12} /> Archivia</button>
                   </div>
                 </div>
               </div>
@@ -307,8 +311,8 @@ export default function Projects() {
         ) : (
           <div className="bg-card border border-card-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="bg-muted/30 border-b border-card-border"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allSelected} onChange={(e) => toggleSelectAllFiltered(e.target.checked)} aria-label="Seleziona tutti i progetti filtrati" className="h-4 w-4 accent-primary" /></th><th className="px-3 py-2 text-left">Project</th><th className="px-3 py-2 text-left">Client</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Progress</th><th className="px-3 py-2 text-left">Budget</th><th className="px-3 py-2 text-left">Due date</th><th className="px-3 py-2 text-left">Last activity</th><th className="px-3 py-2 text-right">Actions</th></tr></thead>
-              <tbody>{filtered.map((p: any) => <tr key={p.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedProjectIds.includes(Number(p.id))} onChange={(e) => toggleProjectSelection(Number(p.id), e.target.checked)} aria-label={`Seleziona progetto ${p.name}`} className="h-4 w-4 accent-primary" /></td><td className="px-3 py-2 font-medium">{p.name}</td><td className="px-3 py-2">{p.clientName ?? "—"}</td><td className="px-3 py-2 text-xs">{(() => { try { return (JSON.parse(p.typeJson ?? "[]") as string[]).join(", ") || "Altro"; } catch { return "Altro"; } })()}</td><td className="px-3 py-2">{STATUS_OPTIONS.find((s) => s.value === p.status)?.label ?? p.status}</td><td className="px-3 py-2">{p.progress ?? 0}%</td><td className="px-3 py-2">€ {Number(p.budget ?? 0).toLocaleString("it-IT")}</td><td className="px-3 py-2">{p.deadline ? formatDate(p.deadline) : "—"}</td><td className="px-3 py-2">{p.lastActivityAt ? formatDate(p.lastActivityAt) : formatDate(p.updatedAt)}</td><td className="px-3 py-2 text-right"><Link href={`/projects/${p.id}`} className="text-xs px-2 py-1 rounded border border-input">Open</Link></td></tr>)}</tbody>
+              <thead><tr className="bg-muted/30 border-b border-card-border"><th className="px-3 py-2 text-left"><input type="checkbox" checked={allSelected} onChange={(e) => toggleSelectAllFiltered(e.target.checked)} aria-label="Seleziona tutti i progetti filtrati" className="h-4 w-4 accent-primary" /></th><th className="px-3 py-2 text-left">Progetto</th><th className="px-3 py-2 text-left">Cliente</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Stato</th><th className="px-3 py-2 text-left">Avanzamento</th><th className="px-3 py-2 text-left">Scadenza</th><th className="px-3 py-2 text-right">Azioni</th></tr></thead>
+              <tbody>{filtered.map((p: any) => <tr key={p.id} className="border-b border-card-border/50"><td className="px-3 py-2"><input type="checkbox" checked={selectedProjectIds.includes(Number(p.id))} onChange={(e) => toggleProjectSelection(Number(p.id), e.target.checked)} aria-label={`Seleziona progetto ${p.name}`} className="h-4 w-4 accent-primary" /></td><td className="px-3 py-2 font-medium">{p.name}</td><td className="px-3 py-2">{p.clientName ?? "—"}</td><td className="px-3 py-2 text-xs">{(() => { try { return (JSON.parse(p.typeJson ?? "[]") as string[]).join(", ") || "Altro"; } catch { return "Altro"; } })()}</td><td className="px-3 py-2">{STATUS_OPTIONS.find((s) => s.value === p.status)?.label ?? p.status}</td><td className="px-3 py-2">{p.progress ?? 0}%</td><td className="px-3 py-2">{p.deadline ? formatDate(p.deadline) : "—"}</td><td className="px-3 py-2 text-right"><Link href={`/projects/${p.id}`} className="text-xs px-2 py-1 rounded border border-input">Apri</Link></td></tr>)}</tbody>
             </table>
           </div>
         )}

@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
   { value: "todo", label: "Da fare", icon: Circle },
-  { value: "in_progress", label: "In corso", icon: Loader2 },
-  { value: "in_review", label: "In revisione", icon: Loader2 },
+  { value: "in-progress", label: "In corso", icon: Loader2 },
+  { value: "review", label: "In revisione", icon: Loader2 },
   { value: "done", label: "Fatto", icon: CheckCircle2 },
 ];
 

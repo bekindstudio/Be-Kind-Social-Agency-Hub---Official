@@ -104,17 +104,17 @@ export function ReportFilters({
 
       <label className="block text-sm">
         <span className="text-xs text-muted-foreground uppercase tracking-wide">Messaggio introduttivo</span>
-        <textarea value={state.introMessage} onChange={(e) => setState.setIntroMessage(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+        <textarea value={state.introMessage} onChange={(e) => setState.setIntroMessage(e.target.value)} rows={4} placeholder="Riassumi l'andamento del periodo con parole tue…" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
       </label>
 
       <label className="block text-sm">
         <span className="text-xs text-muted-foreground uppercase tracking-wide">Obiettivi prossimo mese</span>
-        <textarea value={state.nextGoals} onChange={(e) => setState.setNextGoals(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+        <textarea value={state.nextGoals} onChange={(e) => setState.setNextGoals(e.target.value)} rows={3} placeholder="Cosa vuoi ottenere il mese prossimo…" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
       </label>
 
       <label className="block text-sm">
         <span className="text-xs text-muted-foreground uppercase tracking-wide">Note strategiche</span>
-        <textarea value={state.strategicNotes} onChange={(e) => setState.setStrategicNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
+        <textarea value={state.strategicNotes} onChange={(e) => setState.setStrategicNotes(e.target.value)} rows={3} placeholder="Idee, test o attività da segnalare…" className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 resize-none" />
       </label>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

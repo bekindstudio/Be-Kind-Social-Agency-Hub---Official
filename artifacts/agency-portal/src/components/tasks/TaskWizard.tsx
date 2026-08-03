@@ -39,8 +39,8 @@ const STEPS: { key: Step; label: string; icon: typeof ListTodo; question: string
 
 const STATUS_OPTIONS = [
   { value: "todo", label: "Da fare" },
-  { value: "in_progress", label: "In corso" },
-  { value: "in_review", label: "In revisione" },
+  { value: "in-progress", label: "In corso" },
+  { value: "review", label: "In revisione" },
   { value: "done", label: "Fatto" },
 ];
 

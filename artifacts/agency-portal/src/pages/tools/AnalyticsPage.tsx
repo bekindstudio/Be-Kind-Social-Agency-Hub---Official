@@ -159,7 +159,6 @@ export default function AnalyticsPage() {
             engagementRatePrevious={previousWindow.engagementPrevious}
             postsPublished={previousWindow.posts}
             postsPublishedPrevious={previousWindow.postsPrevious}
-            industry={activeClient?.industry}
           />
         )}
 

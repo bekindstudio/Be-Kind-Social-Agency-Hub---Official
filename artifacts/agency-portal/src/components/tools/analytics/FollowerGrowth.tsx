@@ -42,7 +42,7 @@ export function FollowerGrowth({ points }: { points: FollowerPoint[] }) {
                 y={chartData[highlight.idx].followers}
                 r={4}
                 fill="#16A34A"
-                label={{ position: "top", value: `Post virale +${highlight.delta} follower`, fontSize: 11 }}
+                label={{ position: "top", value: `Max crescita +${highlight.delta}`, fontSize: 11 }}
               />
             )}
           </AreaChart>

@@ -13,7 +13,6 @@ import { ReportFilters } from "@/components/tools/reports/ReportFilters";
 import { portalFetch } from "@workspace/api-client-react";
 import type { ClientAnalytics } from "@/types/client";
 import { buildFallbackMetrics, monthLabel } from "@/lib/reportUtils";
-import { Sparkles } from "lucide-react";
 
 const ReportPreview = lazy(async () => {
   const mod = await import("@/components/tools/reports/ReportPreview");
@@ -40,7 +39,7 @@ const quickPresets = [
     id: "growth",
     label: "Focus crescita",
     intro:
-      "Nel periodo analizzato il brand ha mostrato una crescita costante sui KPI principali, con segnali positivi su copertura e coinvolgimento.",
+      "Report del periodo con focus sulla crescita: copertura, nuovi follower e coinvolgimento. (Descrivi qui i risultati reali del mese.)",
     goals:
       "Incrementare la quota di contenuti video ad alto impatto e consolidare i format con migliore retention.",
     notes:
@@ -50,7 +49,7 @@ const quickPresets = [
     id: "sales",
     label: "Focus vendite",
     intro:
-      "Le attivita del mese hanno sostenuto la fase di conversione con una buona base di awareness e contenuti orientati all'azione.",
+      "Report del periodo con focus sulle conversioni: awareness e contenuti orientati all'azione. (Descrivi qui i risultati reali del mese.)",
     goals:
       "Aumentare la frequenza dei contenuti con CTA commerciale e rafforzare i touchpoint verso landing e WhatsApp.",
     notes:
@@ -60,7 +59,7 @@ const quickPresets = [
     id: "brand",
     label: "Focus brand",
     intro:
-      "La comunicazione ha mantenuto coerenza di tone of voice e presenza costante, rafforzando il posizionamento del brand.",
+      "Report del periodo con focus sul brand: coerenza di tone of voice e presidio del posizionamento. (Descrivi qui i risultati reali del mese.)",
     goals:
       "Consolidare i contenuti educational e storytelling per aumentare autorevolezza e riconoscibilita.",
     notes:
@@ -74,9 +73,9 @@ export default function ReportsPage() {
   const queryClient = useQueryClient();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [introMessage, setIntroMessage] = useState("Nel periodo analizzato abbiamo mantenuto una traiettoria positiva sui KPI principali.");
-  const [nextGoals, setNextGoals] = useState("Aumentare la frequenza contenuti video e consolidare i formati best performer.");
-  const [strategicNotes, setStrategicNotes] = useState("Testare 2 nuove rubriche editoriali e un boost paid per i top post.");
+  const [introMessage, setIntroMessage] = useState("");
+  const [nextGoals, setNextGoals] = useState("");
+  const [strategicNotes, setStrategicNotes] = useState("");
   const [includeCompetitors, setIncludeCompetitors] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -262,12 +261,7 @@ export default function ReportsPage() {
         <section className="rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-white to-lime-50 p-5 md:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-2">
-              <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                <Sparkles size={12} />
-                Report Studio
-              </p>
               <h1 className="text-2xl md:text-3xl font-bold text-foreground">Report Mensile {activeClient ? `· ${activeClient.name}` : ""}</h1>
-              <p className="text-sm text-muted-foreground max-w-2xl">Esperienza ottimizzata per costruire report professionali in pochi click, con dati aggiornati e preview live pronta per il PDF.</p>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2">

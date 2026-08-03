@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, UploadCloud, X } from "lucide-react";
+import { Copy, X } from "lucide-react";
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
 import type { EditorialPost, SocialPlatform } from "@/types/client";
 
@@ -46,6 +46,7 @@ export function PostDrawer({
   isPublishing = false,
 }: PostDrawerProps) {
   const [draftTag, setDraftTag] = useState("");
+  const [draftMedia, setDraftMedia] = useState("");
   const [local, setLocal] = useState<EditorialPost | null>(post);
 
   useEffect(() => {
@@ -203,17 +204,52 @@ export function PostDrawer({
 
             <section>
               <p className="mb-2 text-xs font-semibold text-muted-foreground">Media</p>
-              <div className="rounded-lg border border-dashed border-input p-4 text-center">
-                <UploadCloud size={20} className="mx-auto mb-1 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">Trascina media qui</p>
-                {/* TODO: integrate real media upload + storage provider */}
+              <div className="flex gap-1.5">
+                <input
+                  value={draftMedia}
+                  onChange={(e) => setDraftMedia(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const url = draftMedia.trim();
+                      if (url && !local.mediaUrls.includes(url)) {
+                        setLocal({ ...local, mediaUrls: [...local.mediaUrls, url] });
+                      }
+                      setDraftMedia("");
+                    }
+                  }}
+                  placeholder="Incolla URL immagine/video"
+                  className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = draftMedia.trim();
+                    if (url && !local.mediaUrls.includes(url)) {
+                      setLocal({ ...local, mediaUrls: [...local.mediaUrls, url] });
+                    }
+                    setDraftMedia("");
+                  }}
+                  className="shrink-0 rounded-lg border border-input px-2.5 py-1.5 text-xs hover:bg-muted"
+                >
+                  Aggiungi
+                </button>
               </div>
               {local.mediaUrls.length > 0 && (
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   {local.mediaUrls.map((url) => (
-                    <div key={url} className="aspect-square overflow-hidden rounded border border-input bg-muted">
+                    <button
+                      type="button"
+                      key={url}
+                      onClick={() => setLocal({ ...local, mediaUrls: local.mediaUrls.filter((u) => u !== url) })}
+                      className="group relative aspect-square overflow-hidden rounded border border-input bg-muted"
+                      title="Rimuovi"
+                    >
                       <img src={url} alt="" className="h-full w-full object-cover" />
-                    </div>
+                      <span className="absolute inset-0 hidden items-center justify-center bg-black/50 text-white group-hover:flex">
+                        <X size={16} />
+                      </span>
+                    </button>
                   ))}
                 </div>
               )}

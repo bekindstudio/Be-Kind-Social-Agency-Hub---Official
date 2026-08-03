@@ -58,38 +58,6 @@ function makeId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-function generateDailyData(
-  baseFollowers: number,
-  baseReach: number,
-  baseImpressions: number,
-  baseEngagement: number,
-): ClientAnalytics["dailyData"] {
-  const dates = Array.from({ length: 30 }, (_, idx) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (30 - 1 - idx));
-    return d.toISOString().slice(0, 10);
-  });
-  return dates.map((date, idx) => ({
-    date,
-    followers: Math.max(
-      0,
-      baseFollowers - (30 - idx) * 6 + Math.round(Math.random() * 18),
-    ),
-    reach: Math.max(
-      0,
-      baseReach + Math.round(Math.sin(idx / 4) * 1200) + Math.round(Math.random() * 900),
-    ),
-    impressions: Math.max(
-      0,
-      baseImpressions + Math.round(Math.cos(idx / 5) * 1800) + Math.round(Math.random() * 1300),
-    ),
-    engagement: Math.max(
-      0,
-      Number((baseEngagement + Math.sin(idx / 6) * 0.6 + Math.random() * 0.4).toFixed(2)),
-    ),
-  }));
-}
-
 function seedStore(): ClientCoreStore {
   // Nessun cliente demo: lo store parte VUOTO e viene popolato solo dai clienti
   // reali caricati da /api/clients (vedi loadPortalClients più sotto).
@@ -258,7 +226,7 @@ export function ClientCoreProvider({ children }: { children: ReactNode }) {
             engagementRatePrevious: 0,
             postsPublished: 0,
             profileViews: 0,
-            dailyData: generateDailyData(0, 0, 0, 0),
+            dailyData: [],
             topPosts: [],
             updatedAt: nowIso(),
           },
@@ -461,30 +429,8 @@ export function ClientCoreProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        setStore((prev) => {
-          const current = prev.analytics[activeClientId];
-          if (!current) return prev;
-          const delta = Math.round((Math.random() * 2 - 1) * 200);
-          const nextFollowers = Math.max(0, current.followers + delta);
-          const growth =
-            current.followers > 0
-              ? Number((((nextFollowers - current.followers) / current.followers) * 100).toFixed(1))
-              : 0;
-          return {
-            ...prev,
-            analytics: {
-              ...prev.analytics,
-              [activeClientId]: {
-                ...current,
-                followers: nextFollowers,
-                followersGrowth: growth,
-                period,
-                updatedAt: nowIso(),
-              },
-            },
-          };
-        });
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        // Senza un account Meta collegato non ci sono dati reali da mostrare:
+        // NON fabbrichiamo numeri. Le analytics restano quelle vere (o vuote).
       } finally {
         setIsLoading(false);
       }

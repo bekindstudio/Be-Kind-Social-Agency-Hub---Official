@@ -151,8 +151,7 @@ export default function EventsPage() {
     } catch {
       toast({
         title: "Creazione evento non riuscita",
-        description:
-          "Non sono riuscito a salvare l'evento. Se stai usando un cliente demo locale, seleziona un cliente sincronizzato dal server.",
+        description: "Non sono riuscito a salvare l'evento. Riprova.",
         variant: "destructive",
       });
     }

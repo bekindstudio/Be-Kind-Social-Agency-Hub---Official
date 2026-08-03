@@ -22,21 +22,23 @@ interface ComparisonChartProps {
 }
 
 export function ComparisonChart({ competitors, clientAnalytics, clientName }: ComparisonChartProps) {
+  // Includiamo la riga "cliente" solo se ci sono dati reali (Meta collegato):
+  // altrimenti mostrare una barra a 0 farebbe sembrare che il cliente abbia 0 follower.
   const clientPostsPerWeek = clientAnalytics ? Number((clientAnalytics.postsPublished / 4).toFixed(1)) : 0;
   const followerData = [
     ...competitors.map((c) => ({ name: c.name, value: c.followers, isClient: false })),
-    { name: `${clientName} (cliente)`, value: clientAnalytics?.followers ?? 0, isClient: true },
+    ...(clientAnalytics ? [{ name: `${clientName} (cliente)`, value: clientAnalytics.followers, isClient: true }] : []),
   ];
   const engagementData = [
     ...competitors.map((c) => ({ name: c.name, value: c.engagementRate, isClient: false })),
-    { name: `${clientName} (cliente)`, value: clientAnalytics?.engagementRate ?? 0, isClient: true },
+    ...(clientAnalytics ? [{ name: `${clientName} (cliente)`, value: clientAnalytics.engagementRate, isClient: true }] : []),
   ];
   const sectorAvg = competitors.length > 0
     ? competitors.reduce((sum, c) => sum + c.engagementRate, 0) / competitors.length
     : 0;
   const scatterData = [
     ...competitors.map((c) => ({ name: c.name, x: c.postsPerWeek, y: c.engagementRate, z: 120, isClient: false })),
-    { name: `${clientName} (cliente)`, x: clientPostsPerWeek, y: clientAnalytics?.engagementRate ?? 0, z: 220, isClient: true },
+    ...(clientAnalytics ? [{ name: `${clientName} (cliente)`, x: clientPostsPerWeek, y: clientAnalytics.engagementRate, z: 220, isClient: true }] : []),
   ];
 
   return (

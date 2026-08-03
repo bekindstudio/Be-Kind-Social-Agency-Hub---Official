@@ -65,8 +65,8 @@ const PLATFORMS: Record<string, string> = {
 };
 
 const CTA_OPTIONS = [
-  "Shop Now", "Learn More", "Visit Profile", "Send Message",
-  "Save this post", "Tag a friend", "Link in bio", "Commenta",
+  "Acquista ora", "Scopri di più", "Visita il profilo", "Scrivici in DM",
+  "Salva il post", "Tagga un amico", "Link in bio", "Commenta",
 ];
 
 type Category = {

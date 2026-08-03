@@ -151,8 +151,7 @@ export default function TrashPage() {
               Cestino
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {rows.length} element{rows.length === 1 ? "o" : "i"} nel cestino · Eliminazione definitiva automatica dopo{" "}
-              {rows[0]?.retentionDays ?? 30} giorni (vedi promemoria API).
+              {rows.length} element{rows.length === 1 ? "o" : "i"} nel cestino · restano qui finché non li elimini definitivamente.
             </p>
           </div>
           {isAdmin && (
@@ -267,12 +266,6 @@ export default function TrashPage() {
           </table>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Per eliminare automaticamente gli elementi oltre 30 giorni, configura su Supabase un job che chiami{" "}
-          <code className="rounded bg-muted px-1">POST /api/trash/purge-expired</code> con header{" "}
-          <code className="rounded bg-muted px-1">x-trash-purge-secret</code> uguale a{" "}
-          <code className="rounded bg-muted px-1">TRASH_PURGE_SECRET</code> sull&apos;API.
-        </p>
       </div>
 
       <Dialog open={!!confirmPermanent} onOpenChange={() => setConfirmPermanent(null)}>

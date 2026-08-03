@@ -121,13 +121,13 @@ export default function Files() {
         {/* Hero (Wave BJ): conta link condivisi, hint sul Drive per binari. */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
-            {(files?.length ?? 0) === 0 ? (
+            {filtered.length === 0 ? (
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
                 Nessun link condiviso
               </h1>
             ) : (
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
-                <span className="text-primary tabular-nums">{files?.length ?? 0}</span> {(files?.length ?? 0) === 1 ? "link condiviso" : "link condivisi"}
+                <span className="text-primary tabular-nums">{filtered.length}</span> {filtered.length === 1 ? "link condiviso" : "link condivisi"}
               </h1>
             )}
             <p className="text-sm text-muted-foreground mt-2">Per upload di file binari usa Google Drive del cliente.</p>

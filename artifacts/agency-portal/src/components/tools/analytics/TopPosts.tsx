@@ -1,5 +1,17 @@
 import type { MetaPostData } from "@/services/metaApi";
 
+const MEDIA_TYPE_LABELS: Record<string, string> = {
+  IMAGE: "Immagine",
+  VIDEO: "Video",
+  CAROUSEL_ALBUM: "Carosello",
+  REEL: "Reel",
+  STORY: "Storia",
+};
+
+function mediaTypeLabel(type: string): string {
+  return MEDIA_TYPE_LABELS[type] ?? "Post";
+}
+
 export function TopPosts({ posts }: { posts: MetaPostData[] }) {
   const sorted = [...posts].sort((a, b) => b.engagementRate - a.engagementRate).slice(0, 6);
   const maxEngagement = sorted[0]?.engagementRate ?? 1;
@@ -11,10 +23,10 @@ export function TopPosts({ posts }: { posts: MetaPostData[] }) {
         {sorted.map((post) => (
           <article key={post.id} className="rounded-lg border border-border bg-background overflow-hidden">
             <div className="h-32 bg-muted flex items-center justify-center text-xs text-muted-foreground">
-              {post.thumbnailUrl ? <img src={post.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : "No thumbnail"}
+              {post.thumbnailUrl ? <img src={post.thumbnailUrl} alt="" className="w-full h-full object-cover" /> : "Nessuna anteprima"}
             </div>
             <div className="p-3">
-              <p className="text-xs text-muted-foreground">{post.mediaType} · {new Date(post.timestamp).toLocaleDateString("it-IT")}</p>
+              <p className="text-xs text-muted-foreground">{mediaTypeLabel(post.mediaType)} · {new Date(post.timestamp).toLocaleDateString("it-IT")}</p>
               <p className="text-sm mt-1 line-clamp-2">{post.caption || "Post senza caption"}</p>
               <p className="text-xs mt-2 text-muted-foreground">
                 Reach {post.reach.toLocaleString("it-IT")} · Like {post.likeCount} · Commenti {post.commentsCount}

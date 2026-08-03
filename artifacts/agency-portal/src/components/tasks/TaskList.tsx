@@ -44,15 +44,15 @@ export function TaskList({
                   aria-label="Seleziona tutti i task filtrati"
                 />
               </th>
-              <th className="px-3 py-2 text-left">Title</th>
-              <th className="px-3 py-2 text-left">Type</th>
-              <th className="px-3 py-2 text-left">Category</th>
-              <th className="px-3 py-2 text-left">Priority</th>
-              <th className="px-3 py-2 text-left">Status</th>
-              <th className="px-3 py-2 text-left">Assigned to</th>
-              <th className="px-3 py-2 text-left">Due date</th>
-              <th className="px-3 py-2 text-left">Progress</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-3 py-2 text-left">Titolo</th>
+              <th className="px-3 py-2 text-left">Tipo</th>
+              <th className="px-3 py-2 text-left">Categoria</th>
+              <th className="px-3 py-2 text-left">Priorità</th>
+              <th className="px-3 py-2 text-left">Stato</th>
+              <th className="px-3 py-2 text-left">Assegnato a</th>
+              <th className="px-3 py-2 text-left">Scadenza</th>
+              <th className="px-3 py-2 text-left">Avanzamento</th>
+              <th className="px-3 py-2 text-right">Azioni</th>
             </tr>
           </thead>
           <tbody>

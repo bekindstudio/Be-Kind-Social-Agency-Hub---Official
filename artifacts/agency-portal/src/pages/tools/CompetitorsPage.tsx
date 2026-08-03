@@ -130,7 +130,7 @@ export default function CompetitorsPage() {
               <div key={competitor.id} onClick={() => setSelectedCompetitorId(competitor.id)}>
                 <CompetitorCard
                   competitor={competitor}
-                  clientEngagementRate={analytics?.engagementRate ?? 0}
+                  clientEngagementRate={analytics?.engagementRate ?? null}
                   onEdit={(current) => {
                     setEditing(current);
                     setModalOpen(true);

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
 import {
   Plus, Trash2, Pencil, X, Save, Phone, Mail, Calendar, Briefcase,
-  User, MapPin, Linkedin, FileText, Camera, ChevronDown, ChevronUp, Shield, Building, Send,
+  User, MapPin, Linkedin, FileText, ChevronDown, ChevronUp, Shield, Building, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -368,13 +368,6 @@ export default function Team() {
                       {(form.name[0] ?? "").toUpperCase()}{(form.surname[0] ?? "").toUpperCase()}
                     </div>
                   )}
-                  <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 shadow-md">
-                    <Camera size={13} className="text-primary-foreground" />
-                    <input
-                      type="text"
-                      className="hidden"
-                    />
-                  </label>
                 </div>
                 <div className="flex gap-1.5 flex-wrap justify-center max-w-[120px]">
                   {AVATAR_COLORS.map((c) => (

@@ -7,7 +7,7 @@ import type { Competitor } from "@/types/client";
 
 interface CompetitorCardProps {
   competitor: Competitor;
-  clientEngagementRate: number;
+  clientEngagementRate: number | null;
   onEdit: (competitor: Competitor) => void;
   onDelete: (competitor: Competitor) => void;
 }
@@ -75,7 +75,7 @@ export function CompetitorCard({ competitor, clientEngagementRate, onEdit, onDel
     if (competitor.followersPrevious == null || competitor.followersPrevious <= 0) return null;
     return ((competitor.followers - competitor.followersPrevious) / competitor.followersPrevious) * 100;
   }, [competitor.followers, competitor.followersPrevious]);
-  const engagementVsClient = competitor.engagementRate - clientEngagementRate;
+  const engagementVsClient = clientEngagementRate != null ? competitor.engagementRate - clientEngagementRate : null;
   const latestUpdate = competitor.updateHistory?.[competitor.updateHistory.length - 1]?.date ?? competitor.updatedAt;
 
   return (
@@ -117,9 +117,11 @@ export function CompetitorCard({ competitor, clientEngagementRate, onEdit, onDel
         <div className="rounded-lg bg-muted/40 p-2">
           <p className="text-muted-foreground">Engagement</p>
           <p className="font-semibold">{competitor.engagementRate.toFixed(1)}%</p>
-          <p className={engagementVsClient >= 0 ? "text-emerald-600" : "text-red-600"}>
-            {engagementVsClient >= 0 ? "↑" : "↓"} vs cliente
-          </p>
+          {engagementVsClient != null && (
+            <p className={engagementVsClient >= 0 ? "text-emerald-600" : "text-red-600"}>
+              {engagementVsClient >= 0 ? "↑" : "↓"} vs cliente
+            </p>
+          )}
         </div>
         <div className="rounded-lg bg-muted/40 p-2">
           <p className="text-muted-foreground">Post/settimana</p>

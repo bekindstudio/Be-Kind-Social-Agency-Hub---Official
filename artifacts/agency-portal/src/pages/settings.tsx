@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { usePortalUser } from "@/hooks/usePortalUser";
 import { Layout } from "@/components/layout/Layout";
 import {
-  Settings as SettingsIcon,
   Palette,
   Bell,
   Users,
@@ -37,20 +36,14 @@ import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 type AgencyMeta = {
   connected: boolean;
   tokenExpired?: boolean;
-  tokenExpiresAt?: string | null;
-  tokenDaysLeft?: number | null;
-  metaUserName?: string;
   pages?: any[];
-  instagramAccounts?: any[];
-  adAccounts?: any[];
-  lastSyncedAt?: string | null;
 };
 
 function IntegrationCard({ children, title, icon: Icon, status }: {
   children: React.ReactNode;
   title: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  status: "connected" | "disconnected";
+  status?: "connected" | "disconnected";
 }) {
   return (
     <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm">
@@ -61,13 +54,15 @@ function IntegrationCard({ children, title, icon: Icon, status }: {
           </div>
           <h3 className="font-semibold text-sm">{title}</h3>
         </div>
-        <div className={cn(
-          "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full",
-          status === "connected" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-        )}>
-          <div className={cn("w-1.5 h-1.5 rounded-full", status === "connected" ? "bg-emerald-500" : "bg-gray-400")} />
-          {status === "connected" ? "Connesso" : "Non connesso"}
-        </div>
+        {status && (
+          <div className={cn(
+            "flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full",
+            status === "connected" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+          )}>
+            <div className={cn("w-1.5 h-1.5 rounded-full", status === "connected" ? "bg-emerald-500" : "bg-gray-400")} />
+            {status === "connected" ? "Connesso" : "Non connesso"}
+          </div>
+        )}
       </div>
       {children}
     </div>
@@ -87,11 +82,6 @@ export default function Settings() {
   const [metaConnectError, setMetaConnectError] = useState("");
   const [metaRefreshing, setMetaRefreshing] = useState(false);
   const [showTokenInput, setShowTokenInput] = useState(false);
-
-  // Google Ads
-  const [googleAdsId, setGoogleAdsId] = useState("");
-  const [googleSaved, setGoogleSaved] = useState(false);
-  const [googleConnected, setGoogleConnected] = useState(false);
 
   // Google Drive
   type GoogleDriveStatus = {
@@ -156,15 +146,7 @@ export default function Settings() {
       }
 
       if (statusData?.tokenExpired) {
-        setMeta({
-          connected: true,
-          tokenExpired: true,
-          metaUserName: "Account Meta",
-          pages: [],
-          instagramAccounts: [],
-          adAccounts: [],
-          lastSyncedAt: new Date().toISOString(),
-        });
+        setMeta({ connected: true, tokenExpired: true, pages: [] });
         return;
       }
 
@@ -177,15 +159,7 @@ export default function Settings() {
       const accounts = await accountsRes.json().catch(() => []);
       if (!accountsRes.ok) {
         if (accounts?.error === "TOKEN_EXPIRED") {
-          setMeta({
-            connected: true,
-            tokenExpired: true,
-            metaUserName: "Account Meta",
-            pages: [],
-            instagramAccounts: [],
-            adAccounts: [],
-            lastSyncedAt: new Date().toISOString(),
-          });
+          setMeta({ connected: true, tokenExpired: true, pages: [] });
           return;
         }
         setMeta({ connected: false });
@@ -195,7 +169,6 @@ export default function Settings() {
       setMeta({
         connected: true,
         tokenExpired: false,
-        metaUserName: "Account Meta",
         pages: Array.isArray(accounts)
           ? accounts.map((account: any) => ({
               id: account.id,
@@ -203,9 +176,6 @@ export default function Settings() {
               igUserId: account.instagramBusinessAccountId ?? null,
             }))
           : [],
-        instagramAccounts: [],
-        adAccounts: [],
-        lastSyncedAt: new Date().toISOString(),
       });
     } catch {
       setMeta({ connected: false });
@@ -215,9 +185,6 @@ export default function Settings() {
   useEffect(() => {
     fetchAgencyMeta();
     void fetchDriveStatus();
-    const savedGoogle = localStorage.getItem("bekind_google_ads_id") ?? "";
-    setGoogleAdsId(savedGoogle);
-    setGoogleConnected(!!savedGoogle);
     const params = new URLSearchParams(window.location.search);
     const metaResult = params.get("meta");
     if (metaResult === "connected") {
@@ -305,13 +272,6 @@ export default function Settings() {
     setMetaToken("");
   };
 
-  const saveGoogleAdsId = () => {
-    localStorage.setItem("bekind_google_ads_id", googleAdsId);
-    setGoogleConnected(!!googleAdsId);
-    setGoogleSaved(true);
-    setTimeout(() => setGoogleSaved(false), 2500);
-  };
-
   const copyUserId = () => {
     if (user?.id) {
       navigator.clipboard.writeText(user.id);
@@ -378,24 +338,11 @@ export default function Settings() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
                       <Wifi size={15} />
-                      Connesso come <strong className="ml-1">{meta.metaUserName}</strong>
+                      Connesso
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {meta.tokenExpired && (
-                        <span className="text-xs px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full font-medium">Token scaduto - riconnetti</span>
-                      )}
-                      {!meta.tokenExpired && meta.tokenDaysLeft != null && meta.tokenDaysLeft <= 7 && (
-                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">Token scade tra {meta.tokenDaysLeft} giorni</span>
-                      )}
-                      {!meta.tokenExpired && meta.tokenDaysLeft != null && meta.tokenDaysLeft > 7 && (
-                        <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">Token valido ({meta.tokenDaysLeft} giorni)</span>
-                      )}
-                      {meta.lastSyncedAt && (
-                        <span className="text-xs text-muted-foreground">
-                          Aggiornato: {new Date(meta.lastSyncedAt).toLocaleString("it-IT")}
-                        </span>
-                      )}
-                    </div>
+                    {meta.tokenExpired && (
+                      <span className="text-xs px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full font-medium">Token scaduto - riconnetti</span>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -422,50 +369,6 @@ export default function Settings() {
                       </div>
                     )}
 
-                    {/* Account Instagram */}
-                    {(meta.instagramAccounts?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Account Instagram Business ({meta.instagramAccounts!.length})</p>
-                        <div className="space-y-1.5">
-                          {meta.instagramAccounts!.map((ig: any) => (
-                            <div key={ig.id} className="flex items-center gap-3 p-2.5 bg-muted/50 rounded-xl">
-                              <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shrink-0">
-                                {ig.profile_picture_url
-                                  ? <img src={ig.profile_picture_url} alt="" className="w-full h-full object-cover" />
-                                  : <span className="text-white text-[10px] font-bold">{ig.username?.[0]?.toUpperCase()}</span>}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium">@{ig.username}</p>
-                                <p className="text-[11px] text-muted-foreground">{ig.followers_count?.toLocaleString("it-IT")} follower · {ig.media_count} post</p>
-                              </div>
-                              <a href={`https://instagram.com/${ig.username}`} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
-                                <ExternalLink size={12} />
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Account Pubblicitari */}
-                    {(meta.adAccounts?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Account Pubblicitari Meta Ads ({meta.adAccounts!.length})</p>
-                        <div className="space-y-1.5">
-                          {meta.adAccounts!.map((ad: any) => (
-                            <div key={ad.id} className="flex items-center gap-3 p-2.5 bg-muted/50 rounded-xl">
-                              <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                                <span className="text-amber-700 font-bold text-[11px]">Ads</span>
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium">{ad.name}</p>
-                                <p className="text-[11px] text-muted-foreground font-mono">{ad.id} · {ad.currency}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Token expired notice */}
@@ -615,7 +518,7 @@ export default function Settings() {
             </IntegrationCard>
 
             {/* Email SMTP */}
-            <IntegrationCard title="Email (invio report)" icon={Mail} status="disconnected">
+            <IntegrationCard title="Email (invio report)" icon={Mail}>
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Configura il server SMTP per inviare i report mensili direttamente ai clienti via email.
@@ -688,30 +591,6 @@ export default function Settings() {
               </div>
             </IntegrationCard>
 
-            {/* Google Ads */}
-            <IntegrationCard title="Google Ads" icon={SettingsIcon} status={googleConnected ? "connected" : "disconnected"}>
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Collega Google Ads per importare automaticamente campagne attive e KPI.
-                </p>
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Customer ID Google Ads</label>
-                  <input type="text" value={googleAdsId} onChange={(e) => setGoogleAdsId(e.target.value)} placeholder="123-456-7890" className="w-full mt-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring font-mono" />
-                  <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
-                    <Info size={11} /> Trovi il Customer ID nell'angolo in alto a destra su Google Ads
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={saveGoogleAdsId} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90">
-                    {googleSaved ? <span className="flex items-center gap-1.5"><CheckCircle2 size={14} /> Salvato</span> : "Salva Customer ID"}
-                  </button>
-                  {googleConnected && (
-                    <button onClick={() => { localStorage.removeItem("bekind_google_ads_id"); setGoogleAdsId(""); setGoogleConnected(false); }} className="text-xs text-muted-foreground hover:text-destructive">Disconnetti</button>
-                  )}
-                  <a href="https://ads.google.com/" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs text-primary hover:underline ml-auto">Apri Google Ads <ExternalLink size={12} /></a>
-                </div>
-              </div>
-            </IntegrationCard>
           </div>
         </div>
 
@@ -1154,7 +1033,7 @@ function GoogleAdsServerSection() {
               <li>Abilita l'API Google Ads e crea le credenziali OAuth 2.0</li>
               <li>Ottieni un Developer Token dal <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noreferrer" className="underline font-medium">Centro API Google Ads</a></li>
               <li>Genera un Refresh Token con lo scope <code className="bg-blue-100 px-1 rounded">https://www.googleapis.com/auth/adwords</code></li>
-              <li>Aggiungi le 4 variabili d'ambiente nel pannello Secrets di Replit</li>
+              <li>Aggiungi le 4 variabili d'ambiente su Vercel (Project Settings → Environment Variables)</li>
             </ol>
           </div>
         )}

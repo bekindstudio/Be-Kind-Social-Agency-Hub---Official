@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, clientBriefs, clientsTable } from "@workspace/db";
+import { db, clientBriefs, clientWebsiteBriefs, clientsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getUserId, getAccessibleClientIds } from "../lib/access-control";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -56,6 +56,19 @@ router.get("/clients/:clientId/brief", async (req, res): Promise<void> => {
     res.json(rows[0] ?? null);
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel caricamento del brief" });
+  }
+});
+
+// Brief Sito Web — sola lettura per l'agenzia (il cliente lo compila dal portale).
+router.get("/clients/:clientId/website-brief", async (req, res): Promise<void> => {
+  const ctx = await checkClientAccess(req, res);
+  if (!ctx) return;
+
+  try {
+    const rows = await db.select().from(clientWebsiteBriefs).where(eq(clientWebsiteBriefs.clientId, ctx.clientId));
+    res.json(rows[0] ?? null);
+  } catch {
+    res.status(500).json({ error: "Errore nel caricamento del brief sito" });
   }
 });
 

@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BRIEF_SECTIONS } from "@/lib/briefSchema";
+import { WEBSITE_BRIEF_SECTIONS } from "@/lib/websiteBriefSchema";
 import { cn, STATUS_LABELS, STATUS_COLORS, TASK_STATUS_LABELS, TASK_STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, formatDate } from "@/lib/utils";
 import { apiErrorDetail } from "@/lib/apiError";
 import { useAiChat } from "@/components/ai-chat/AiChatContext";
@@ -144,13 +145,14 @@ const PRIORITY_OPTIONS = [
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 /* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
-type TabKey = "panoramica" | "progetti" | "retainer" | "messaggi" | "brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
+type TabKey = "panoramica" | "progetti" | "retainer" | "messaggi" | "brief" | "website-brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "panoramica", label: "Panoramica", icon: Layers },
   { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
   { key: "retainer", label: "Retainer", icon: Repeat },
   { key: "messaggi", label: "Messaggi", icon: MessageCircle },
   { key: "brief", label: "Brief", icon: BookOpen },
+  { key: "website-brief", label: "Sito Web", icon: Globe },
   { key: "editoriale", label: "Editoriale", icon: CalendarDays },
   { key: "eventi", label: "Eventi", icon: CalendarDays },
   { key: "report", label: "Report", icon: BarChart3 },
@@ -380,6 +382,83 @@ function BriefTab({ clientId, onOpen }: { clientId: number; onOpen: () => void }
           </div>
         )
       )}
+    </div>
+  );
+}
+
+/* ─── Tab Sito Web (risposte del Brief Sito Web, sola lettura) ──────────── */
+function WebsiteBriefTab({ clientId }: { clientId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["client-website-brief", clientId],
+    queryFn: async () => {
+      const r = await portalFetch(`/api/clients/${clientId}/website-brief`, { credentials: "include" });
+      if (!r.ok) return null;
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  let parsed: Record<string, Record<string, string>> = {};
+  if (data?.parsedJson) {
+    try {
+      const p = JSON.parse(data.parsedJson);
+      if (p && typeof p === "object") parsed = p;
+    } catch { /* ignore */ }
+  }
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">Caricamento…</p>;
+
+  const anyFilled = WEBSITE_BRIEF_SECTIONS.some((s) => s.fields.some((f) => (parsed[s.key]?.[f.key] ?? "").trim()));
+  if (!anyFilled) {
+    return (
+      <div className="rounded-xl border border-dashed border-card-border bg-card p-8 text-center">
+        <Globe size={28} className="mx-auto text-muted-foreground/40 mb-2" />
+        <p className="text-sm font-medium">Brief sito ancora vuoto</p>
+        <p className="text-xs text-muted-foreground mt-1">Il cliente lo compila dalla sua area, sezione “Brief Sito Web”.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {WEBSITE_BRIEF_SECTIONS.map((s) => {
+        const sec = parsed[s.key] ?? {};
+        const rows = s.fields.filter((f) => (sec[f.key] ?? "").trim());
+        if (!rows.length) return null;
+        const Icon = s.icon;
+        return (
+          <div key={s.key} className="rounded-xl border border-card-border bg-card p-5">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2"><Icon size={13} /> {s.label}</h3>
+            <dl className="space-y-3">
+              {rows.map((f) => {
+                const v = sec[f.key];
+                const isUrls = f.type === "url_list";
+                const isMulti = f.type === "multi_choice";
+                return (
+                  <div key={f.key}>
+                    <dt className="text-[11px] font-semibold text-muted-foreground">{f.label}</dt>
+                    <dd className="text-sm mt-0.5 break-words">
+                      {isUrls ? (
+                        v.split("\n").filter(Boolean).map((u, i) => (
+                          <a key={i} href={/^https?:\/\//i.test(u) ? u : `https://${u}`} target="_blank" rel="noreferrer" className="block text-primary underline">{u}</a>
+                        ))
+                      ) : isMulti ? (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {v.split("\n").filter(Boolean).map((opt, i) => (
+                            <span key={i} className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs">{opt}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="whitespace-pre-wrap">{v}</span>
+                      )}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1071,7 +1150,7 @@ export default function ClientDetail({ id }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "messaggi", "brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
+      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "messaggi", "brief", "website-brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
       if (t && (valid as string[]).includes(t)) return t as TabKey;
     } catch { /* ignore */ }
     return "panoramica";
@@ -1934,6 +2013,11 @@ export default function ClientDetail({ id }: Props) {
               navigate("/tools/brief");
             }}
           />
+        )}
+
+        {/* ─── TAB: Sito Web (risposte del cliente, sola lettura) ─── */}
+        {activeTab === "website-brief" && (
+          <WebsiteBriefTab clientId={clientId} />
         )}
 
         {/* ─── TAB: Editoriale ─── */}

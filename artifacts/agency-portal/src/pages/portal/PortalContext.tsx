@@ -15,6 +15,8 @@ export type PortalBrand = {
   color: string | null;
   cover: string | null;
   driveUrl: string | null;
+  /** True se il cliente ha un ingaggio sul web: mostra il "Brief Sito Web". */
+  wantsWebsite: boolean;
 };
 export type PortalCounts = { upcomingContent: number; ideas: number; reports: number };
 

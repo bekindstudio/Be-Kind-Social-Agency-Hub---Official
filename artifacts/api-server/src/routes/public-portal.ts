@@ -5,6 +5,7 @@ import {
   db,
   clientsTable,
   clientBriefs,
+  clientWebsiteBriefs,
   clientEventsTable,
   editorialPlansTable,
   editorialSlotsTable,
@@ -148,12 +149,20 @@ router.get("/public/portal/:token", async (req, res): Promise<void> => {
     return;
   }
   const client = result.client;
+  // Il "Brief Sito Web" compare nel portale solo se il cliente ha un ingaggio
+  // sul web (servizio "Web"/"Sito" tra i servizi). Così non appare a chi fa solo social.
+  let wantsWebsite = false;
+  try {
+    const services = JSON.parse(client.servicesJson ?? "[]");
+    if (Array.isArray(services)) wantsWebsite = services.some((s) => /web|sito/i.test(String(s)));
+  } catch { wantsWebsite = false; }
   const brand = {
     name: client.name,
     logo: client.logoUrl ?? null,
     color: client.brandColor ?? client.color ?? "#7a8f5c",
     cover: client.coverUrl ?? null,
     driveUrl: client.driveUrl ?? null,
+    wantsWebsite,
   };
   if (pinBlocks(req, client)) {
     res.json({ client: { name: client.name, logo: client.logoUrl ?? null, color: brand.color, cover: brand.cover }, pinRequired: true });
@@ -293,6 +302,64 @@ router.put("/public/portal/:token/brief", async (req, res): Promise<void> => {
     }
   } catch {
     res.status(500).json({ error: "Errore nel salvataggio del brief" });
+  }
+});
+
+/* ── BRIEF SITO WEB (lettura + scrittura + prefill dai dati REALI, mai inventati) ──
+ * Il "prefill" è un canale a sola lettura: valori reali già in nostro possesso
+ * (scheda cliente + brief social, che il cliente stesso ha compilato), mostrati
+ * come suggerimento "Abbiamo già questo". NON viene mai scritto nelle risposte:
+ * il cliente lo conferma o lo sovrascrive. Se un dato è vuoto, non compare. */
+router.get("/public/portal/:token/website-brief", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  const [row] = await db.select().from(clientWebsiteBriefs).where(eq(clientWebsiteBriefs.clientId, client.id));
+
+  // Legge il brief social (dati forniti dal cliente stesso) per i suggerimenti.
+  const [socialBrief] = await db.select().from(clientBriefs).where(eq(clientBriefs.clientId, client.id));
+  let sb: Record<string, Record<string, string>> = {};
+  try { sb = socialBrief?.parsedJson ? JSON.parse(socialBrief.parsedJson) : {}; } catch { sb = {}; }
+  const sbf = (sec: string, f: string) => String(sb?.[sec]?.[f] ?? "").trim();
+
+  const addr = [client.indirizzo, client.cap, client.citta, client.provincia].filter(Boolean).join(", ");
+  const igCompetitors = [sbf("competitor", "competitor_1"), sbf("competitor", "competitor_2"), sbf("competitor", "competitor_3")].filter(Boolean).join("\n");
+  const prefill: Record<string, string> = {};
+  const put = (k: string, v?: string | null) => { const s = (v ?? "").trim(); if (s) prefill[k] = s; };
+  put("descrizione_attivita", client.descrizione || sbf("materiale_iniziale", "descrizione_prodotto"));
+  put("tono_voce", [sbf("tone_of_voice", "brand_persona"), sbf("tone_of_voice", "stile_comunicazione")].filter(Boolean).join(" · "));
+  put("sensazioni_desiderate", sbf("tone_of_voice", "sensazioni") || sbf("tone_of_voice", "percezione_desiderata"));
+  put("differenziatori", sbf("servizi_chiave", "plus_esclusivi") || sbf("servizi_chiave", "usp_1"));
+  put("info_locali", addr || sbf("stagionalita_zona", "zona_servita"));
+  put("competitor_estetici", igCompetitors);
+  put("da_evitare", [sbf("competitor", "competitor_4_negativo"), sbf("social_preference", "come_non_apparire")].filter(Boolean).join(" · "));
+  put("preferenze_visive", client.brandColor);
+  put("blog_temi", sbf("servizi_chiave", "servizi_da_comunicare"));
+  put("dominio_quale", client.website);
+
+  res.json({ parsedJson: row?.parsedJson ?? "{}", prefill });
+});
+
+router.put("/public/portal/:token/website-brief", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  const body = (req.body ?? {}) as { parsedJson?: unknown };
+  if (body.parsedJson === undefined) { res.status(400).json({ error: "Nessun dato da salvare" }); return; }
+  const parsedJson = typeof body.parsedJson === "string" ? body.parsedJson : JSON.stringify(body.parsedJson ?? {});
+
+  try {
+    const existing = await db.select().from(clientWebsiteBriefs).where(eq(clientWebsiteBriefs.clientId, client.id));
+    if (existing.length > 0) {
+      const [updated] = await db.update(clientWebsiteBriefs).set({ parsedJson }).where(eq(clientWebsiteBriefs.clientId, client.id)).returning();
+      res.json({ parsedJson: updated.parsedJson });
+    } else {
+      // clientId SEMPRE dal token, mai dal body (regola di sicurezza withClient).
+      const [created] = await db.insert(clientWebsiteBriefs).values({ clientId: client.id, parsedJson }).returning();
+      res.status(201).json({ parsedJson: created.parsedJson });
+    }
+  } catch {
+    res.status(500).json({ error: "Errore nel salvataggio del brief sito" });
   }
 });
 

@@ -11,7 +11,7 @@ import { T, heroGradient, SERIF } from "./theme";
  * manifest PWA per-cliente (nome cliente, icona Be Kind). L'app vera è PortalShell.
  */
 type Info = {
-  client: { name: string; logo: string | null; color: string | null; cover: string | null; driveUrl?: string | null };
+  client: { name: string; logo: string | null; color: string | null; cover: string | null; driveUrl?: string | null; wantsWebsite?: boolean };
   pinRequired?: boolean;
   counts?: PortalCounts;
 };
@@ -36,6 +36,7 @@ export default function ClientPortalPage({ token }: { token: string }) {
         color: d.client.color ?? T.sage,
         cover: d.client.cover ?? null,
         driveUrl: d.client.driveUrl ?? null,
+        wantsWebsite: d.client.wantsWebsite ?? false,
       });
       if (d.pinRequired) { setStatus("pin"); return; }
       if (d.counts) setCounts(d.counts);

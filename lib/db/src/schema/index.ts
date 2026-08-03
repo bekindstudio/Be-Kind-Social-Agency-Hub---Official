@@ -16,6 +16,7 @@ export * from "./notifications";
 export * from "./user-roles";
 export * from "./activity-log";
 export * from "./client-briefs";
+export * from "./client-website-briefs";
 export * from "./editorial-plans";
 export * from "./daily-focus";
 export * from "./time-tracker";

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Lightbulb, BarChart3, FileText, CalendarDays, FolderOpen, ChevronRight } from "lucide-react";
+import { CalendarRange, Lightbulb, BarChart3, FileText, CalendarDays, FolderOpen, ChevronRight, Globe } from "lucide-react";
 import { usePortal, usePortalData } from "../PortalContext";
 import { usePortalNav } from "../nav";
 import { T } from "../theme";
@@ -18,6 +18,7 @@ function greeting(): string {
 
 export function HomeScreen() {
   const { brand, counts } = usePortal();
+  const wantsWebsite = brand.wantsWebsite;
   const { setTab, push } = usePortalNav();
   const { data, loading } = usePortalData<EditorialData>("/editorial");
   const [installed] = useState(() => {
@@ -78,6 +79,9 @@ export function HomeScreen() {
       {/* Azioni rapide */}
       <section className="space-y-2.5">
         <QuickRow icon={<FileText size={18} />} title="Il tuo brief" sub="Raccontaci di te, si salva da solo" onClick={() => push("brief")} />
+        {wantsWebsite && (
+          <QuickRow icon={<Globe size={18} />} title="Brief Sito Web" sub="Aiutaci a disegnare il tuo sito, si salva da solo" onClick={() => push("website-brief")} />
+        )}
         <QuickRow icon={<CalendarDays size={18} />} title="Eventi & collaborazioni" sub="Aggiungi i tuoi prossimi appuntamenti" onClick={() => push("events")} />
         <QuickRow icon={<FolderOpen size={18} />} title="Consegne & file" sub="Materiali, report e cartella Drive" onClick={() => push("files")} />
       </section>

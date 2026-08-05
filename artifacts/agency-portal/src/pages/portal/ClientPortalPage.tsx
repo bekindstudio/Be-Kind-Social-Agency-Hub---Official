@@ -29,6 +29,10 @@ export default function ClientPortalPage({ token }: { token: string }) {
     try {
       const r = await fetch(portalUrl(token));
       if (!r.ok) { setStatus("invalid"); return; }
+      // Ricorda l'ultimo portale valido: se il cliente installa la PWA e questa
+      // apre per errore la home dell'agenzia (login), lo rimandiamo qui. Vedi
+      // la guardia in App.tsx (standalonePortalToken).
+      try { localStorage.setItem("bk_portal_token", token); } catch { /* storage non disponibile */ }
       const d = (await r.json()) as Info;
       setBrand({
         name: d.client.name,

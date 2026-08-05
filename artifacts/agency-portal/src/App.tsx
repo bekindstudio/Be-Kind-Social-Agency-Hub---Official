@@ -86,6 +86,34 @@ function SessionQueryInvalidator() {
   return null;
 }
 
+/**
+ * Se l'app gira come PWA installata (standalone) e c'è un portale cliente
+ * ricordato, ritorna il token. Serve quando la PWA installata dal cliente apre
+ * per errore la home dell'agenzia (il manifest statico ha start_url /dashboard):
+ * invece di mostrargli il login, lo rimandiamo al suo portale. Il token è
+ * memorizzato da ClientPortalPage a ogni apertura valida del portale e viene
+ * azzerato appena un utente agenzia fa login (PortalTokenSessionSync), così la
+ * guardia scatta solo sui dispositivi dei clienti.
+ */
+function standalonePortalToken(): string | null {
+  try {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+      || (navigator as { standalone?: boolean }).standalone === true;
+    if (!standalone) return null;
+    const t = localStorage.getItem("bk_portal_token");
+    return t && t.trim().length >= 16 ? t.trim() : null;
+  } catch { return null; }
+}
+
+/** Azzera il token portale ricordato quando esiste una sessione agenzia. */
+function PortalTokenSessionSync() {
+  const { session } = useSupabaseAuth();
+  useEffect(() => {
+    if (session) { try { localStorage.removeItem("bk_portal_token"); } catch { /* noop */ } }
+  }, [session]);
+  return null;
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { authDisabled: off, session, loading } = useSupabaseAuth();
   if (off) return <>{children}</>;
@@ -97,6 +125,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     );
   }
   if (!session) {
+    const portalToken = standalonePortalToken();
+    if (portalToken) return <Redirect to={`/portal/${portalToken}`} />;
     return <Redirect to="/sign-in" />;
   }
   return <>{children}</>;
@@ -146,7 +176,17 @@ function HomeRoute() {
     );
   }
   if (session) return <Redirect to="/dashboard" />;
+  const portalToken = standalonePortalToken();
+  if (portalToken) return <Redirect to={`/portal/${portalToken}`} />;
   return <Redirect to="/sign-in" />;
+}
+
+/** Login agenzia, ma nella PWA di un cliente rimanda al suo portale (mai il login). */
+function SignInGuard() {
+  const { session } = useSupabaseAuth();
+  const portalToken = standalonePortalToken();
+  if (!session && portalToken) return <Redirect to={`/portal/${portalToken}`} />;
+  return <SignInPage />;
 }
 
 function RouteLoadingFallback() {
@@ -186,7 +226,7 @@ function Router() {
         {!authDisabled && (
           <Route path="/sign-in">
             <RouteBoundary routeKey="/sign-in">
-              <SignInPage />
+              <SignInGuard />
             </RouteBoundary>
           </Route>
         )}
@@ -400,6 +440,7 @@ function ShellWithSession() {
     <QueryClientProvider client={queryClient}>
       <AutoSaveProvider>
         <SessionQueryInvalidator />
+        <PortalTokenSessionSync />
         <ClientCoreProvider>
           <EditorialProvider>
             <BriefProvider>

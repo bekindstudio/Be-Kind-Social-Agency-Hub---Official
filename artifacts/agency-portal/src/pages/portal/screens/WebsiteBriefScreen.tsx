@@ -113,7 +113,7 @@ export function WebsiteBriefScreen() {
   return (
     <div className="pb-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
       {/* Header sticky: back + stato salvataggio */}
-      <div className="sticky top-0 z-10 -mx-5 px-5 py-2 flex items-center justify-between backdrop-blur" style={{ background: "rgba(246,242,233,0.9)" }}>
+      <div className="sticky z-10 -mx-5 px-5 py-2 flex items-center justify-between backdrop-blur" style={{ top: "var(--bk-topbar)", background: "rgba(246,242,233,0.9)" }}>
         <button onClick={pop} className="p-2 -ml-2 rounded-xl" style={{ color: T.muted }}><ArrowLeft size={20} /></button>
         <SaveBadge state={save} onRetry={persist} />
       </div>

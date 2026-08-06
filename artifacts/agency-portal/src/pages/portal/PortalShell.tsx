@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { NavCtx, type OverlayId } from "./nav";
 import { BottomNav, type TabKey } from "./components/BottomNav";
 import { T } from "./theme";
@@ -34,10 +34,23 @@ export function PortalShell() {
 
   return (
     <NavCtx.Provider value={nav}>
-      <div className="min-h-[100dvh]" style={{ background: T.cream }}>
+      <div
+        className="min-h-[100dvh]"
+        style={{ background: T.cream, ["--bk-topbar" as string]: "calc(52px + env(safe-area-inset-top))" } as CSSProperties}
+      >
+        {/* Barra agenzia fissa in alto: verde Be Kind + logo, sempre visibile allo scorrere. */}
+        <header
+          className="fixed top-0 inset-x-0 z-50 flex items-center justify-center shadow-sm"
+          style={{ background: T.sage, height: "var(--bk-topbar)", paddingTop: "env(safe-area-inset-top)" }}
+        >
+          <img src="/logo-bekind.png" alt="Be Kind Social Agency" className="h-7 object-contain brightness-0 invert" />
+        </header>
         <main
-          className="max-w-xl mx-auto px-5 pt-5"
-          style={{ paddingBottom: top ? "2rem" : "calc(76px + env(safe-area-inset-bottom))" }}
+          className="max-w-xl mx-auto px-5"
+          style={{
+            paddingTop: "calc(var(--bk-topbar) + 1.25rem)",
+            paddingBottom: top ? "2rem" : "calc(76px + env(safe-area-inset-bottom))",
+          }}
         >
           {top ? <Overlay id={top.id} param={top.param} /> : <Tab tab={tab} />}
         </main>

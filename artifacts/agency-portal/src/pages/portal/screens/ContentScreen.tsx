@@ -66,7 +66,7 @@ function ContentDetailSheet({ slot, onClose }: { slot: Slot; onClose: () => void
     try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 1500); } catch { /* ignore */ }
   };
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" />
       <div onClick={(e) => e.stopPropagation()}
         className="relative rounded-t-3xl max-h-[88vh] overflow-y-auto animate-in slide-in-from-bottom duration-300"

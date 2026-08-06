@@ -151,7 +151,7 @@ export default function ContentIdeasPage() {
     });
   };
 
-  const importPlanPosts = (plan: PlanResponse, _status: "draft" | "approved"): number => {
+  const importPlanPosts = (plan: PlanResponse): number => {
     let count = 0;
     plan.weeks.forEach((week) => {
       week.posts.forEach((post) => {

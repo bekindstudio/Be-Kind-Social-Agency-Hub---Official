@@ -30,7 +30,7 @@ interface EditorialPlanTabProps {
   plan: PlanResponse | null;
   isLoading: boolean;
   onGeneratePlan: (request: PlanRequest) => Promise<void>;
-  onImportPlanToCalendar: (plan: PlanResponse, status: "draft" | "approved") => number;
+  onImportPlanToCalendar: (plan: PlanResponse) => number;
   campaignPrefill?: CampaignToPlanPrefill | null;
 }
 
@@ -244,7 +244,7 @@ export function EditorialPlanTab({
       {plan && (
         <PlanPreview
           plan={plan}
-          onImportCalendar={(status) => onImportPlanToCalendar(plan, status)}
+          onImportCalendar={() => onImportPlanToCalendar(plan)}
         />
       )}
     </div>

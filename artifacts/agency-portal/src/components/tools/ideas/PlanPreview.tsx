@@ -9,14 +9,13 @@ import type { SocialPlatform } from "@/types/client";
 
 interface PlanPreviewProps {
   plan: PlanResponse;
-  onImportCalendar: (status: "draft" | "approved") => number;
+  onImportCalendar: () => number;
 }
 
 export function PlanPreview({ plan, onImportCalendar }: PlanPreviewProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [showImportConfirm, setShowImportConfirm] = useState(false);
-  const [importMode, setImportMode] = useState<"draft" | "approved">("draft");
 
   const summaryText = useMemo(() => {
     return `${plan.summary.totalPosts} post totali · ${plan.weeks.length} settimane · copertura ${plan.summary.coveragePercent}%`;
@@ -107,16 +106,9 @@ export function PlanPreview({ plan, onImportCalendar }: PlanPreviewProps) {
           <div className="w-full max-w-md rounded-xl border border-card-border bg-card p-4">
             <h4 className="text-base font-semibold">Conferma importazione piano</h4>
             <p className="mt-1 text-sm text-muted-foreground">{summaryText}</p>
-            <div className="mt-3 space-y-2 text-sm">
-              <label className="flex items-center gap-2">
-                <input type="radio" checked={importMode === "draft"} onChange={() => setImportMode("draft")} />
-                Importa come bozze
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" checked={importMode === "approved"} onChange={() => setImportMode("approved")} />
-                Importa come approvati
-              </label>
-            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              I post vengono importati come <strong>bozze</strong>: potrai rivederli e approvarli dal calendario.
+            </p>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="rounded-lg px-3 py-2 text-sm" onClick={() => setShowImportConfirm(false)}>
                 Annulla
@@ -125,7 +117,7 @@ export function PlanPreview({ plan, onImportCalendar }: PlanPreviewProps) {
                 type="button"
                 className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
                 onClick={() => {
-                  const count = onImportCalendar(importMode);
+                  const count = onImportCalendar();
                   setShowImportConfirm(false);
                   toast({
                     title: `Piano importato - ${count} post aggiunti al calendario`,

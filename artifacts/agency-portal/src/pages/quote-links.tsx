@@ -185,11 +185,11 @@ export default function QuoteLinksPage() {
                   <div className="min-w-0">
                     <p className="font-semibold">{d.prospectName ?? "—"}</p>
                     <p className="text-xs text-muted-foreground">
-                      {d.email || "no email"}{d.phone ? ` · ${d.phone}` : ""} · {new Date(d.createdAt).toLocaleDateString("it-IT")}
+                      {d.email || "nessuna email"}{d.phone ? ` · ${d.phone}` : ""} · {new Date(d.createdAt).toLocaleDateString("it-IT")}
                     </p>
                   </div>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${d.status === "deposit_paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                    {d.status === "deposit_paid" ? "Acconto pagato" : "Composto"}
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 bg-amber-100 text-amber-700">
+                    Composto
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">

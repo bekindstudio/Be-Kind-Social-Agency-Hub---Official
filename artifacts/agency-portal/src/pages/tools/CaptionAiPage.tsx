@@ -124,9 +124,6 @@ export default function CaptionAiPage() {
 
   return (
     <Layout>
-      {/* TODO: add image generation assistant (DALL-E / Ideogram) from the same post brief. */}
-      {/* TODO: add direct scheduling on Meta API after caption approval. */}
-      {/* TODO: add A/B caption tests linked to analytics outcomes. */}
       <div className="p-4 md:p-8 space-y-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Generatore Caption AI</h1>

@@ -295,7 +295,7 @@ export default function Quotes() {
     let y = 14;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("Export Preventivi Dettagliato", 14, y);
+    doc.text("Riepilogo preventivi (dettaglio)", 14, y);
     y += 6;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);

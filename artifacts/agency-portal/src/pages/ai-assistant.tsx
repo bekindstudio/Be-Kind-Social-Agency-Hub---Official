@@ -11,7 +11,7 @@ export default function AiAssistant() {
             <Sparkles size={18} className="text-violet-500" />
           </div>
           <div>
-            <h1 className="text-lg font-bold">AI Assistant</h1>
+            <h1 className="text-lg font-bold">Assistente AI</h1>
             <p className="text-xs text-muted-foreground">Assistente intelligente per il tuo team</p>
           </div>
         </div>

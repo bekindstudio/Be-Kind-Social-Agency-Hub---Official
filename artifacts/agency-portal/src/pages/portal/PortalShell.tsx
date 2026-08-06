@@ -36,14 +36,14 @@ export function PortalShell() {
     <NavCtx.Provider value={nav}>
       <div
         className="min-h-[100dvh]"
-        style={{ background: T.cream, ["--bk-topbar" as string]: "calc(52px + env(safe-area-inset-top))" } as CSSProperties}
+        style={{ background: T.cream, ["--bk-topbar" as string]: "calc(76px + env(safe-area-inset-top))" } as CSSProperties}
       >
         {/* Barra agenzia fissa in alto: verde Be Kind + logo, sempre visibile allo scorrere. */}
         <header
           className="fixed top-0 inset-x-0 z-50 flex items-center justify-center shadow-sm"
           style={{ background: T.sage, height: "var(--bk-topbar)", paddingTop: "env(safe-area-inset-top)" }}
         >
-          <img src="/logo-bekind.png" alt="Be Kind Social Agency" className="h-7 object-contain brightness-0 invert" />
+          <img src="/logo-bekind.png" alt="Be Kind Social Agency" className="h-16 object-contain brightness-0 invert" />
         </header>
         <main
           className="max-w-xl mx-auto px-5"

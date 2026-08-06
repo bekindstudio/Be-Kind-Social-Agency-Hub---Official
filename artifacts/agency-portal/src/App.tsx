@@ -51,6 +51,7 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 const ClientPortalPage = lazy(() => import("@/pages/portal/ClientPortalPage"));
+const ClientLoginPage = lazy(() => import("@/pages/portal/ClientLoginPage"));
 const QuoteConfiguratorPage = lazy(() => import("@/pages/public/QuoteConfiguratorPage"));
 const QuoteLinksPage = lazy(() => import("@/pages/quote-links"));
 
@@ -237,6 +238,12 @@ function Router() {
             </RouteBoundary>
           </Route>
         )}
+        {/* Accesso cliente con email + password → porta solo alla sua area */}
+        <Route path="/accedi">
+          <RouteBoundary routeKey="/accedi">
+            <ClientLoginPage />
+          </RouteBoundary>
+        </Route>
         {/* Area cliente pubblica (accesso via link, senza login) */}
         <Route path="/portal/:token">
           {(params) => (

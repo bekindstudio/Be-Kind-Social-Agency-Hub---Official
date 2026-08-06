@@ -26,8 +26,14 @@ export function ShareClientDialog({
   const [pinSet, setPinSet] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
+  const [loginSet, setLoginSet] = useState(false);
+  const [loginEmail, setLoginEmail] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const url = token ? `${window.location.origin}/portal/${token}` : "";
+  const loginUrl = `${window.location.origin}/accedi`;
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +47,12 @@ export function ShareClientDialog({
           const c = await r.json();
           setToken(c?.shareToken ?? null);
           setPinSet(Boolean(c?.portalPinSet));
+        }
+        const rl = await portalFetch(`/api/clients/${clientId}/portal-login`, { credentials: "include" });
+        if (alive && rl.ok) {
+          const l = await rl.json();
+          setLoginSet(Boolean(l?.set));
+          setLoginEmail(l?.email ?? null);
         }
       } finally {
         if (alive) setLoading(false);
@@ -116,6 +128,33 @@ export function ShareClientDialog({
     finally { setPinBusy(false); }
   };
 
+  const saveLogin = async () => {
+    setLoginBusy(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/portal-login`, {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailInput.trim(), password: passwordInput }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { toast({ variant: "destructive", title: data?.error ?? "Impossibile salvare l'accesso" }); return; }
+      setLoginSet(true); setLoginEmail(emailInput.trim()); setPasswordInput("");
+      toast({ title: "Accesso impostato", description: "Inoltra al cliente email, password e il link di accesso." });
+    } catch { toast({ variant: "destructive", title: "Impossibile salvare l'accesso" }); }
+    finally { setLoginBusy(false); }
+  };
+  const removeLogin = async () => {
+    setLoginBusy(true);
+    try {
+      const r = await portalFetch(`/api/clients/${clientId}/portal-login`, {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "", password: "" }),
+      });
+      if (!r.ok) throw new Error();
+      setLoginSet(false); setLoginEmail(null); setEmailInput(""); setPasswordInput("");
+      toast({ title: "Accesso rimosso" });
+    } catch { toast({ variant: "destructive", title: "Impossibile rimuovere l'accesso" }); }
+    finally { setLoginBusy(false); }
+  };
+
   if (!open) return null;
 
   return (
@@ -189,6 +228,49 @@ export function ShareClientDialog({
                 </div>
               )}
               <p className="text-[11px] text-muted-foreground mt-1.5">Comunicalo tu al cliente a voce. Non viene salvato in chiaro.</p>
+            </div>
+
+            {/* Accesso con email + password: utile se il cliente installa l'app e
+                l'icona apre il login. Con queste credenziali entra solo nella sua area. */}
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-semibold mb-1">Accesso con email e password</p>
+              {loginSet ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-emerald-600 font-medium truncate">Attivo · {loginEmail}</span>
+                    <button onClick={() => void removeLogin()} disabled={loginBusy} className="text-xs text-red-600 hover:underline disabled:opacity-50 shrink-0">Rimuovi</button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Il cliente accede da <a href={loginUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{loginUrl}</a> con la sua email e password. Per cambiare la password, reimposta qui sotto.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <input value={emailInput || loginEmail || ""} onChange={(e) => setEmailInput(e.target.value)} type="email" placeholder="email del cliente"
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+                    <div className="flex items-center gap-2">
+                      <input value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} type="text" placeholder="nuova password (min 6)"
+                        className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+                      <button onClick={() => void saveLogin()} disabled={loginBusy || passwordInput.length < 6} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                        {loginBusy ? "…" : "Aggiorna"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <input value={emailInput} onChange={(e) => setEmailInput(e.target.value)} type="email" placeholder="email del cliente"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+                  <div className="flex items-center gap-2">
+                    <input value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} type="text" placeholder="password (min 6)"
+                      className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+                    <button onClick={() => void saveLogin()} disabled={loginBusy || !emailInput.trim() || passwordInput.length < 6} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                      {loginBusy ? "…" : "Imposta"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Il cliente accederà da <span className="font-mono">{loginUrl}</span> ed entrerà solo nella sua area. La password non viene salvata in chiaro.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         ) : (

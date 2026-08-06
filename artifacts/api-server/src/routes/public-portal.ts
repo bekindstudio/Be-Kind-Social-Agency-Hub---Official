@@ -1,11 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createHmac } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, ne, gte, count } from "drizzle-orm";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { and, asc, desc, eq, inArray, isNull, ne, gte, count, sql } from "drizzle-orm";
 import {
   db,
   clientsTable,
   clientBriefs,
   clientWebsiteBriefs,
+  clientPortalLogins,
   clientEventsTable,
   editorialPlansTable,
   editorialSlotsTable,
@@ -220,6 +221,41 @@ router.post("/public/portal/:token/verify-pin", async (req, res): Promise<void> 
   const proof = pinProof(client.id, client.portalPinHash);
   res.setHeader("Set-Cookie", `pp${client.id}=${encodeURIComponent(proof)}; Path=/api/public/portal; Max-Age=${30 * 24 * 3600}; HttpOnly; SameSite=Lax; Secure`);
   res.json({ ok: true });
+});
+
+/** Hash HMAC della password portale. Identico a quello in clients.ts. */
+export function hashPortalPassword(clientId: number, password: string): string {
+  return createHmac("sha256", shareTokenSecret()).update(`portal-login:${clientId}:${password}`).digest("hex");
+}
+
+/**
+ * Login cliente con email + password → ritorna il token della SUA area portale.
+ * Il cliente entra solo nel suo portale, mai nell'area agenzia. Sotto rate-limit
+ * (publicPortalLimiter copre /api/public/portal*). Messaggi d'errore generici.
+ */
+router.post("/public/portal/login", async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as { email?: unknown; password?: unknown };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const password = String(body.password ?? "");
+  if (!email || !password) { res.status(400).json({ error: "Inserisci email e password" }); return; }
+
+  try {
+    const [login] = await db.select().from(clientPortalLogins)
+      .where(sql`lower(${clientPortalLogins.email}) = ${email}`);
+    // Confronto a tempo costante; messaggio generico per non rivelare se l'email esiste.
+    const expected = login ? hashPortalPassword(login.clientId, password) : hashPortalPassword(0, password);
+    const a = Buffer.from(expected, "hex");
+    const b = Buffer.from(login?.passwordHash ?? expected, "hex");
+    const ok = !!login && a.length === b.length && timingSafeEqual(a, b);
+    if (!ok) { res.status(401).json({ error: "Email o password non corretti" }); return; }
+
+    const [client] = await db.select().from(clientsTable)
+      .where(and(eq(clientsTable.id, login.clientId), isNull(clientsTable.deletedAt)));
+    if (!client?.shareToken) { res.status(409).json({ error: "La tua area non è ancora attiva. Contatta l'agenzia." }); return; }
+    res.json({ token: client.shareToken });
+  } catch {
+    res.status(500).json({ error: "Accesso non disponibile al momento" });
+  }
 });
 
 // Manifest PWA per-cliente: nome, colore e icone del cliente. Non protetto dal

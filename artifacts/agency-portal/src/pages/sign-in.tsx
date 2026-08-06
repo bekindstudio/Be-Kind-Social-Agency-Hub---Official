@@ -78,6 +78,14 @@ export default function SignInPage() {
             {submitting ? "Accesso…" : "Entra"}
           </Button>
         </form>
+        <div className="border-t border-border pt-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Sei un cliente?{" "}
+            <button type="button" onClick={() => setLocation("/accedi")} className="font-medium text-primary hover:underline">
+              Accedi alla tua area
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

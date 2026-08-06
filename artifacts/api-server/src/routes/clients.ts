@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { randomBytes, createHmac } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
-import { db, clientsTable, projectsTable, tasksTable, contractsTable, clientReportsTable, teamMembersTable } from "@workspace/db";
+import { db, clientsTable, projectsTable, tasksTable, contractsTable, clientReportsTable, teamMembersTable, clientPortalLogins } from "@workspace/db";
 import {
   GetClientParams,
   UpdateClientParams,
@@ -435,6 +435,57 @@ router.put("/clients/:id/portal-pin", async (req, res): Promise<void> => {
     .returning();
   if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
   res.json({ ok: true, pinSet: Boolean(hash) });
+});
+
+/** Hash HMAC della password portale. Identico a hashPortalPassword in public-portal.ts. */
+function hashPortalPassword(clientId: number, password: string): string {
+  return createHmac("sha256", shareTokenSecret()).update(`portal-login:${clientId}:${password}`).digest("hex");
+}
+
+// Stato credenziali di accesso cliente (email impostata?). Tollerante se la
+// tabella non esiste ancora (migration non applicata) → { set: false }.
+router.get("/clients/:id/portal-login", async (req, res): Promise<void> => {
+  const params = GetClientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
+  try {
+    const [row] = await db.select().from(clientPortalLogins).where(eq(clientPortalLogins.clientId, params.data.id));
+    res.json({ set: Boolean(row), email: row?.email ?? null });
+  } catch {
+    res.json({ set: false, email: null });
+  }
+});
+
+// Imposta (o rimuove, con email/password vuote) le credenziali di accesso del
+// cliente. La password NON viene mai salvata in chiaro: si salva l'hash HMAC.
+router.put("/clients/:id/portal-login", async (req, res): Promise<void> => {
+  const params = GetClientParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await assertClientAccessForShare(req, res, params.data.id))) return;
+
+  const body = (req.body ?? {}) as { email?: unknown; password?: unknown };
+  const email = String(body.email ?? "").trim();
+  const password = String(body.password ?? "");
+
+  // Entrambi vuoti → rimuovi l'accesso con credenziali.
+  if (!email && !password) {
+    try { await db.delete(clientPortalLogins).where(eq(clientPortalLogins.clientId, params.data.id)); } catch { /* tabella assente */ }
+    res.json({ ok: true, set: false });
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { res.status(400).json({ error: "Email non valida" }); return; }
+  if (password.length < 6) { res.status(400).json({ error: "La password deve avere almeno 6 caratteri" }); return; }
+
+  const passwordHash = hashPortalPassword(params.data.id, password);
+  try {
+    await db.insert(clientPortalLogins)
+      .values({ clientId: params.data.id, email, passwordHash })
+      .onConflictDoUpdate({ target: clientPortalLogins.clientId, set: { email, passwordHash } });
+    res.json({ ok: true, set: true, email });
+  } catch {
+    // Molto probabile: migration non ancora applicata (tabella assente).
+    res.status(503).json({ error: "Migration accesso cliente non ancora applicata sul database." });
+  }
 });
 
 router.patch("/clients/:id", validate(updateClientSchema), async (req, res): Promise<void> => {

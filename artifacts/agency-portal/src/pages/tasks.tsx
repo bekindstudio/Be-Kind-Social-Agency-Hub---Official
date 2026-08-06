@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Columns3, List } from "lucide-react";
+import { Sparkles, Columns3, List, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { PRIORITY_LABELS, TASK_STATUS_LABELS } from "@/lib/utils";
 import { EMPTY_TASK_FORM, toApiClientId } from "@/hooks/useTasks";
@@ -260,10 +260,26 @@ export default function Tasks() {
           onBulkStatusChange={handleBulkStatusChange}
         />
 
+        {/* Le task completate sono nascoste di default: qui si mostrano/nascondono. */}
+        {vm.doneCount > 0 && (
+          <button
+            onClick={() => vm.setHideDone(!vm.hideDone)}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            {vm.hideDone ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            <CheckCircle2 size={13} className="text-emerald-500" />
+            {vm.hideDone ? `Mostra completate (${vm.doneCount})` : `Nascondi completate (${vm.doneCount})`}
+          </button>
+        )}
+
         {vm.isLoading ? (
           <div className="text-center text-muted-foreground py-12">Caricamento...</div>
         ) : vm.filtered.length === 0 ? (
-          <div className="text-center text-muted-foreground py-12">Nessun task trovato</div>
+          <div className="text-center text-muted-foreground py-12">
+            {vm.hideDone && vm.doneCount > 0
+              ? "Nessuna task da fare — sono tutte completate."
+              : "Nessun task trovato"}
+          </div>
         ) : vm.viewMode === "kanban" ? (
           <TaskKanban
             tasks={vm.filtered}

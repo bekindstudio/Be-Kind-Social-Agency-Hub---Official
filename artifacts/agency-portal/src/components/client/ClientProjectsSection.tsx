@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { CheckSquare, FolderKanban, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CheckSquare, FolderKanban, Plus, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { cn, PRIORITY_COLORS, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS, TASK_STATUS_COLORS, TASK_STATUS_LABELS } from "@/lib/utils";
 
 export function ClientProjectsSection({
@@ -49,9 +49,18 @@ export function ClientProjectsSection({
 }) {
   // Scrolla sulla task evidenziata (deep-link ?task=<id> dall'/today).
   const highlightRef = useRef<HTMLDivElement | null>(null);
+  // Le task completate del cliente sono nascoste di default (come nel board task).
+  const [hideDoneTasks, setHideDoneTasks] = useState(true);
+  const doneTasksCount = clientTasks.filter((t: any) => t?.status === "done").length;
+  const visibleTasks = hideDoneTasks ? clientTasks.filter((t: any) => t?.status !== "done") : clientTasks;
   useEffect(() => {
     if (highlightTaskId != null && highlightRef.current) {
       highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    // Se il deep-link punta a una task completata, mostrale così è visibile.
+    if (highlightTaskId != null) {
+      const t = clientTasks.find((x: any) => x?.id === highlightTaskId);
+      if (t && t.status === "done") setHideDoneTasks(false);
     }
   }, [highlightTaskId, clientTasks]);
   return (
@@ -205,11 +214,24 @@ export function ClientProjectsSection({
             </div>
           )}
 
+          {doneTasksCount > 0 && (
+            <button
+              onClick={() => setHideDoneTasks((v) => !v)}
+              className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              {hideDoneTasks ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+              <CheckCircle2 size={13} className="text-emerald-500" />
+              {hideDoneTasks ? `Mostra completate (${doneTasksCount})` : `Nascondi completate (${doneTasksCount})`}
+            </button>
+          )}
+
           {clientTasks.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nessun task per questo cliente.</p>
+          ) : visibleTasks.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nessuna task da fare — sono tutte completate.</p>
           ) : (
             <div className="space-y-2">
-              {clientTasks.map((t: any) => (
+              {visibleTasks.map((t: any) => (
                 <div
                   key={t.id}
                   ref={highlightTaskId != null && t.id === highlightTaskId ? highlightRef : undefined}

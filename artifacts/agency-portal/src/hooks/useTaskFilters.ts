@@ -29,9 +29,11 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  // Le task completate restano nascoste finché non si clicca "Mostra completate".
+  const [hideDone, setHideDone] = useState(true);
 
-  const filtered = useMemo(() => {
-    const list = taskList.filter((task) => {
+  const { filtered, doneCount } = useMemo(() => {
+    const matched = taskList.filter((task) => {
       // Con un cliente attivo si vedono sia le task dei suoi progetti sia quelle
       // agganciate direttamente a lui. Prima contava solo il progetto: una task
       // "cliente sì, progetto no" spariva dalla lista.
@@ -60,7 +62,16 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
       return matchActiveClient && matchClient && matchSearch && matchStatus && matchPriority && matchTipo && matchCategory && matchProject && matchAssignee && matchDateFrom && matchDateTo;
     });
 
-    return list.sort((a, b) => {
+    // Quante completate ci sono tra quelle che rispettano gli altri filtri:
+    // serve per l'etichetta "Mostra completate (N)".
+    const doneCount = matched.reduce((n, t) => n + (t.status === "done" ? 1 : 0), 0);
+    // Di default le completate NON si vedono; se filterStatus === "done" l'utente
+    // le sta cercando apposta, quindi non nascondiamo nulla.
+    const visible = hideDone && filterStatus !== "done"
+      ? matched.filter((t) => t.status !== "done")
+      : matched;
+
+    const sorted = visible.sort((a, b) => {
       // 1) Completate sempre in fondo.
       const doneA = a.status === "done" ? 1 : 0;
       const doneB = b.status === "done" ? 1 : 0;
@@ -74,6 +85,8 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
       const prioB = PRIORITY_ORDER[b.priority] ?? 2;
       return prioA - prioB;
     });
+
+    return { filtered: sorted, doneCount };
   }, [
     taskList,
     hasScopedProjects,
@@ -89,6 +102,7 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
     filterAssignee,
     filterDateFrom,
     filterDateTo,
+    hideDone,
   ]);
 
   useEffect(() => {
@@ -136,6 +150,9 @@ export function useTaskFilters({ taskList, hasScopedProjects, scopedProjectIds, 
     showMobileFilters,
     setShowMobileFilters,
     filtered,
+    doneCount,
+    hideDone,
+    setHideDone,
     hasActiveFilters,
     clearFilters,
   };

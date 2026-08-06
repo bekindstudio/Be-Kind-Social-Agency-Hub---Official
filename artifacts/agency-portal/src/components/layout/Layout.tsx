@@ -1,5 +1,4 @@
 import { ReactNode, useState, useEffect, useCallback } from "react";
-import { portalFetch } from "@workspace/api-client-react";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -20,24 +19,9 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Il "Focus del giorno" NON si apre più da solo all'ingresso: era invadente.
+  // Resta a portata di mano dal widget in topbar e con Cmd-J.
   const [focusOpen, setFocusOpen] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    const check = async () => {
-      try {
-        const res = await portalFetch("/api/daily-focus/should-open", { credentials: "include" });
-        if (res.status === 401 || res.status === 403) return;
-        if (!res.ok) return;
-        const data = await res.json();
-        if (mounted && data?.shouldOpen) {
-          setTimeout(() => setFocusOpen(true), 800);
-        }
-      } catch {}
-    };
-    check();
-    return () => { mounted = false; };
-  }, []);
 
   const handleFocusClose = useCallback(() => {
     setFocusOpen(false);

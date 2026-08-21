@@ -14,12 +14,14 @@ type Info = {
   client: { name: string; logo: string | null; color: string | null; cover: string | null; driveUrl?: string | null; wantsWebsite?: boolean };
   pinRequired?: boolean;
   counts?: PortalCounts;
+  contractStatus?: string | null;
 };
 
 export default function ClientPortalPage({ token }: { token: string }) {
   const [status, setStatus] = useState<"loading" | "ok" | "pin" | "invalid">("loading");
   const [brand, setBrand] = useState<PortalBrand | null>(null);
   const [counts, setCounts] = useState<PortalCounts>({ upcomingContent: 0, ideas: 0, reports: 0 });
+  const [contractStatus, setContractStatus] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState<string | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
@@ -44,6 +46,7 @@ export default function ClientPortalPage({ token }: { token: string }) {
       });
       if (d.pinRequired) { setStatus("pin"); return; }
       if (d.counts) setCounts(d.counts);
+      setContractStatus(d.contractStatus ?? null);
       setStatus("ok");
     } catch { setStatus("invalid"); }
   }, [token]);
@@ -126,7 +129,7 @@ export default function ClientPortalPage({ token }: { token: string }) {
   }
 
   return (
-    <PortalProvider token={token} brand={brand} counts={counts} onAuthExpired={() => setStatus("pin")}>
+    <PortalProvider token={token} brand={brand} counts={counts} contractStatus={contractStatus} onAuthExpired={() => setStatus("pin")}>
       <PortalShell />
     </PortalProvider>
   );

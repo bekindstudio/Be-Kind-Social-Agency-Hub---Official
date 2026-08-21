@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
 import { eq, and, sql, desc, isNotNull, inArray, isNull } from "drizzle-orm";
-import { db, contractDocumentsTable } from "@workspace/db";
+import { db, contractDocumentsTable, contractChangeRequestsTable, clientsTable } from "@workspace/db";
 import { z } from "zod";
 import { getUserId } from "../lib/access-control";
 import { softDeleteRecord } from "../lib/trash-service";
+import { sendEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -15,6 +16,7 @@ router.use("/contract-documents", (req, res, next) => {
 
 const CreateBody = z.object({
   templateId: z.number().int().positive().nullable().optional(),
+  clientId: z.number().int().positive().nullable().optional(),
   clientName: z.string().min(1),
   clientEmail: z.string().optional().nullable(),
   clientVat: z.string().optional().nullable(),
@@ -32,6 +34,7 @@ const CreateBody = z.object({
 const UpdateBody = z
   .object({
     templateId: z.number().int().positive().nullable().optional(),
+    clientId: z.number().int().positive().nullable().optional(),
     clientName: z.string().min(1).optional(),
     clientEmail: z.string().nullable().optional(),
     clientVat: z.string().nullable().optional(),
@@ -98,6 +101,7 @@ function serializeDoc(row: typeof contractDocumentsTable.$inferSelect) {
     id: row.id,
     contractNumber: row.contractNumber,
     templateId: row.templateId,
+    clientId: row.clientId,
     clientName: row.clientName,
     clientEmail: row.clientEmail,
     clientVat: row.clientVat,
@@ -108,7 +112,13 @@ function serializeDoc(row: typeof contractDocumentsTable.$inferSelect) {
     value: row.value != null ? String(row.value) : null,
     startDate: row.startDate != null ? rowDateStr(row.startDate) : null,
     endDate: row.endDate != null ? rowDateStr(row.endDate) : null,
+    sentAt: row.sentAt?.toISOString() ?? null,
     signedAt: row.signedAt?.toISOString() ?? null,
+    signedName: row.signedName,
+    signedIp: row.signedIp,
+    signedUserAgent: row.signedUserAgent,
+    signedHash: row.signedHash,
+    vexatiousAcceptedAt: row.vexatiousAcceptedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -154,8 +164,12 @@ router.get("/contract-documents", async (req, res): Promise<void> => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const serviceType = typeof req.query.serviceType === "string" ? req.query.serviceType : undefined;
   const month = typeof req.query.month === "string" ? req.query.month : undefined;
+  const clientId = typeof req.query.clientId === "string" ? parseInt(req.query.clientId, 10) : NaN;
 
   const conditions = [isNull(contractDocumentsTable.deletedAt)];
+  if (Number.isFinite(clientId) && clientId > 0) {
+    conditions.push(eq(contractDocumentsTable.clientId, clientId));
+  }
   if (status && status !== "tutti") {
     conditions.push(eq(contractDocumentsTable.status, status));
   }
@@ -192,6 +206,7 @@ router.post("/contract-documents", async (req, res): Promise<void> => {
     .values({
       contractNumber,
       templateId: d.templateId ?? null,
+      clientId: d.clientId ?? null,
       clientName: d.clientName,
       clientEmail: d.clientEmail ?? null,
       clientVat: d.clientVat ?? null,
@@ -240,6 +255,7 @@ router.patch("/contract-documents/:id", async (req, res): Promise<void> => {
   const d = parsed.data;
   const updates: Record<string, unknown> = {};
   if (d.templateId !== undefined) updates.templateId = d.templateId;
+  if (d.clientId !== undefined) updates.clientId = d.clientId;
   if (d.clientName !== undefined) updates.clientName = d.clientName;
   if (d.clientEmail !== undefined) updates.clientEmail = d.clientEmail;
   if (d.clientVat !== undefined) updates.clientVat = d.clientVat;
@@ -325,6 +341,7 @@ router.post("/contract-documents/:id/duplicate", async (req, res): Promise<void>
     .values({
       contractNumber: numero,
       templateId: orig.templateId,
+      clientId: orig.clientId,
       clientName,
       clientEmail: orig.clientEmail,
       clientVat: orig.clientVat,
@@ -340,6 +357,77 @@ router.post("/contract-documents/:id/duplicate", async (req, res): Promise<void>
     .returning();
 
   res.status(201).json(serializeDoc(row));
+});
+
+/* ── Wave DP: invio al portale + gestione proposte di modifica ────────── */
+
+// Invia il contratto al portale del cliente: status → "inviato" + email al
+// cliente (se ha un'email e un link portale attivo). Richiede clientId.
+router.post("/contract-documents/:id/send", async (req, res): Promise<void> => {
+  const id = parseUuid(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [doc] = await db.select().from(contractDocumentsTable)
+    .where(and(eq(contractDocumentsTable.id, id), isNull(contractDocumentsTable.deletedAt)));
+  if (!doc) { res.status(404).json({ error: "Not found" }); return; }
+  if (!doc.clientId) { res.status(400).json({ error: "Collega prima il contratto a un cliente" }); return; }
+  if (doc.status === "firmato") { res.status(409).json({ error: "Contratto già firmato" }); return; }
+
+  const [row] = await db.update(contractDocumentsTable)
+    .set({ status: "inviato", sentAt: new Date(), updatedAt: new Date() })
+    .where(eq(contractDocumentsTable.id, id))
+    .returning();
+
+  // Email al cliente col link al suo portale (best effort, non blocca).
+  let emailSent = false;
+  const [client] = await db.select().from(clientsTable)
+    .where(and(eq(clientsTable.id, doc.clientId), isNull(clientsTable.deletedAt)));
+  const to = (doc.clientEmail ?? client?.email ?? "").trim();
+  if (to && client?.shareToken) {
+    const base = (process.env.PORTAL_PUBLIC_URL ?? "").replace(/\/+$/, "") || `https://${req.get("host")}`;
+    const link = `${base}/portal/${client.shareToken}`;
+    const r = await sendEmail(
+      to,
+      `[Be Kind] Contratto ${doc.contractNumber} pronto per la tua revisione e firma`,
+      "Il tuo contratto è pronto",
+      `<p>Ciao${client?.name ? ` <strong>${client.name}</strong>` : ""},</p><p>il contratto <strong>${doc.contractNumber}</strong> è pronto nella tua area riservata: puoi leggerlo, proporre modifiche e firmarlo online.</p><p><a class="cta" href="${link}">Apri la tua area</a></p><p>Se il pulsante non funziona, copia questo link: ${link}</p>`,
+    );
+    emailSent = r.sent;
+  }
+
+  res.json({ ...serializeDoc(row), emailSent });
+});
+
+// Proposte di modifica del contratto (lettura per il cockpit).
+router.get("/contract-documents/:id/change-requests", async (req, res): Promise<void> => {
+  const id = parseUuid(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  const rows = await db.select().from(contractChangeRequestsTable)
+    .where(eq(contractChangeRequestsTable.contractId, id))
+    .orderBy(desc(contractChangeRequestsTable.createdAt));
+  res.json(rows.map((r) => ({
+    id: r.id, contractId: r.contractId, message: r.message, status: r.status,
+    reply: r.reply, createdAt: r.createdAt.toISOString(),
+  })));
+});
+
+// Accetta/rifiuta una proposta (con risposta facoltativa al cliente).
+const ChangeRequestDecision = z.object({
+  status: z.enum(["accettata", "rifiutata"]),
+  reply: z.string().max(4000).optional().nullable(),
+});
+router.patch("/contract-documents/change-requests/:reqId", async (req, res): Promise<void> => {
+  const reqId = parseInt(String(req.params.reqId), 10);
+  if (!Number.isFinite(reqId) || reqId <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const parsed = ChangeRequestDecision.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [row] = await db.update(contractChangeRequestsTable)
+    .set({ status: parsed.data.status, reply: parsed.data.reply ?? null, updatedAt: new Date() })
+    .where(eq(contractChangeRequestsTable.id, reqId))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ id: row.id, status: row.status, reply: row.reply });
 });
 
 export default router;

@@ -26,6 +26,8 @@ type Ctx = {
   token: string;
   brand: PortalBrand;
   counts: PortalCounts;
+  /** Stato del contratto visibile nel portale: "inviato" | "firmato" | null. */
+  contractStatus: string | null;
   cache: Map<string, CacheEntry>;
   onAuthExpired: () => void;
 };
@@ -33,17 +35,18 @@ type Ctx = {
 const PortalCtx = createContext<Ctx | null>(null);
 
 export function PortalProvider({
-  token, brand, counts, onAuthExpired, children,
+  token, brand, counts, contractStatus = null, onAuthExpired, children,
 }: {
   token: string;
   brand: PortalBrand;
   counts: PortalCounts;
+  contractStatus?: string | null;
   onAuthExpired: () => void;
   children: ReactNode;
 }) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
   return (
-    <PortalCtx.Provider value={{ token, brand, counts, cache: cacheRef.current, onAuthExpired }}>
+    <PortalCtx.Provider value={{ token, brand, counts, contractStatus, cache: cacheRef.current, onAuthExpired }}>
       {children}
     </PortalCtx.Provider>
   );

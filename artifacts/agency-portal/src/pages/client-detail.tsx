@@ -12,6 +12,8 @@ import { ClientProjectsSection } from "@/components/client/ClientProjectsSection
 import { ClientRetainerSection } from "@/components/client/ClientRetainerSection";
 import { ClientChatSection } from "@/components/client/ClientChatSection";
 import { ContentIdeasBank } from "@/components/client/ContentIdeasBank";
+import { ClientContractTab } from "@/components/client/ClientContractTab";
+import { FileSignature } from "lucide-react";
 import { useClientDetail } from "@/hooks/useClientDetail";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -145,7 +147,7 @@ const PRIORITY_OPTIONS = [
 const SERVICE_TYPES = ["Social", "Meta Ads", "Google Ads", "Web", "Branding", "Email Marketing"];
 
 /* ─── Tabs del cockpit cliente ─────────────────────────────────────────── */
-type TabKey = "panoramica" | "progetti" | "retainer" | "messaggi" | "brief" | "website-brief" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
+type TabKey = "panoramica" | "progetti" | "retainer" | "messaggi" | "brief" | "website-brief" | "contratto" | "editoriale" | "eventi" | "report" | "file" | "idee" | "banca" | "meta";
 const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "panoramica", label: "Panoramica", icon: Layers },
   { key: "progetti", label: "Progetti & Task", icon: FolderKanban },
@@ -153,6 +155,7 @@ const TABS: { key: TabKey; label: string; icon: any }[] = [
   { key: "messaggi", label: "Messaggi", icon: MessageCircle },
   { key: "brief", label: "Brief", icon: BookOpen },
   { key: "website-brief", label: "Sito Web", icon: Globe },
+  { key: "contratto", label: "Contratto", icon: FileSignature },
   { key: "editoriale", label: "Editoriale", icon: CalendarDays },
   { key: "eventi", label: "Eventi", icon: CalendarDays },
   { key: "report", label: "Report", icon: BarChart3 },
@@ -1150,7 +1153,7 @@ export default function ClientDetail({ id }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "messaggi", "brief", "website-brief", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
+      const valid: TabKey[] = ["panoramica", "progetti", "retainer", "messaggi", "brief", "website-brief", "contratto", "editoriale", "eventi", "report", "file", "idee", "banca", "meta"];
       if (t && (valid as string[]).includes(t)) return t as TabKey;
     } catch { /* ignore */ }
     return "panoramica";
@@ -2018,6 +2021,15 @@ export default function ClientDetail({ id }: Props) {
         {/* ─── TAB: Sito Web (risposte del cliente, sola lettura) ─── */}
         {activeTab === "website-brief" && (
           <WebsiteBriefTab clientId={clientId} />
+        )}
+
+        {/* ─── TAB: Contratto (crea, invia al portale, proposte, firma) ─── */}
+        {activeTab === "contratto" && (
+          <ClientContractTab
+            clientId={clientId}
+            clientName={(viewClient as any).name ?? ""}
+            clientEmail={(viewClient as any).email ?? null}
+          />
         )}
 
         {/* ─── TAB: Editoriale ─── */}

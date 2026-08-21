@@ -10,6 +10,7 @@ import { ReportDetailScreen } from "./screens/ReportDetailScreen";
 import { ChatScreen } from "./screens/ChatScreen";
 import { BriefScreen } from "./screens/BriefScreen";
 import { WebsiteBriefScreen } from "./screens/WebsiteBriefScreen";
+import { ContractScreen } from "./screens/ContractScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { FilesScreen } from "./screens/FilesScreen";
 import type { Report } from "./types";
@@ -75,6 +76,7 @@ function Overlay({ id, param }: { id: OverlayId; param?: unknown }) {
     case "report": return <ReportDetailScreen report={param as Report} />;
     case "brief": return <BriefScreen />;
     case "website-brief": return <WebsiteBriefScreen />;
+    case "contract": return <ContractScreen />;
     case "events": return <EventsScreen />;
     case "files": return <FilesScreen />;
   }

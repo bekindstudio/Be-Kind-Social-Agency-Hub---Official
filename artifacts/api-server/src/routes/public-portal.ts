@@ -1,12 +1,15 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, ne, gte, count, sql } from "drizzle-orm";
+import { notifyAgency } from "../lib/mailer";
 import {
   db,
   clientsTable,
   clientBriefs,
   clientWebsiteBriefs,
   clientPortalLogins,
+  contractDocumentsTable,
+  contractChangeRequestsTable,
   clientEventsTable,
   editorialPlansTable,
   editorialSlotsTable,
@@ -196,6 +199,21 @@ router.get("/public/portal/:token", async (req, res): Promise<void> => {
       ));
     upcoming = Number(slotCount?.n ?? 0);
   }
+  // Contratto visibile nel portale (inviato o firmato): la Home mostra la voce
+  // con eventuale badge "da firmare". Tollerante se la migration non è applicata.
+  let contractStatus: string | null = null;
+  try {
+    const [contractDoc] = await db.select({ status: contractDocumentsTable.status })
+      .from(contractDocumentsTable)
+      .where(and(
+        eq(contractDocumentsTable.clientId, client.id),
+        isNull(contractDocumentsTable.deletedAt),
+        inArray(contractDocumentsTable.status, ["inviato", "firmato"]),
+      ))
+      .orderBy(desc(contractDocumentsTable.sentAt));
+    contractStatus = contractDoc?.status ?? null;
+  } catch { contractStatus = null; }
+
   res.json({
     client: brand,
     sections: ["brief", "ideas", "events", "editorial", "reports", "files"],
@@ -204,6 +222,7 @@ router.get("/public/portal/:token", async (req, res): Promise<void> => {
       ideas: Number(ideaCount?.n ?? 0),
       reports: Number(reportCount?.n ?? 0),
     },
+    contractStatus,
   });
 });
 
@@ -396,6 +415,155 @@ router.put("/public/portal/:token/website-brief", async (req, res): Promise<void
     }
   } catch {
     res.status(500).json({ error: "Errore nel salvataggio del brief sito" });
+  }
+});
+
+/* ── CONTRATTO (lettura + proposte di modifica + firma) ──────────────
+ * Il cliente vede SOLO i contratti agganciati al suo client_id e già inviati
+ * (status "inviato" o "firmato"). Può proporre modifiche (che l'agenzia
+ * approva/rifiuta dal cockpit) e firmare con firma elettronica semplice:
+ * nome digitato + doppia accettazione (contratto + clausole vessatorie ex
+ * artt. 1341-1342 c.c.), con audit trail: data, IP, user agent e hash SHA-256
+ * del testo firmato. */
+
+function requestIp(req: Request): string {
+  const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+  return fwd || req.socket?.remoteAddress || "";
+}
+
+router.get("/public/portal/:token/contract", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  try {
+    const [doc] = await db.select().from(contractDocumentsTable)
+      .where(and(
+        eq(contractDocumentsTable.clientId, client.id),
+        isNull(contractDocumentsTable.deletedAt),
+        inArray(contractDocumentsTable.status, ["inviato", "firmato"]),
+      ))
+      .orderBy(desc(contractDocumentsTable.sentAt));
+    if (!doc) { res.json({ contract: null }); return; }
+
+    const requests = await db.select().from(contractChangeRequestsTable)
+      .where(eq(contractChangeRequestsTable.contractId, doc.id))
+      .orderBy(desc(contractChangeRequestsTable.createdAt));
+
+    res.json({
+      contract: {
+        id: doc.id,
+        contractNumber: doc.contractNumber,
+        serviceType: doc.serviceType,
+        content: doc.content,
+        status: doc.status,
+        value: doc.value,
+        startDate: doc.startDate,
+        endDate: doc.endDate,
+        sentAt: doc.sentAt,
+        signedAt: doc.signedAt,
+        signedName: doc.signedName,
+        changeRequests: requests.map((r) => ({
+          id: r.id, message: r.message, status: r.status, reply: r.reply, createdAt: r.createdAt,
+        })),
+      },
+    });
+  } catch {
+    res.status(500).json({ error: "Errore nel caricamento del contratto" });
+  }
+});
+
+router.post("/public/portal/:token/contract/:id/change-request", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  const message = String((req.body as { message?: unknown })?.message ?? "").trim();
+  if (!message) { res.status(400).json({ error: "Scrivi la modifica che vorresti proporre" }); return; }
+  if (message.length > 4000) { res.status(400).json({ error: "Testo troppo lungo (max 4000 caratteri)" }); return; }
+
+  try {
+    const [doc] = await db.select().from(contractDocumentsTable)
+      .where(and(
+        eq(contractDocumentsTable.id, String(req.params.id)),
+        eq(contractDocumentsTable.clientId, client.id),
+        isNull(contractDocumentsTable.deletedAt),
+      ));
+    if (!doc) { res.status(404).json({ error: "Contratto non trovato" }); return; }
+    if (doc.status !== "inviato") { res.status(409).json({ error: "Il contratto non è modificabile in questo stato" }); return; }
+
+    const [created] = await db.insert(contractChangeRequestsTable)
+      .values({ contractId: doc.id, clientId: client.id, message })
+      .returning();
+
+    // Comunicazione importante → email all'agenzia (non blocca la risposta).
+    void notifyAgency(
+      `[Be Kind HUB] ${client.name}: proposta di modifica al contratto ${doc.contractNumber}`,
+      "Nuova proposta di modifica contratto",
+      `<p><strong>${client.name}</strong> ha proposto una modifica al contratto <strong>${doc.contractNumber}</strong>:</p><p style="background:#f5f5f0;padding:12px;border-radius:8px">${message.replace(/</g, "&lt;")}</p><p>Gestiscila dal cockpit nella scheda cliente → tab Contratto.</p>`,
+    );
+
+    res.status(201).json({ id: created.id, status: created.status });
+  } catch {
+    res.status(500).json({ error: "Errore nell'invio della proposta" });
+  }
+});
+
+router.post("/public/portal/:token/contract/:id/sign", async (req, res): Promise<void> => {
+  const client = await withClient(req, res);
+  if (!client) return;
+
+  const body = (req.body ?? {}) as { fullName?: unknown; acceptContract?: unknown; acceptVexatious?: unknown };
+  const fullName = String(body.fullName ?? "").trim();
+  if (fullName.length < 5 || !fullName.includes(" ")) {
+    res.status(400).json({ error: "Inserisci nome e cognome completi per firmare" }); return;
+  }
+  if (body.acceptContract !== true || body.acceptVexatious !== true) {
+    res.status(400).json({ error: "Per firmare devi accettare il contratto e approvare specificamente le clausole indicate" }); return;
+  }
+
+  try {
+    const [doc] = await db.select().from(contractDocumentsTable)
+      .where(and(
+        eq(contractDocumentsTable.id, String(req.params.id)),
+        eq(contractDocumentsTable.clientId, client.id),
+        isNull(contractDocumentsTable.deletedAt),
+      ));
+    if (!doc) { res.status(404).json({ error: "Contratto non trovato" }); return; }
+    if (doc.status === "firmato") { res.status(409).json({ error: "Contratto già firmato" }); return; }
+    if (doc.status !== "inviato") { res.status(409).json({ error: "Il contratto non è firmabile in questo stato" }); return; }
+
+    const pending = await db.select({ n: count() }).from(contractChangeRequestsTable)
+      .where(and(
+        eq(contractChangeRequestsTable.contractId, doc.id),
+        eq(contractChangeRequestsTable.status, "proposta"),
+      ));
+    if (Number(pending[0]?.n ?? 0) > 0) {
+      res.status(409).json({ error: "Ci sono proposte di modifica in attesa di risposta: attendi la decisione dell'agenzia prima di firmare" }); return;
+    }
+
+    const now = new Date();
+    const [signed] = await db.update(contractDocumentsTable)
+      .set({
+        status: "firmato",
+        signedAt: now,
+        signedName: fullName,
+        signedIp: requestIp(req),
+        signedUserAgent: String(req.headers["user-agent"] ?? "").slice(0, 500),
+        signedHash: createHash("sha256").update(doc.content).digest("hex"),
+        vexatiousAcceptedAt: now,
+      })
+      .where(eq(contractDocumentsTable.id, doc.id))
+      .returning();
+
+    // Comunicazione importante → email all'agenzia.
+    void notifyAgency(
+      `[Be Kind HUB] 🎉 ${client.name} ha firmato il contratto ${doc.contractNumber}`,
+      "Contratto firmato",
+      `<p><strong>${client.name}</strong> ha firmato il contratto <strong>${doc.contractNumber}</strong>.</p><p>Firmato da: <strong>${fullName.replace(/</g, "&lt;")}</strong><br/>Data: ${now.toLocaleString("it-IT")}</p><p>Scarica il PDF firmato dal cockpit (scheda cliente → tab Contratto) o dal portale.</p>`,
+    );
+
+    res.json({ status: signed.status, signedAt: signed.signedAt, signedName: signed.signedName });
+  } catch {
+    res.status(500).json({ error: "Errore nella firma del contratto" });
   }
 });
 

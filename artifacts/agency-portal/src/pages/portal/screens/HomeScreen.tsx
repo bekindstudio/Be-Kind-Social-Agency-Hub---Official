@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Lightbulb, BarChart3, FileText, CalendarDays, FolderOpen, ChevronRight, Globe } from "lucide-react";
+import { CalendarRange, Lightbulb, BarChart3, FileText, CalendarDays, FolderOpen, ChevronRight, Globe, FileSignature } from "lucide-react";
 import { usePortal, usePortalData } from "../PortalContext";
 import { usePortalNav } from "../nav";
 import { T } from "../theme";
@@ -17,7 +17,7 @@ function greeting(): string {
 }
 
 export function HomeScreen() {
-  const { brand, counts } = usePortal();
+  const { brand, counts, contractStatus } = usePortal();
   const wantsWebsite = brand.wantsWebsite;
   const { setTab, push } = usePortalNav();
   const { data, loading } = usePortalData<EditorialData>("/editorial");
@@ -78,6 +78,14 @@ export function HomeScreen() {
 
       {/* Azioni rapide */}
       <section className="space-y-2.5">
+        {contractStatus && (
+          <QuickRow
+            icon={<FileSignature size={18} />}
+            title="Il tuo contratto"
+            sub={contractStatus === "inviato" ? "Da leggere e firmare ✍️" : "Firmato — consultalo quando vuoi"}
+            onClick={() => push("contract")}
+          />
+        )}
         <QuickRow icon={<FileText size={18} />} title="Il tuo brief" sub="Raccontaci di te, si salva da solo" onClick={() => push("brief")} />
         {wantsWebsite && (
           <QuickRow icon={<Globe size={18} />} title="Brief Sito Web" sub="Aiutaci a disegnare il tuo sito, si salva da solo" onClick={() => push("website-brief")} />

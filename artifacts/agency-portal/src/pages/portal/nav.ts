@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import type { TabKey } from "./components/BottomNav";
 
 /** Schermate "overlay" impilate sopra le tab (dettaglio push con back). */
-export type OverlayId = "report" | "brief" | "events" | "files" | "website-brief";
+export type OverlayId = "report" | "brief" | "events" | "files" | "website-brief" | "contract";
 
 export type PortalNav = {
   tab: TabKey;
